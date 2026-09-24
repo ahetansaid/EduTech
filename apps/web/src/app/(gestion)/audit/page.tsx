@@ -8,7 +8,8 @@ import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { date, entier, heure, nombre } from "@/lib/format";
-import { useAcces, useDemo, useMonde } from "@/lib/store";
+import { useAcces, useDemo, useMonde, useProfil } from "@/lib/store";
+import { useLectureApi } from "@/lib/api";
 
 /* ------------------------------------------------------------------ Libellés */
 
@@ -20,7 +21,7 @@ const CRITERE_AIDE: Record<Critere, string> = {
   finalite: "Le motif déclaré n'est pas admis pour ce rôle",
 };
 
-type Entree = EntreeAudit & { simule?: boolean };
+type Entree = EntreeAudit & { simule?: boolean; base?: boolean };
 type FiltreDecision = "tous" | "autorises" | "refuses";
 type FiltreOrigine = "tout" | "seance" | "historique";
 
@@ -64,7 +65,14 @@ export default function AuditPage() {
     ];
   }, [monde.profils, monde.apprenants]);
 
-  const toutes = useMemo<Entree[]>(() => [...audit, ...historique], [audit, historique]);
+  // Journal réel de la base nationale (API) : remplace l'historique simulé quand il est disponible.
+  const profilActif = useProfil();
+  const base = useLectureApi<EntreeAudit[]>(profilActif.id, "/audit?limite=200");
+  const historiqueAffiche = useMemo<Entree[]>(
+    () => (base.donnees ? base.donnees.map((e) => ({ ...e, horodatage: new Date(e.horodatage).toISOString(), simule: true, base: true })) : historique),
+    [base.donnees, historique],
+  );
+  const toutes = useMemo<Entree[]>(() => [...audit, ...historiqueAffiche], [audit, historiqueAffiche]);
   const profils = useMemo(() => [...new Map(toutes.map((e) => [e.profilId, e.profilNom])).entries()].sort((a, b) => a[1].localeCompare(b[1], "fr")), [toutes]);
   const finalites = useMemo(() => [...new Set(toutes.map((e) => e.finalite))], [toutes]);
 
@@ -247,7 +255,7 @@ function LigneAudit({ e, i }: { e: Entree; i: number }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <Badge ton="neutre">{FINALITE_LIBELLE[e.finalite]}</Badge>
           {e.critereManquant && <Badge ton="critique">Critère manquant : {CRITERE_LIBELLE[e.critereManquant]}</Badge>}
-          {e.simule ? <Badge ton="avertissement">Historique simulé</Badge> : <Badge ton="info">Séance en cours</Badge>}
+          {e.base ? <Badge ton="succes">Base nationale</Badge> : e.simule ? <Badge ton="avertissement">Historique simulé</Badge> : <Badge ton="info">Séance en cours</Badge>}
         </div>
       </div>
       <div className="sm:text-right">

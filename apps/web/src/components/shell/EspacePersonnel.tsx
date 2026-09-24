@@ -10,6 +10,7 @@ import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useThemeEspace } from "@/lib/useSombre";
 import { useDemo, useHydratation, useProfil } from "@/lib/store";
+import { apiActive, appelApi } from "@/lib/api";
 import { SelecteurProfil } from "./SelecteurProfil";
 
 export interface Onglet { href: string; libelle: string; icone: LucideIcon }
@@ -69,7 +70,18 @@ export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", c
           <div className="flex-1" />
           {horsConnexion && (
             <button
-              onClick={basculerConnexion}
+              onClick={() => {
+                // Au retour du réseau, les absences saisies hors connexion partent aussi vers la base nationale.
+                if (!enLigne && apiActive) {
+                  const parClasse = new Map<string, { date: string; ids: string[] }>();
+                  for (const e of useDemo.getState().fileAttente) if (e.type === "ABSENCE") {
+                    const k = `${e.classeId}|${e.date}`;
+                    parClasse.set(k, { date: e.date, ids: [...(parClasse.get(k)?.ids ?? []), e.apprenantId] });
+                  }
+                  for (const [k, v] of parClasse) void appelApi(profil.id, "POST", "/evenements/absences", { classeId: k.split("|")[0], date: v.date, apprenantIds: v.ids }).catch(() => undefined);
+                }
+                basculerConnexion();
+              }}
               className={cn("flex h-9 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium", enLigne ? "text-ink-muted hover:bg-surface-2" : "bg-warning-bg text-warning")}
               title={enLigne ? "Simuler une coupure de connexion" : "Rétablir la connexion et synchroniser"}
             >

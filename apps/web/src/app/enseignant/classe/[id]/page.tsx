@@ -1,7 +1,7 @@
 "use client";
 
 import type { Apprenant, Matiere, NouvelEvenement } from "@beile/contracts";
-import { ArrowLeft, Check, CloudOff, PenLine, Save, UserX } from "lucide-react";
+import { ArrowLeft, Check, CloudOff, Database, PenLine, Save, UserX } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, use, useMemo, useState } from "react";
@@ -13,6 +13,7 @@ import { absences, absentsDuJour, AUJOURDHUI, elevesClasse, moyennesParMatiere, 
 import { ANNEE } from "@beile/simulation/micro";
 import { notesApprenant, notesEffectives } from "@beile/simulation/projections";
 import { maintenant, useDemo, useMonde, useProfil } from "@/lib/store";
+import { apiActive, appelApi } from "@/lib/api";
 
 type Onglet = "appel" | "notes" | "eleves";
 
@@ -57,6 +58,8 @@ function Appel({ classeId, eleves, enseignantId }: { classeId: string; eleves: A
   const dejaAbsents = new Set([...absentsDuJour(monde.evenements, classeId), ...enAttente].map((e) => ("apprenantId" in e ? e.apprenantId : "")));
   const [absents, setAbsents] = useState<Set<string>>(new Set());
   const [bilan, setBilan] = useState<{ n: number; horsLigne: boolean } | null>(null);
+  const [base, setBase] = useState<{ etat: "envoi" | "ok" | "refus" | "erreur"; detail: string } | null>(null);
+  const profil = useProfil();
   const appelFait = dejaAbsents.size > 0 || bilan != null;
 
   const basculer = (id: string) => setAbsents((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -67,6 +70,13 @@ function Appel({ classeId, eleves, enseignantId }: { classeId: string; eleves: A
     }));
     enregistrer(evts);
     setBilan({ n: evts.length, horsLigne: !enLigne });
+    // Base nationale : l'API vérifie la relation pédagogique côté serveur, puis écrit au registre.
+    if (apiActive && enLigne) {
+      setBase({ etat: "envoi", detail: "" });
+      appelApi<{ enregistres?: string[]; erreur?: string }>(profil.id, "POST", "/evenements/absences", { classeId, date: AUJOURDHUI, apprenantIds: [...absents] })
+        .then((r) => setBase(r.statut === 201 ? { etat: "ok", detail: `${r.donnees.enregistres?.length ?? 0} événement(s) inscrit(s) au registre national` } : { etat: "refus", detail: r.donnees.erreur ?? `Refus ${r.statut}` }))
+        .catch((e: Error) => setBase({ etat: "erreur", detail: e.message }));
+    }
     setAbsents(new Set());
   };
 
@@ -122,6 +132,11 @@ function Appel({ classeId, eleves, enseignantId }: { classeId: string; eleves: A
                 <li>• L'inspecteur voit le taux d'absence de l'établissement.</li>
                 <li>• Le cockpit national reçoit l'événement dans son flux.</li>
               </ul>
+            )}
+            {base && (
+              <p className={cn("mt-3 flex items-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-medium", base.etat === "ok" ? "bg-success-bg text-success" : base.etat === "envoi" ? "bg-info-bg text-info" : "bg-critical-bg text-critical")}>
+                <Database size={14} aria-hidden /> {base.etat === "envoi" ? "Écriture dans la base nationale…" : `Base nationale : ${base.detail}`}
+              </p>
             )}
             <p className="mt-3 text-[12px] text-ink-muted">Un fait, saisi une fois, restitué à quatre niveaux.</p>
           </Card>

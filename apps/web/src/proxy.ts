@@ -8,6 +8,8 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const dev = process.env.NODE_ENV === "development";
+  // Seule origine externe autorisée : l'API BEILE configurée (aucun autre service tiers).
+  const api = process.env.NEXT_PUBLIC_BEILE_API ? new URL(process.env.NEXT_PUBLIC_BEILE_API).origin : "";
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
@@ -16,7 +18,7 @@ export function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    `connect-src 'self'${dev ? " ws:" : ""}`,
+    `connect-src 'self'${api ? ` ${api}` : ""}${dev ? " ws:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

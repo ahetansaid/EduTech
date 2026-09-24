@@ -1,17 +1,19 @@
 "use client";
 
-import { ArrowRight, BookOpenCheck, CalendarX2, CheckCircle2, Fingerprint, GraduationCap, HandHelping, Percent, School, TrendingDown, UserPlus, Users } from "lucide-react";
+import { ArrowRight, BookOpenCheck, CalendarX2, CheckCircle2, Fingerprint, GraduationCap, HandHelping, Percent, School, TrendingDown, UserPlus, Users, Database } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { entier, heure, nombre, pourcent } from "@/lib/format";
 import { Cascade, Compteur, Element } from "@/components/motion";
-import { absentsDuJour, elevesClasse, elevesEtablissement, moyenneGenerale, nomComplet } from "@/lib/scolarite";
+import { absentsDuJour, AUJOURDHUI, elevesClasse, elevesEtablissement, moyenneGenerale, nomComplet } from "@/lib/scolarite";
 import { ETAB_RONIERS } from "@beile/simulation/micro";
 import { elevesEnBaisse } from "@beile/simulation/projections";
-import { useMonde } from "@/lib/store";
+import { useMonde, useProfil } from "@/lib/store";
+import { apiActive, useLectureApi } from "@/lib/api";
+import type { Evenement } from "@beile/contracts";
 
 export default function MonEtablissement() {
   const monde = useMonde();
@@ -20,7 +22,12 @@ export default function MonEtablissement() {
   const eleves = useMemo(() => elevesEtablissement(monde, monde.evenements, ETAB_RONIERS), [monde]);
   const ids = useMemo(() => new Set(eleves.map((e) => e.apprenant.id)), [eleves]);
   const baisse = useMemo(() => elevesEnBaisse(monde.evenements, ids), [monde, ids]);
-  const absentsJour = absentsDuJour(monde.evenements).filter((a) => ids.has(a.apprenantId));
+  // Source : la base nationale quand l'API est configurée (actualisée en continu), sinon le registre de démonstration.
+  const profil = useProfil();
+  const base = useLectureApi<Extract<Evenement, { type: "ABSENCE" }>[]>(profil.id, `/etablissements/${ETAB_RONIERS}/absences?date=${AUJOURDHUI}`);
+  const { recharger } = base;
+  useEffect(() => { if (!apiActive) return; const t = setInterval(recharger, 8000); return () => clearInterval(t); }, [recharger]);
+  const absentsJour = base.donnees ?? absentsDuJour(monde.evenements).filter((a) => ids.has(a.apprenantId));
   const classes = monde.classes.filter((c) => c.etablissementId === ETAB_RONIERS);
   const enseignants = monde.enseignants.filter((e) => e.etablissementId === ETAB_RONIERS);
   const sansFormation = enseignants.filter((e) => !monde.evenements.some((x) => x.type === "FORMATION_ENSEIGNANT" && x.enseignantId === e.id && x.formation.startsWith("Évaluation formative")));
@@ -81,7 +88,7 @@ export default function MonEtablissement() {
         </Card>
 
         <Card>
-          <CardHeader icon={CalendarX2} title="Absences du jour" subtitle="Mises à jour à chaque appel, sans ressaisie" action={<Badge ton={absentsJour.length ? "critique" : "succes"}>{absentsJour.length}</Badge>} />
+          <CardHeader icon={CalendarX2} title="Absences du jour" subtitle={base.donnees ? "Lues dans la base nationale, actualisées en continu" : "Mises à jour à chaque appel, sans ressaisie"} action={<span className="flex items-center gap-2">{base.donnees && <Badge ton="info" icone={Database}>Base nationale</Badge>}<Badge ton={absentsJour.length ? "critique" : "succes"}>{absentsJour.length}</Badge></span>} />
           {absentsJour.length === 0 ? (
             <p className="rounded-md bg-surface-2/70 px-4 py-6 text-center text-[13px] text-ink-muted">Aucune absence enregistrée ce matin. Les absences saisies par les enseignants apparaissent ici instantanément.</p>
           ) : (

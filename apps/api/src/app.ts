@@ -8,7 +8,7 @@ import { empreinteCertificat } from "@beile/simulation/micro";
 import { indexer, notesApprenant, situationApprenant } from "@beile/simulation/projections";
 import { calculer, DICTIONNAIRE, priorites } from "@beile/simulation/semantique";
 import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
-import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -238,9 +238,8 @@ app.get("/etablissements/:id/absences", authentifie, async (c) => {
     (h.role === "inspecteur" && h.perimetre.niveau === "circonscription" && h.perimetre.circonscription === etab.circonscription));
   await journaliser(profil, "Consultation des absences", etablissementId, "gestion", autorise, autorise ? null : "perimetre");
   if (!autorise) throw new HTTPException(403, { message: "Établissement hors de votre périmètre : refus journalisé" });
-  const debut = new Date(`${date}T00:00:00Z`);
-  const fin = new Date(debut.getTime() + 86_400_000);
-  const lignes = await db.select().from(schema.evenements).where(and(eq(schema.evenements.etablissementId, etablissementId), eq(schema.evenements.type, "ABSENCE"), gte(schema.evenements.survenuLe, debut), lt(schema.evenements.survenuLe, fin)));
+  // Filtre sur la date déclarée de l'appel (et non sur l'heure d'enregistrement, qui peut suivre une synchronisation).
+  const lignes = await db.select().from(schema.evenements).where(and(eq(schema.evenements.etablissementId, etablissementId), eq(schema.evenements.type, "ABSENCE"), sql`${schema.evenements.donnees}->>'date' = ${date}`)).orderBy(desc(schema.evenements.enregistreLe));
   return c.json(lignes.map(enEvenement));
 });
 
