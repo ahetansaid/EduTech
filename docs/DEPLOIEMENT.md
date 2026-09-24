@@ -49,7 +49,8 @@ npm run verifier -w @beile/db    # contrôle : ajout seul, droits, RLS (tout est
 | `BEILE_ORIGINES_AUTORISEES` | domaine de production | domaines de prévisualisation | utile seulement si l'API est appelée depuis une autre origine |
 | `BEILE_DONNEES_REELLES` | **absent** | absent | à `true`, interdit le mode démonstration (sécurité) |
 
-5. **Branches** : `main` → Production ; `staging` → domaine de prévisualisation fixe (`staging.…`) ; `dev` et `feature/*` → prévisualisations.
+5. **Région des fonctions** : `apps/web/vercel.json` fixe `cle1` (Cleveland), au plus près de la base Neon actuelle (us-east-2, Ohio). Après migration de Neon à Francfort, passer à `fra1`.
+6. **Branches** : `main` → Production ; `staging` → domaine de prévisualisation fixe (`staging.…`) ; `dev` et `feature/*` → prévisualisations.
 
 > Générer un secret : `node -e "console.log(require('crypto').randomBytes(64).toString('base64url'))"`
 
