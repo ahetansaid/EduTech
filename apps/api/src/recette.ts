@@ -18,8 +18,8 @@ async function appel(methode: string, chemin: string, jeton?: string, corps?: un
   return { statut: r.status, json: json as Record<string, unknown> };
 }
 
-function verifier(libelle: string, obtenu: number, attendu: number, detail = "") {
-  const ok = obtenu === attendu;
+function verifier(libelle: string, obtenu: number, attendu: number | number[], detail = "") {
+  const ok = Array.isArray(attendu) ? attendu.includes(obtenu) : obtenu === attendu;
   if (!ok) echecs++;
   console.log(`${ok ? "✔" : "✘"} ${libelle} — ${obtenu}${ok ? "" : ` (attendu ${attendu})`}${detail ? ` · ${detail}` : ""}`);
 }
@@ -70,6 +70,36 @@ verifier("Cabinet → journal d'audit", (await appel("GET", "/audit", central)).
 const journal = await appel("GET", "/audit?limite=20", dpo);
 const lignes = journal.json as unknown as { autorise: boolean; action: string; critereManquant: string | null }[];
 verifier("DPO → journal d'audit", journal.statut, 200, `${lignes.filter((l) => !l.autorise).length} refus parmi les 20 dernières entrées`);
+
+// Parcours individuels
+verifier("TÉMOIN : santé publique sans jeton", (await appel("GET", "/sante")).statut, 200);
+const parent = await connexion("p-parent");
+const apprenante = await connexion("p-apprenant");
+const enfants = await appel("GET", "/famille/enfants", parent);
+verifier("Parent → ses enfants", enfants.statut, 200, `${(enfants.json as unknown as unknown[]).length} enfant(s)`);
+const enfantsEns = await appel("GET", "/famille/enfants", enseignant);
+verifier("Enseignant-parent → sa famille", enfantsEns.statut, 200, `${(enfantsEns.json as unknown as unknown[]).length} enfant(s)`);
+verifier("Directrice → espace famille", (await appel("GET", "/famille/enfants", directrice)).statut, 403);
+const passeport = await appel("GET", "/moi/passeport", apprenante);
+const types = ((passeport.json.evenements ?? []) as { type: string }[]).map((e) => e.type);
+verifier("Apprenante → son passeport", passeport.statut, 200, `${types.length} événements, transfert : ${types.includes("TRANSFERT") ? "oui" : "non"}`);
+verifier("Directrice → passeport", (await appel("GET", "/moi/passeport", directrice)).statut, 403);
+
+const notes = await appel("POST", "/evenements/evaluations", enseignant, { classeId: "CLS-PAR-5eA-S", matiere: "Mathématiques", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 14.5 }] });
+verifier("Notes de mathématiques en 5e A", notes.statut, 201);
+verifier("Notes de français en 5e A (pas sa matière)", (await appel("POST", "/evenements/evaluations", enseignant, { classeId: "CLS-PAR-5eA-S", matiere: "Français", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 12 }] })).statut, 403);
+verifier("Note hors barème (21/20)", (await appel("POST", "/evenements/evaluations", enseignant, { classeId: "CLS-PAR-5eA-S", matiere: "Mathématiques", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 21 }] })).statut, 422);
+const idNote = ((notes.json.enregistres ?? []) as string[])[0] ?? "EVT-inexistant";
+verifier("Correction par l'enseignant", (await appel("POST", "/evenements/corrections", enseignant, { evenementCorrigeId: idNote, nouvelleNote: 15, motif: "Erreur de report" })).statut, 201);
+verifier("Correction par la directrice", (await appel("POST", "/evenements/corrections", directrice, { evenementCorrigeId: idNote, nouvelleNote: 20, motif: "Tentative non autorisée" })).statut, 403);
+
+const recherche = await appel("GET", "/registre/personnes?nom=WOROU&prenoms=Sidonie", directrice);
+verifier("Directrice → registre national", recherche.statut, 200, `${(recherche.json as unknown as unknown[]).length} résultat(s)`);
+verifier("Enseignant → registre national", (await appel("GET", "/registre/personnes?nom=WOROU", enseignant)).statut, 403);
+const sidonie = (recherche.json as unknown as { npi: string; prenoms: string }[]).find((p) => p.prenoms === "Sidonie");
+verifier("Inscription par NPI (201, ou 409 si déjà inscrite)", (await appel("POST", "/inscriptions", directrice, { classeId: "CLS-PAR-6eA-S", npi: sidonie?.npi ?? "0000000000" })).statut, [201, 409]);
+verifier("Inscription sans acte (régularisation)", (await appel("POST", "/inscriptions", directrice, { classeId: "CLS-PAR-6eB-S", sansActe: { nom: "Recette", prenoms: "Enfant", sexe: "F", dateNaissance: "2013-05-01", responsable: "Tuteur déclaré" } })).statut, 201);
+verifier("Inscription dans un autre établissement", (await appel("POST", "/inscriptions", directrice, { classeId: "CLS-COT-5eA-S", sansActe: { nom: "Test", prenoms: "Refus", sexe: "M", dateNaissance: "2013-05-01", responsable: "x" } })).statut, 403);
 
 // Vérification publique
 verifier("Vérification d'un diplôme authentique", (await appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
