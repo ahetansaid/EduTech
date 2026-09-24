@@ -1,0 +1,14 @@
+import { config } from "dotenv";
+import { defineConfig } from "drizzle-kit";
+
+config({ path: "../../.env" });
+
+export default defineConfig({
+  schema: "./src/schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  schemaFilter: ["core", "ledger", "audit", "analytics", "registre_simule", "workflow", "sensible", "gouvernance"],
+  dbCredentials: { url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? "" },
+  strict: true,
+  verbose: true,
+});

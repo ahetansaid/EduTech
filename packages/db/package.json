@@ -1,0 +1,32 @@
+{
+  "name": "@beile/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Schéma PostgreSQL (Drizzle) : core, ledger (ajout seul), audit, analytics — PostGIS",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generer": "drizzle-kit generate",
+    "migrer": "tsx src/migrer.ts",
+    "peupler": "tsx src/peupler.ts",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@beile/contracts": "*",
+    "@beile/simulation": "*",
+    "drizzle-orm": "^0.45.3",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^22",
+    "dotenv": "^18.0.3",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.20.0",
+    "typescript": "^5"
+  }
+}
