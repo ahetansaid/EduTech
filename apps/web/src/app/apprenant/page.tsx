@@ -6,8 +6,9 @@ import { useMemo } from "react";
 import { Card, CardHeader, Etiquette } from "@/components/ui/primitives";
 import { date, nombre } from "@/lib/format";
 import { absences, moyenneGenerale, moyennesParMatiere } from "@/lib/scolarite";
-import { evenementsApprenant, notesApprenant, situationApprenant } from "@beile/simulation/projections";
-import { useMonde, useProfil } from "@/lib/store";
+import { evenementsApprenant, notesApprenant } from "@beile/simulation/projections";
+import { useMonde } from "@/lib/store";
+import { usePasseport } from "@/lib/sources";
 
 interface Jalon { date: string; titre: string; detail: string; icone: LucideIcon; accent?: boolean; source: string }
 
@@ -15,22 +16,21 @@ const SOURCE: Record<string, string> = { beile: "BEILE", educmaster: "EducMaster
 
 export default function Passeport() {
   const monde = useMonde();
-  const profil = useProfil();
-  const h = profil.habilitations.find((x) => x.role === "apprenant");
-  const id = h?.perimetre.niveau === "personnel" ? h.perimetre.apprenantId : "";
-  const a = monde.apprenants.find((x) => x.id === id);
-  const situation = a ? situationApprenant(monde, monde.evenements, a.id) : null;
-  const etab = (eid: string | null) => monde.etablissements.find((e) => e.id === eid)?.nom ?? (eid ? eid : "École primaire (hors pilote)");
+  const { dossier, chargement, base } = usePasseport();
+  const a = dossier?.apprenant;
+  const evenementsSource = dossier?.evenements ?? [];
+  const etab = (eid: string | null) => dossier?.nomEtablissement(eid) ?? (eid ? eid : "École primaire (hors pilote)");
+  const libelleClasse = (cid: string) => (dossier?.classe?.id === cid ? dossier.classe.libelle : monde.classes.find((c) => c.id === cid)?.libelle ?? "classe");
 
   const jalons = useMemo<Jalon[]>(() => {
     if (!a) return [];
-    const evts = evenementsApprenant(monde.evenements, a.id);
+    const evts = evenementsApprenant(evenementsSource, a.id);
     const res: Jalon[] = [];
     const parTrimestre = new Map<string, Evenement[]>();
     for (const e of evts) {
       const src = SOURCE[e.source] ?? e.source;
       switch (e.type) {
-        case "INSCRIPTION": res.push({ date: e.survenuLe, titre: `Inscription en ${monde.classes.find((c) => c.id === e.classeId)?.libelle}`, detail: etab(e.etablissementId), icone: School, source: src }); break;
+        case "INSCRIPTION": res.push({ date: e.survenuLe, titre: `Inscription en ${libelleClasse(e.classeId)}`, detail: etab(e.etablissementId), icone: School, source: src }); break;
         case "TRANSFERT": res.push({ date: e.survenuLe, titre: "Transfert d'établissement", detail: `${etab(e.deEtablissementId)} → ${etab(e.versEtablissementId)} · le parcours vous a suivi·e, sans ressaisie`, icone: ArrowRightLeft, accent: true, source: src }); break;
         case "PASSAGE": res.push({ date: e.survenuLe, titre: `Passage en ${e.versNiveau}`, detail: `Décision du conseil de classe · année ${e.anneeScolaire}`, icone: GraduationCap, source: src }); break;
         case "RESULTAT_EXAMEN": res.push({ date: e.survenuLe, titre: `${e.examen} ${e.admis ? "obtenu" : "non obtenu"}`, detail: `Session ${e.session} · moyenne ${nombre(e.moyenne, 2)}/20`, icone: BookOpenCheck, source: src }); break;
@@ -44,16 +44,17 @@ export default function Passeport() {
     }
     for (const [k, l] of parTrimestre) {
       const t = Number(k.slice(-1));
-      const moy = moyenneGenerale(monde.evenements, a.id, t);
+      const moy = moyenneGenerale(evenementsSource, a.id, t);
       const derniere = l.map((x) => x.survenuLe).sort().at(-1)!;
       res.push({ date: derniere, titre: `Bilan du ${t === 1 ? "1er" : "2e"} trimestre`, detail: `${l.length} évaluations · moyenne générale ${nombre(moy, 2)}/20`, icone: CalendarCheck, source: "BEILE" });
     }
     return res.sort((x, y) => y.date.localeCompare(x.date));
-  }, [monde, a]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dossier, a]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!a || !situation) return null;
-  const matieres = moyennesParMatiere(monde.evenements, a.id, 2).sort((x, y) => y.moyenne - x.moyenne);
-  const nbEval = notesApprenant(monde.evenements, a.id).length;
+  if (chargement) return <div className="space-y-4" aria-busy><div className="h-48 animate-pulse rounded-xl bg-surface-2" /><div className="h-64 animate-pulse rounded-xl bg-surface-2" /></div>;
+  if (!a || !dossier) return null;
+  const matieres = moyennesParMatiere(evenementsSource, a.id, 2).sort((x, y) => y.moyenne - x.moyenne);
+  const nbEval = notesApprenant(evenementsSource, a.id).length;
 
   return (
     <div className="space-y-6">
@@ -61,13 +62,13 @@ export default function Passeport() {
         <div className="p-5 sm:p-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">Passeport éducatif</p>
           <p className="mt-2 font-display text-[26px] font-bold leading-tight">{a.prenoms} {a.nom}</p>
-          <p className="mt-1 text-[14px] text-white/85">{situation.classe?.libelle} · {etab(situation.etablissementId)}</p>
+          <p className="mt-1 text-[14px] text-white/85">{dossier.classe?.libelle} · {dossier.etablissementNom}</p>
           <div className="mt-5 grid grid-cols-3 gap-3">
-            {[["Moyenne T2", nombre(moyenneGenerale(monde.evenements, a.id, 2), 2)], ["Évaluations", String(nbEval)], ["Absences", String(absences(monde.evenements, a.id).length)]].map(([l, v]) => (
+            {[["Moyenne T2", nombre(moyenneGenerale(evenementsSource, a.id, 2), 2)], ["Évaluations", String(nbEval)], ["Absences", String(absences(evenementsSource, a.id).length)]].map(([l, v]) => (
               <div key={l} className="rounded-lg bg-white/12 px-3 py-2.5 backdrop-blur"><p className="text-[11px] text-white/75">{l}</p><p className="font-display text-[20px] font-bold tabular">{v}</p></div>
             ))}
           </div>
-          <p className="mt-4 font-mono text-[11px] text-white/70">Identifiant éducatif {a.id} · rattaché au registre national</p>
+          <p className="mt-4 font-mono text-[11px] text-white/70">Identifiant éducatif {a.id} · rattaché au registre national{base ? " · lu dans la base nationale" : ""}</p>
         </div>
       </div>
 

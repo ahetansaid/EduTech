@@ -10,7 +10,8 @@ import { date } from "@/lib/format";
 import { ageAu, elevesClasse } from "@/lib/scolarite";
 import { ANNEE, ETAB_RONIERS } from "@beile/simulation/micro";
 import { situationApprenant } from "@beile/simulation/projections";
-import { maintenant, useDemo, useMonde } from "@/lib/store";
+import { maintenant, useDemo, useMonde, useProfil } from "@/lib/store";
+import { apiActive, appelApi, useLectureApi } from "@/lib/api";
 
 type Etape = 1 | 2 | 3 | 4;
 const ETAPES = ["Registre national", "Filiation", "Classe", "Confirmation"];
@@ -30,18 +31,33 @@ export default function Inscription() {
   const [classeId, setClasseId] = useState<string | null>(null);
   const [resultat, setResultat] = useState<{ apprenant: Apprenant; evts: string[] } | null>(null);
 
-  const resultats = useMemo(() => {
+  const profil = useProfil();
+  const cheminRecherche = cherche && (nom.trim() || prenom.trim()) ? `/registre/personnes?nom=${encodeURIComponent(nom.trim())}&prenoms=${encodeURIComponent(prenom.trim())}` : null;
+  const distant = useLectureApi<{ npi: string; nom: string; prenoms: string; dateNaissance: string; sexe: "F" | "M"; parents: { nom: string; prenoms: string; sexe: "F" | "M" }[]; dejaInscrit: boolean }[]>(profil.id, cheminRecherche);
+  const [baseInscription, setBaseInscription] = useState<{ ok: boolean; texte: string } | null>(null);
+  const resultatsLocaux = useMemo(() => {
     if (!cherche || (!nom.trim() && !prenom.trim())) return [];
     return monde.registre.filter((p) => p.dateNaissance >= "2008-01-01" && (!nom.trim() || norm(p.nom).includes(norm(nom))) && (!prenom.trim() || norm(p.prenoms).includes(norm(prenom)))).slice(0, 8);
   }, [monde, nom, prenom, cherche]);
 
+  // Résultats unifiés : base nationale (API) ou registre de démonstration.
+  const resultats: PersonneRegistre[] = distant.donnees
+    ? distant.donnees.map((p) => ({ npi: p.npi, nom: p.nom, prenoms: p.prenoms, dateNaissance: p.dateNaissance, sexe: p.sexe, communeNaissanceId: "", parentsNpi: [] }))
+    : resultatsLocaux;
+  const parentsDistants = new Map((distant.donnees ?? []).map((p) => [p.npi, p.parents]));
   const dejaInscrit = (npi: string) => {
+    const d = distant.donnees?.find((p) => p.npi === npi);
+    if (d) return d.dejaInscrit ? "un établissement (base nationale)" : null;
     const a = monde.apprenants.find((x) => x.npi === npi);
     if (!a) return null;
     const s = situationApprenant(monde, monde.evenements, a.id);
     return s.statut === "scolarise" ? monde.etablissements.find((e) => e.id === s.etablissementId)?.nom ?? "un établissement" : null;
   };
-  const parents = enfant ? monde.registre.filter((p) => enfant.parentsNpi.includes(p.npi)) : [];
+  const parents: { npi: string; nom: string; prenoms: string; sexe: "F" | "M" }[] = enfant
+    ? parentsDistants.has(enfant.npi)
+      ? (parentsDistants.get(enfant.npi) ?? []).map((p, i) => ({ npi: `distant-${i}`, ...p }))
+      : monde.registre.filter((p) => enfant.parentsNpi.includes(p.npi))
+    : [];
   const classes = monde.classes.filter((c) => c.etablissementId === ETAB_RONIERS).map((c) => ({ c, n: elevesClasse(monde, monde.evenements, c).length }));
   const identite = enfant ? { nom: enfant.nom, prenoms: enfant.prenoms, sexe: enfant.sexe, naissance: enfant.dateNaissance } : sansActe ? { nom: sansActe.nom.toUpperCase(), prenoms: sansActe.prenoms, sexe: sansActe.sexe, naissance: sansActe.naissance } : null;
 
@@ -60,6 +76,12 @@ export default function Inscription() {
     if (!enfant) evts.push({ type: "REGULARISATION_IDENTITE_DEMANDEE", apprenantId: apprenant.id, motif: `Absence d'acte de naissance — responsable déclaré : ${sansActe?.responsable || "non renseigné"}`, ...base });
     const crees = enregistrer(evts);
     setResultat({ apprenant, evts: crees.map((e) => `${e.id} · ${e.type}`) });
+    if (apiActive) {
+      const corpsApi = enfant ? { classeId, npi: enfant.npi } : { classeId, sansActe: { nom: identite.nom, prenoms: identite.prenoms, sexe: identite.sexe, dateNaissance: identite.naissance, responsable: sansActe?.responsable ?? "" } };
+      appelApi<{ apprenantId?: string; evenements?: string[]; erreur?: string }>(profil.id, "POST", "/inscriptions", corpsApi)
+        .then((r) => setBaseInscription(r.statut === 201 ? { ok: true, texte: `inscription enregistrée sous l'identifiant ${r.donnees.apprenantId} (${r.donnees.evenements?.length ?? 0} événement(s))` } : { ok: false, texte: r.donnees.erreur ?? `Refus ${r.statut}` }))
+        .catch((e: Error) => setBaseInscription({ ok: false, texte: e.message }));
+    }
   };
 
   if (resultat) {
@@ -76,6 +98,7 @@ export default function Inscription() {
           <div className="mx-auto mt-5 max-w-md text-left">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">Événements inscrits au registre</p>
             <ul className="mt-2 space-y-1 font-mono text-[12px] text-ink-2">{resultat.evts.map((e) => <li key={e}>{e}</li>)}</ul>
+            {baseInscription && <p className={cn("mt-3 rounded-md px-3 py-2 text-[12.5px] font-medium", baseInscription.ok ? "bg-info-bg text-info" : "bg-critical-bg text-critical")}>Base nationale : {baseInscription.texte}</p>}
             <p className="mt-3 text-[12.5px] text-ink-muted">Ils alimentent immédiatement les effectifs de la classe, le passeport éducatif, la notification aux parents vérifiés et les indicateurs territoriaux.</p>
           </div>
           <div className="mt-6 flex justify-center gap-2">

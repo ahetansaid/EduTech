@@ -3,16 +3,13 @@
 import { ShieldCheck } from "lucide-react";
 import { CartePreuve } from "@/components/ui/Preuve";
 import { Card } from "@/components/ui/primitives";
-import { useMonde, useProfil } from "@/lib/store";
+import { usePasseport } from "@/lib/sources";
 
 export default function Preuves() {
-  const monde = useMonde();
-  const profil = useProfil();
-  const h = profil.habilitations.find((x) => x.role === "apprenant");
-  const id = h?.perimetre.niveau === "personnel" ? h.perimetre.apprenantId : "";
-  const a = monde.apprenants.find((x) => x.id === id);
-  if (!a) return null;
-  const certs = monde.certificats.filter((c) => c.apprenantId === a.id);
+  const { dossier } = usePasseport();
+  if (!dossier) return null;
+  const a = dossier.apprenant;
+  const certs = dossier.certificats;
   return (
     <div className="space-y-6">
       <div>

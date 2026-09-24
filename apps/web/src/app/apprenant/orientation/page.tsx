@@ -4,7 +4,7 @@ import { Compass, Info, UserCheck } from "lucide-react";
 import { Badge, Card, CardHeader } from "@/components/ui/primitives";
 import { nombre } from "@/lib/format";
 import { moyennesParMatiere } from "@/lib/scolarite";
-import { useMonde, useProfil } from "@/lib/store";
+import { usePasseport } from "@/lib/sources";
 
 /** Orientation : le système propose et documente ses critères ; la décision reste humaine (§14.3). */
 const FILIERES = [
@@ -15,11 +15,9 @@ const FILIERES = [
 ] as const;
 
 export default function Orientation() {
-  const monde = useMonde();
-  const profil = useProfil();
-  const h = profil.habilitations.find((x) => x.role === "apprenant");
-  const id = h?.perimetre.niveau === "personnel" ? h.perimetre.apprenantId : "";
-  const moyennes = new Map(moyennesParMatiere(monde.evenements, id).map((m) => [m.matiere as string, m.moyenne]));
+  const { dossier } = usePasseport();
+  const id = dossier?.apprenant.id ?? "";
+  const moyennes = new Map(moyennesParMatiere(dossier?.evenements ?? [], id).map((m) => [m.matiere as string, m.moyenne]));
   const scores = FILIERES.map((f) => {
     const criteres = Object.entries(f.poids).map(([m, p]) => ({ matiere: m, poids: p, moyenne: moyennes.get(m) ?? null }));
     const score = criteres.reduce((s, c) => s + (c.moyenne ?? 10) * c.poids, 0);

@@ -1,20 +1,19 @@
 "use client";
 
-import { Bell, CalendarX2, ChevronRight, Fingerprint, School, TrendingUp } from "lucide-react";
+import { Bell, CalendarX2, ChevronRight, Database, Fingerprint, School, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Courbes } from "@/components/charts/Graphiques";
 import { Badge, Card, CardHeader, Etiquette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { date, heure, nombre } from "@/lib/format";
-import { useEnfants } from "@/lib/famille";
+import { useFamille } from "@/lib/sources";
 import { absences, ageAu, moyenneGenerale, moyennesParMatiere } from "@/lib/scolarite";
-import { useAcces, useDemo, useMonde, useProfil } from "@/lib/store";
+import { useAcces, useDemo, useProfil } from "@/lib/store";
 
 export default function EspaceFamille() {
   const profil = useProfil();
-  const monde = useMonde();
-  const enfants = useEnfants();
+  const { enfants, chargement, base } = useFamille();
   const acces = useAcces();
   const notifications = useDemo((s) => s.notifications).filter((n) => n.destinataireNpi === profil.npi);
   const [choisi, setChoisi] = useState(0);
@@ -24,16 +23,19 @@ export default function EspaceFamille() {
   // Chaque consultation d'un dossier d'enfant passe par le contrôle d'accès et est journalisée.
   const idEnfant = enfant?.apprenant.id;
   useEffect(() => {
-    if (idEnfant) acces.demander({ ressource: { type: "dossier_apprenant", apprenantId: idEnfant }, finalite: "suivi_familial" }, "Consultation familiale", idEnfant);
+    // En mode connecté, la décision est prise et journalisée par l'API (base nationale).
+    if (idEnfant && !base) acces.demander({ ressource: { type: "dossier_apprenant", apprenantId: idEnfant }, finalite: "suivi_familial" }, "Consultation familiale", idEnfant);
   }, [idEnfant]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (chargement) return <div className="space-y-4" aria-busy><div className="h-24 animate-pulse rounded-xl bg-surface-2" /><div className="h-64 animate-pulse rounded-xl bg-surface-2" /></div>;
   if (!enfant) return <Card>Aucun enfant rattaché à votre identité.</Card>;
   const a = enfant.apprenant;
-  const t1 = moyenneGenerale(monde.evenements, a.id, 1);
-  const t2 = moyenneGenerale(monde.evenements, a.id, 2);
-  const abs = absences(monde.evenements, a.id);
-  const matieres = moyennesParMatiere(monde.evenements, a.id, 2);
-  const matieresT1 = moyennesParMatiere(monde.evenements, a.id, 1);
+  const evts = enfant.evenements;
+  const t1 = moyenneGenerale(evts, a.id, 1);
+  const t2 = moyenneGenerale(evts, a.id, 2);
+  const abs = absences(evts, a.id);
+  const matieres = moyennesParMatiere(evts, a.id, 2);
+  const matieresT1 = moyennesParMatiere(evts, a.id, 1);
   const recentes = notifications.slice(0, 3);
 
   return (
@@ -72,9 +74,9 @@ export default function EspaceFamille() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="font-display text-[22px] font-bold text-ink">{a.prenoms} {a.nom}</p>
-            <p className="text-[13.5px] text-ink-2">{ageAu(a.dateNaissance)} ans · {enfant.classe?.libelle} · {enfant.etablissement?.nom}</p>
+            <p className="text-[13.5px] text-ink-2">{ageAu(a.dateNaissance)} ans · {enfant.classe?.libelle} · {enfant.etablissementNom}</p>
           </div>
-          <Badge ton="succes" icone={Fingerprint}>Identité vérifiée</Badge>
+          <span className="flex flex-wrap gap-1.5"><Badge ton="succes" icone={Fingerprint}>Identité vérifiée</Badge>{base && <Badge ton="info" icone={Database}>Base nationale</Badge>}</span>
         </div>
         <dl className="mt-5 grid grid-cols-3 gap-3">
           <div className="rounded-lg bg-surface-2/70 p-3"><dt className="text-[11.5px] text-ink-muted">Moyenne T2</dt><dd className="mt-0.5 font-display text-[22px] font-bold tabular text-ink">{nombre(t2, 2)}</dd></div>

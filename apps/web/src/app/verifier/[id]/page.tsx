@@ -4,7 +4,7 @@ import type { ResultatVerification } from "@beile/contracts";
 import { ArrowLeft, CircleAlert, CircleCheckBig, FileWarning, Ban, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, use, useState } from "react";
+import { Suspense, use, useEffect, useState } from "react";
 import { Card } from "@/components/ui/primitives";
 import { useThemeEspace } from "@/lib/useSombre";
 import { cn } from "@/lib/cn";
@@ -13,6 +13,23 @@ import { empreinteCertificat } from "@beile/simulation/micro";
 import { maintenant, useHydratation, useMonde } from "@/lib/store";
 
 const MENTIONS = ["Passable", "Assez bien", "Bien", "Très bien"];
+
+/** Service public : appel sans compte ni jeton, comme le ferait un employeur ou une université. */
+function useVerificationPublique(id: string, empreinte: string) {
+  const [r, setR] = useState<{ cle: string; resultat: ResultatVerification } | null>(null);
+  const cle = `${id}|${empreinte}`;
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_BEILE_API;
+    if (!api) return;
+    let actif = true;
+    fetch(`${api}/certificats/${encodeURIComponent(id)}/verification${empreinte ? `?e=${empreinte}` : ""}`)
+      .then((x) => (x.ok ? (x.json() as Promise<ResultatVerification>) : null))
+      .then((resultat) => { if (actif && resultat) setR({ cle, resultat }); })
+      .catch(() => undefined);
+    return () => { actif = false; };
+  }, [id, empreinte, cle]);
+  return r?.cle === cle ? r.resultat : null;
+}
 
 function Verification({ id }: { id: string }) {
   const params = useSearchParams();
@@ -25,8 +42,13 @@ function Verification({ id }: { id: string }) {
   const nom = titulaire ? `${titulaire.prenoms} ${titulaire.nom}` : "";
   const [falsification, setFalsification] = useState<string | null>(null);
 
+  // Empreinte envoyée au service de vérification : celle du QR code, ou celle d'un document modifié (démonstration de fraude).
+  const empreinteEnvoyee = cert && falsification ? empreinteCertificat({ ...cert, mention: falsification }, nom).slice(0, 32) : presente;
+  const distant = useVerificationPublique(id, empreinteEnvoyee);
+
   let resultat: ResultatVerification;
-  if (!cert || !titulaire) resultat = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant dans le registre des certifications." };
+  if (distant) resultat = distant;
+  else if (!cert || !titulaire) resultat = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant dans le registre des certifications." };
   else {
     // Empreinte du document présenté : celle du QR code, ou recalculée si l'on simule une modification du document.
     const empreintePresentee = falsification ? empreinteCertificat({ ...cert, mention: falsification }, nom) : presente || cert.empreinte;
@@ -57,7 +79,7 @@ function Verification({ id }: { id: string }) {
         ) : (
           <p className="mx-auto mt-3 max-w-md text-ink-2">{resultat.explication}</p>
         )}
-        <p className="mt-6 text-[12px] text-ink-muted">Vérifié le {date(maintenant())} auprès du registre national des certifications (démonstration).</p>
+        <p className="mt-6 text-[12px] text-ink-muted">Vérifié le {date(maintenant())} {distant ? "par l'API du registre national des certifications (base nationale)" : "auprès du registre national des certifications (démonstration)"}.</p>
       </Card>
 
       {cert && !cert.revoque && (

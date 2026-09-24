@@ -158,7 +158,17 @@ function Notes({ classeId, eleves, enseignantId, matieres }: { classeId: string;
   const [correction, setCorrection] = useState<{ evtId: string; apprenantId: string; nom: string; ancienne: number } | null>(null);
   const [nouvelle, setNouvelle] = useState("");
   const [motif, setMotif] = useState("");
+  const [base, setBase] = useState<{ ok: boolean; texte: string } | null>(null);
+  const profil = useProfil();
+  const enLigne = useDemo((s) => s.enLigne);
   const etablissementId = monde.classes.find((c) => c.id === classeId)!.etablissementId;
+  /** Écriture au registre national : l'API vérifie la matière et la relation pédagogique. */
+  const versBase = (chemin: string, corps: unknown, succes: (d: { enregistres?: string[] }) => string) => {
+    if (!apiActive || !enLigne) return;
+    appelApi<{ enregistres?: string[]; erreur?: string }>(profil.id, "POST", chemin, corps)
+      .then((r) => setBase(r.statut === 201 ? { ok: true, texte: succes(r.donnees) } : { ok: false, texte: r.donnees.erreur ?? `Refus ${r.statut}` }))
+      .catch((e: Error) => setBase({ ok: false, texte: e.message }));
+  };
 
   const erreurs = Object.fromEntries(Object.entries(saisies).filter(([, v]) => v !== "").map(([k, v]) => {
     const n = Number(v.replace(",", "."));
@@ -172,6 +182,7 @@ function Notes({ classeId, eleves, enseignantId, matieres }: { classeId: string;
       survenuLe: maintenant(), auteurId: enseignantId, source: "beile", etablissementId,
     }));
     enregistrer(evts);
+    versBase("/evenements/evaluations", { classeId, matiere, trimestre: 2, notes: valides.map(([apprenantId, v]) => ({ apprenantId, note: Number(v.replace(",", ".")) })) }, (d) => `${d.enregistres?.length ?? 0} note(s) inscrite(s) au registre national`);
     setOk(evts.length);
     setSaisies({});
   };
@@ -216,6 +227,7 @@ function Notes({ classeId, eleves, enseignantId, matieres }: { classeId: string;
         </div>
       </Card>
       {ok != null && <p className="animate-slide-up rounded-md bg-success-bg px-4 py-3 text-[13px] font-medium text-success">{ok} note(s) enregistrée(s) dans le registre. Les familles sont informées ; les moyennes et bulletins sont recalculés.</p>}
+      {base && <p className={cn("flex animate-slide-up items-center gap-2 rounded-md px-4 py-3 text-[13px] font-medium", base.ok ? "bg-info-bg text-info" : "bg-critical-bg text-critical")}><Database size={15} aria-hidden /> Base nationale : {base.texte}</p>}
 
       <Card>
         <CardHeader icon={PenLine} title={`Évaluations précédentes · ${matiere}`} subtitle="Une note enregistrée n'est jamais effacée : une correction crée un nouvel événement, avec son auteur et son motif." />
@@ -246,6 +258,7 @@ function Notes({ classeId, eleves, enseignantId, matieres }: { classeId: string;
                 disabled={!motif.trim() || Number.isNaN(Number(nouvelle.replace(",", "."))) || nouvelle === "" || Number(nouvelle.replace(",", ".")) > 20}
                 onClick={() => {
                   enregistrer([{ type: "CORRECTION_EVALUATION", apprenantId: correction.apprenantId, evenementCorrigeId: correction.evtId, nouvelleNote: Number(nouvelle.replace(",", ".")), motif: motif.trim(), survenuLe: maintenant(), auteurId: enseignantId, source: "beile", etablissementId }]);
+                  versBase("/evenements/corrections", { evenementCorrigeId: correction.evtId, nouvelleNote: Number(nouvelle.replace(",", ".")), motif: motif.trim() }, () => "correction inscrite au registre national (la note d'origine est conservée)");
                   setCorrection(null);
                 }}
               >Corriger</Button>
