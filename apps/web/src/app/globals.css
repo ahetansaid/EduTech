@@ -1,26 +1,183 @@
 @import "tailwindcss";
 
+/*
+ * Jetons de la charte graphique BEILE (docs/design/CHARTE_GRAPHIQUE.md).
+ * Couleurs relevées sur les plateformes de l'État ; langage visuel « cartes flottantes ».
+ * Le thème sombre s'active par la classe .dark sur <html>.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --app-bg: #edf1f6;
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-2: #eef2f7;
+  --border: #d8e0ea;
+  --text: #0f1b2d;
+  --text-2: #475569;
+  --text-muted: #5b6b80;
+
+  --navy: #0a3764;
+  --navy-deep: #072747;
+  --blue: #1567c4;
+  --teal: #0e6258;
+  --amber: #dc9122;
+  --blue-soft: #e9f3ff;
+  --accent-ink: #0a3764;
+
+  --success: #0b6b3a;
+  --success-bg: #e7f5ec;
+  --info: #1567c4;
+  --info-bg: #e9f3ff;
+  --warning: #8a5a00;
+  --warning-bg: #fff4db;
+  --critical: #b42318;
+  --critical-bg: #fdecea;
+
+  --series-1: #1880e7;
+  --series-2: #dc9122;
+  --series-3: #0e8a74;
+  --series-4: #7a5bd6;
+  --series-5: #d55181;
+  --grid: #e3e9f1;
+
+  --alert-favorable: #0b6b3a;
+  --alert-surveillance: #c49a00;
+  --alert-attention: #d66a1f;
+  --alert-critique: #b42318;
+}
+
+.dark {
+  color-scheme: dark;
+  --app-bg: #06121f;
+  --bg: #06121f;
+  --surface: #0d1f33;
+  --surface-2: #132a44;
+  --border: #1f3a58;
+  --text: #e8eef5;
+  --text-2: #b6c3d4;
+  --text-muted: #94a3b8;
+  --blue: #5aa6f2;
+  --blue-soft: #10294a;
+  --accent-ink: #cfe3ff;
+  --success: #4cc38a;
+  --success-bg: #0f2e22;
+  --info: #5aa6f2;
+  --info-bg: #10294a;
+  --warning: #f2c14e;
+  --warning-bg: #33280c;
+  --critical: #f97066;
+  --critical-bg: #3a1614;
+  --series-1: #3a8be6;
+  --series-2: #c4841f;
+  --series-3: #189a80;
+  --series-4: #8570dd;
+  --series-5: #cf5886;
+  --grid: #183450;
+  --alert-favorable: #2fa36b;
+  --alert-surveillance: #d8b020;
+  --alert-attention: #e2803a;
+  --alert-critique: #e5484d;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-app: var(--app-bg);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-ink-muted: var(--text-muted);
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-blue: var(--blue);
+  --color-teal: var(--teal);
+  --color-amber: var(--amber);
+  --color-blue-soft: var(--blue-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-critical: var(--critical);
+  --color-critical-bg: var(--critical-bg);
+  --color-flag-green: #008751;
+  --color-flag-yellow: #fcd116;
+  --color-flag-red: #e8112d;
+
+  --font-display: var(--font-montserrat), system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.125rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  --shadow-soft: 0 1px 2px rgb(10 55 100 / 0.04);
+  --shadow-float: 0 1px 3px rgb(10 55 100 / 0.04), 0 6px 16px -6px rgb(10 55 100 / 0.1), 0 16px 40px -12px rgb(10 55 100 / 0.1);
+  --shadow-pop: 0 10px 38px -8px rgb(10 55 100 / 0.18), 0 4px 12px -4px rgb(10 55 100 / 0.08);
+
+  --animate-fade-in: fade-in 0.18s ease-out;
+  --animate-slide-up: slide-up 0.22s ease-out;
+  --animate-row: fade-in 0.4s ease-out backwards;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--app-bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background: radial-gradient(1200px 600px at 70% -10%, #0f2a47 0%, transparent 60%), var(--app-bg);
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Barres de défilement discrètes */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
