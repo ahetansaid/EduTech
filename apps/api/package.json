@@ -7,14 +7,18 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "recette": "tsx src/recette.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",
     "@hono/node-server": "^1.19.0",
     "hono": "^4.13.0",
     "zod": "^4.1.0",
-    "@beile/simulation": "*"
+    "@beile/simulation": "*",
+    "@beile/db": "*",
+    "dotenv": "^18.0.3",
+    "drizzle-orm": "^0.45.3"
   },
   "devDependencies": {
     "@types/node": "^22",

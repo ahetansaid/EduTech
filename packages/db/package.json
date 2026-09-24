@@ -15,7 +15,8 @@
     "peupler": "tsx src/peupler.ts",
     "studio": "drizzle-kit studio",
     "verifier": "tsx src/verifier.ts",
-    "sonde": "tsx src/sonde.ts"
+    "sonde": "tsx src/sonde.ts",
+    "role-api": "tsx src/creer_role_api.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",
