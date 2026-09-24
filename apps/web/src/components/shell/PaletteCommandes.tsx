@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { ACCUEIL_PROFIL, navigationPour } from "@/lib/navigation";
-import { getMonde } from "@/lib/sim/monde";
+import { getMonde } from "@beile/simulation/monde";
 import { useDemo, useProfil } from "@/lib/store";
 
 interface Commande { id: string; libelle: string; detail?: string; icone: typeof Search; action: () => void }

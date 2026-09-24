@@ -7,8 +7,8 @@ import { Suspense, useMemo, useState } from "react";
 import { Badge, Card, EtatVide, PageHeader, Segmente } from "@/components/ui/primitives";
 import { nombre } from "@/lib/format";
 import { absences, elevesEtablissement, moyenneGenerale, nomComplet } from "@/lib/scolarite";
-import { ETAB_RONIERS } from "@/lib/sim/micro";
-import { elevesEnBaisse } from "@/lib/sim/projections";
+import { ETAB_RONIERS } from "@beile/simulation/micro";
+import { elevesEnBaisse } from "@beile/simulation/projections";
 import { useMonde } from "@/lib/store";
 
 type Filtre = "tous" | "baisse" | "identite";

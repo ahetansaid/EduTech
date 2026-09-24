@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/shell/SelecteurProfil";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { ACCUEIL_PROFIL } from "@/lib/navigation";
-import { getMonde } from "@/lib/sim/monde";
+import { getMonde } from "@beile/simulation/monde";
 import { useDemo, useHydratation } from "@/lib/store";
 import { useThemeEspace } from "@/lib/useSombre";
 

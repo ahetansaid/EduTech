@@ -200,7 +200,7 @@ export function genererCoucheNationale(graine = 2026): CouchesNationales {
 
     // Établissements : effectif courant réparti, coordonnées tirées à l'intérieur de la commune.
     const geom = communeGeometry.get(c.id);
-    const bbox = geom ? bboxOf(geom) : [c.cx - 0.05, c.cy - 0.05, c.cx + 0.05, c.cy + 0.05];
+    const bbox: [number, number, number, number] = geom ? bboxOf(geom) : [c.cx - 0.05, c.cy - 0.05, c.cx + 0.05, c.cy + 0.05];
     const tirerPoint = () => {
       for (let k = 0; k < 40; k++) {
         const x = r.float(bbox[0], bbox[2]);

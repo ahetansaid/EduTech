@@ -7,10 +7,10 @@ import { Badge, Button, Card, CardHeader, Etiquette, PageHeader } from "@/compon
 import { cn } from "@/lib/cn";
 import { nomCommune, useCouches } from "@/lib/donnees";
 import { dateLongue, entier, nombre, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE, type CommuneStats, type EtablissementGenere } from "@/lib/sim/macro";
-import { DATE_SIMULEE } from "@/lib/sim/micro";
-import { confiance } from "@/lib/sim/semantique";
-import { DEPARTEMENTS } from "@/lib/sim/territoire";
+import { ANNEE_COURANTE, type CommuneStats, type EtablissementGenere } from "@beile/simulation/macro";
+import { DATE_SIMULEE } from "@beile/simulation/micro";
+import { confiance } from "@beile/simulation/semantique";
+import { DEPARTEMENTS } from "@beile/simulation/territoire";
 
 /** Seuil sous lequel la complétude d'un territoire déclenche un avertissement. */
 const SEUIL_ALERTE = 80;

@@ -7,8 +7,8 @@ import { Badge, Button, Card, CardHeader, Etiquette, PageHeader } from "@/compon
 import { cn } from "@/lib/cn";
 import { libelleEvenement } from "@/lib/donnees";
 import { date, dateLongue, entier, heure } from "@/lib/format";
-import { hashString } from "@/lib/sim/rng";
-import { DATE_SIMULEE } from "@/lib/sim/micro";
+import { hashString } from "@beile/simulation/rng";
+import { DATE_SIMULEE } from "@beile/simulation/micro";
 import { useDemo, useMonde } from "@/lib/store";
 
 /* ------------------------------------------------------------------ Valeurs simulées */

@@ -8,8 +8,8 @@ import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/pri
 import { cn } from "@/lib/cn";
 import { heure, nombre, pourcent } from "@/lib/format";
 import { absentsDuJour, elevesClasse, elevesEtablissement, moyenneGenerale, nomComplet } from "@/lib/scolarite";
-import { ETAB_RONIERS } from "@/lib/sim/micro";
-import { elevesEnBaisse } from "@/lib/sim/projections";
+import { ETAB_RONIERS } from "@beile/simulation/micro";
+import { elevesEnBaisse } from "@beile/simulation/projections";
 import { useMonde } from "@/lib/store";
 
 export default function MonEtablissement() {

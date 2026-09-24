@@ -1,7 +1,7 @@
 import type { Apprenant, Classe, Evenement, Matiere } from "@beile/contracts";
-import type { MicroMonde } from "./sim/micro";
-import { DATE_SIMULEE } from "./sim/micro";
-import { effectifClasse, notesEffectives, situationApprenant } from "./sim/projections";
+import type { MicroMonde } from "@beile/simulation/micro";
+import { DATE_SIMULEE } from "@beile/simulation/micro";
+import { effectifClasse, notesEffectives, situationApprenant } from "@beile/simulation/projections";
 
 /** Fonctions de lecture des parcours individuels (établissements pilotes). */
 

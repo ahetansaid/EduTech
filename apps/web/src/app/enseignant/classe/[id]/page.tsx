@@ -10,8 +10,8 @@ import { Badge, Button, Card, CardHeader, Segmente } from "@/components/ui/primi
 import { cn } from "@/lib/cn";
 import { date, nombre } from "@/lib/format";
 import { absences, absentsDuJour, AUJOURDHUI, elevesClasse, moyennesParMatiere, nomComplet } from "@/lib/scolarite";
-import { ANNEE } from "@/lib/sim/micro";
-import { notesEffectives } from "@/lib/sim/projections";
+import { ANNEE } from "@beile/simulation/micro";
+import { notesEffectives } from "@beile/simulation/projections";
 import { maintenant, useDemo, useMonde, useProfil } from "@/lib/store";
 
 type Onglet = "appel" | "notes" | "eleves";

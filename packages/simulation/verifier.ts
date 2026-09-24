@@ -1,12 +1,12 @@
-import { genererCoucheNationale } from "../src/lib/sim/macro";
-import { genererMicroMonde } from "../src/lib/sim/micro";
-import { calculer, priorites } from "../src/lib/sim/semantique";
-import { sha256 } from "../src/lib/sim/empreinte";
-import { decider } from "../src/lib/sim/abac";
-import { elevesEnBaisse, situationApprenant } from "../src/lib/sim/projections";
-import { repondre, QUESTIONS_EXEMPLES } from "../src/lib/sim/ask";
+import { genererCoucheNationale } from "./src/macro";
+import { genererMicroMonde } from "./src/micro";
+import { calculer, priorites } from "./src/semantique";
+import { sha256 } from "./src/empreinte";
+import { decider } from "./src/abac";
+import { elevesEnBaisse, situationApprenant } from "./src/projections";
+import { repondre, QUESTIONS_EXEMPLES } from "./src/ask";
 
-// Vérification de cohérence du moteur de simulation : npm run verif:sim --workspace=@beile/web
+// Vérification de cohérence du moteur de simulation : npm run verifier --workspace=@beile/simulation
 const t0 = Date.now();
 const c = genererCoucheNationale();
 const t1 = Date.now();

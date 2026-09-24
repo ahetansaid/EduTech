@@ -14,10 +14,10 @@ import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente } from 
 import { cn } from "@/lib/cn";
 import { nomCommune, useCouches } from "@/lib/donnees";
 import { compact, dateLongue, entier, heure, nombre, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE, type EtablissementGenere } from "@/lib/sim/macro";
-import { DATE_SIMULEE, ETAB_RONIERS } from "@/lib/sim/micro";
-import { calculer, communesDuPerimetre, priorites, type NiveauAlerte } from "@/lib/sim/semantique";
-import { departementById } from "@/lib/sim/territoire";
+import { ANNEE_COURANTE, type EtablissementGenere } from "@beile/simulation/macro";
+import { DATE_SIMULEE, ETAB_RONIERS } from "@beile/simulation/micro";
+import { calculer, communesDuPerimetre, priorites, type NiveauAlerte } from "@beile/simulation/semantique";
+import { departementById } from "@beile/simulation/territoire";
 import { useDemo, useMonde, useProfil } from "@/lib/store";
 
 /**

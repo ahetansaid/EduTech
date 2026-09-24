@@ -4,7 +4,7 @@ import { geoMercator, geoPath } from "d3-geo";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { useSombre } from "@/lib/useSombre";
-import { COMMUNES_GEO, DEPARTEMENTS_GEO } from "@/lib/sim/territoire";
+import { COMMUNES_GEO, DEPARTEMENTS_GEO } from "@beile/simulation/territoire";
 
 /**
  * Carte du Bénin en SVG (projection de Mercator, limites geoBoundaries).

@@ -2,9 +2,9 @@
 
 import type { Evenement, Perimetre, RequeteSemantique } from "@beile/contracts";
 import { useMemo } from "react";
-import { getCouches } from "./sim/monde";
-import { calculer } from "./sim/semantique";
-import { communeById } from "./sim/territoire";
+import { getCouches } from "@beile/simulation/monde";
+import { calculer } from "@beile/simulation/semantique";
+import { communeById } from "@beile/simulation/territoire";
 
 export function useCouches() {
   return useMemo(() => getCouches(), []);

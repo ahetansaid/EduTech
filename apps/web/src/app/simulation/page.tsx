@@ -11,9 +11,9 @@ import { Badge, Button, Card, CardHeader, PageHeader, Squelette } from "@/compon
 import { cn } from "@/lib/cn";
 import { nomCommune, useCouches } from "@/lib/donnees";
 import { entier, nombre, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE, ANNEES, type CommuneStats } from "@/lib/sim/macro";
-import { calculer, communesDuPerimetre } from "@/lib/sim/semantique";
-import { COMMUNES, DEPARTEMENTS } from "@/lib/sim/territoire";
+import { ANNEE_COURANTE, ANNEES, type CommuneStats } from "@beile/simulation/macro";
+import { calculer, communesDuPerimetre } from "@beile/simulation/semantique";
+import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
 import { useProfil } from "@/lib/store";
 
 /**

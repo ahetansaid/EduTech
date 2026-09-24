@@ -1,6 +1,6 @@
 import type { Commune, Departement } from "@beile/contracts";
-import departementsGeo from "../geo/departements.json";
-import communesGeo from "../geo/communes.json";
+import departementsGeo from "./geo/departements.json";
+import communesGeo from "./geo/communes.json";
 
 /** Référentiel territorial : 12 départements, 77 communes (limites geoBoundaries). */
 

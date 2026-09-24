@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { dateLongue } from "@/lib/format";
 import { ACCUEIL_PROFIL, NAVIGATION, navigationPour } from "@/lib/navigation";
-import { DATE_SIMULEE } from "@/lib/sim/micro";
+import { DATE_SIMULEE } from "@beile/simulation/micro";
 import { useDemo, useHydratation, useProfil } from "@/lib/store";
 import { PaletteCommandes } from "./PaletteCommandes";
 import { SelecteurProfil } from "./SelecteurProfil";

@@ -12,7 +12,8 @@
     "dev:api": "npm run dev --workspace=@beile/api",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "verifier": "npm run verifier --workspace=@beile/simulation"
   },
   "engines": {
     "node": ">=22"

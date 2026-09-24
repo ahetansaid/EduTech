@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/primitives";
 import { useThemeEspace } from "@/lib/useSombre";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
-import { empreinteCertificat } from "@/lib/sim/micro";
+import { empreinteCertificat } from "@beile/simulation/micro";
 import { maintenant, useHydratation, useMonde } from "@/lib/store";
 
 const MENTIONS = ["Passable", "Assez bien", "Bien", "Très bien"];

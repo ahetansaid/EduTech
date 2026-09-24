@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { Card, CardHeader, Etiquette } from "@/components/ui/primitives";
 import { date, nombre } from "@/lib/format";
 import { absences, moyenneGenerale, moyennesParMatiere } from "@/lib/scolarite";
-import { evenementsApprenant, notesEffectives, situationApprenant } from "@/lib/sim/projections";
+import { evenementsApprenant, notesEffectives, situationApprenant } from "@beile/simulation/projections";
 import { useMonde, useProfil } from "@/lib/store";
 
 interface Jalon { date: string; titre: string; detail: string; icone: LucideIcon; accent?: boolean; source: string }

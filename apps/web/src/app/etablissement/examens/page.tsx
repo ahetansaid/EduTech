@@ -9,7 +9,7 @@ import { cheminVerification } from "@/components/ui/Preuve";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { nombre } from "@/lib/format";
 import { elevesClasse, moyenneGenerale, nomComplet } from "@/lib/scolarite";
-import { empreinteCertificat, ETAB_RONIERS } from "@/lib/sim/micro";
+import { empreinteCertificat, ETAB_RONIERS } from "@beile/simulation/micro";
 import { maintenant, useDemo, useMonde } from "@/lib/store";
 
 const SESSION = "Juin 2026";

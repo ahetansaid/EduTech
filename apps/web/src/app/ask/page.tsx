@@ -11,7 +11,7 @@ import { Badge, Card, Etiquette, PageHeader } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { useCouches } from "@/lib/donnees";
 import { entier, nombre, pourcent } from "@/lib/format";
-import { QUESTIONS_EXEMPLES, repondre } from "@/lib/sim/ask";
+import { QUESTIONS_EXEMPLES, repondre } from "@beile/simulation/ask";
 import { useDemo, useProfil } from "@/lib/store";
 
 const MOTIF: Record<string, { titre: string; ton: string }> = {

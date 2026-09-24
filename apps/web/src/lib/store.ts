@@ -4,9 +4,9 @@ import type { Apprenant, Certificat, EntreeAudit, Evenement, Finalite, LienFamil
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { decider, type Demande } from "./sim/abac";
-import { DATE_SIMULEE } from "./sim/micro";
-import { getMonde } from "./sim/monde";
+import { decider, type Demande } from "@beile/simulation/abac";
+import { DATE_SIMULEE } from "@beile/simulation/micro";
+import { getMonde } from "@beile/simulation/monde";
 
 /**
  * État de la démonstration. Seules les actions réalisées pendant la session sont conservées

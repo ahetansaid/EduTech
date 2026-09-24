@@ -10,10 +10,10 @@ import { Badge, Button, Card, CardHeader, PageHeader, Segmente } from "@/compone
 import { cn } from "@/lib/cn";
 import { libelleEvenement, nomCommune, useCouches, useIndicateur } from "@/lib/donnees";
 import { compact, dateLongue, entier, heure, nombre, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE } from "@/lib/sim/macro";
-import { DATE_SIMULEE } from "@/lib/sim/micro";
-import { priorites, valeursParCommune, type NiveauAlerte } from "@/lib/sim/semantique";
-import { communeById, departementById } from "@/lib/sim/territoire";
+import { ANNEE_COURANTE } from "@beile/simulation/macro";
+import { DATE_SIMULEE } from "@beile/simulation/micro";
+import { priorites, valeursParCommune, type NiveauAlerte } from "@beile/simulation/semantique";
+import { communeById, departementById } from "@beile/simulation/territoire";
 import { useDemo, useMonde } from "@/lib/store";
 
 type Couche = "priorites" | "maths" | "ratio" | "occupation" | "absenteisme";

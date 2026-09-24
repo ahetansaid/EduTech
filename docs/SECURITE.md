@@ -15,10 +15,10 @@ Chaque mesure ci-dessous est **vérifiable en direct**, pas seulement décrite.
 | Transport | `Strict-Transport-Security` (2 ans, préchargement), `upgrade-insecure-requests` en production | En-têtes HTTP |
 | Surface du navigateur | `Permissions-Policy` : caméra, micro, géolocalisation, paiement, USB désactivés ; `Cross-Origin-Opener-Policy` / `Resource-Policy` | En-têtes HTTP |
 | Divulgation technique | En-tête `X-Powered-By` supprimé ; aucune trace de pile exposée | `next.config.ts` |
-| Autorisation | Moteur **ABAC à quatre critères** (rôle, périmètre, relation, finalité) évalué à chaque ouverture de dossier ; un rôle seul ne donne jamais accès à un individu | `apps/web/src/lib/sim/abac.ts` · espace enseignant, « Ouvrir le dossier d'un élève » |
+| Autorisation | Moteur **ABAC à quatre critères** (rôle, périmètre, relation, finalité) évalué à chaque ouverture de dossier ; un rôle seul ne donne jamais accès à un individu | `packages/simulation/src/abac.ts` · espace enseignant, « Ouvrir le dossier d'un élève » |
 | Journalisation | Accès **accordés et refusés** journalisés avec le critère manquant | Profil DPO → Journal d'audit |
 | Requête statistique (IA) | Le traducteur ne produit qu'une **requête structurée validée par schéma** ; le moteur calcule ; refus des questions visant une personne ou hors périmètre | Ask Education → « Voir la requête structurée » ; question « Montre-moi les notes de Aïcha ZANNOU » |
-| Réidentification | Seuil minimal de publication par indicateur ; les cellules sous le seuil sont **masquées** | `semantique.ts` (`effectifMinimalPublication`) |
+| Réidentification | Seuil minimal de publication par indicateur ; les cellules sous le seuil sont **masquées** | `packages/simulation/src/semantique.ts` (`effectifMinimalPublication`) |
 | Intégrité des diplômes | Empreinte SHA-256 des champs certifiés ; toute altération est détectée à la vérification | `/verifier` → « Tester la détection de fraude » |
 | Intégrité du registre | Registre d'événements **en ajout seul** : une correction de note crée un nouvel événement avec auteur et motif | Espace enseignant → Notes → corriger une note |
 | Validation des entrées | Toute saisie est bornée et validée (notes 0–20 au quart de point, longueurs maximales, formats d'identifiant) ; aucun HTML injecté (`dangerouslySetInnerHTML` réservé à un script statique de thème, sans donnée utilisateur) | Code des formulaires |

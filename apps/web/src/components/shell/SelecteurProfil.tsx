@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { ACCUEIL_PROFIL } from "@/lib/navigation";
-import { getMonde } from "@/lib/sim/monde";
+import { getMonde } from "@beile/simulation/monde";
 import { useDemo, useProfil } from "@/lib/store";
 
 export const initiales = (nom: string) => nom.replace(/^Dr\s+/, "").split(/\s+/).map((m) => m[0]).slice(0, 2).join("").toUpperCase();

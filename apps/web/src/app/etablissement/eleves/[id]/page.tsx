@@ -8,8 +8,8 @@ import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/pri
 import { libelleEvenement } from "@/lib/donnees";
 import { date, nombre } from "@/lib/format";
 import { absences, ageAu, moyennesParMatiere } from "@/lib/scolarite";
-import { ANNEE, ETAB_COCOTIERS } from "@/lib/sim/micro";
-import { evenementsApprenant, situationApprenant } from "@/lib/sim/projections";
+import { ANNEE, ETAB_COCOTIERS } from "@beile/simulation/micro";
+import { evenementsApprenant, situationApprenant } from "@beile/simulation/projections";
 import { maintenant, useAcces, useDemo, useMonde } from "@/lib/store";
 import type { DecisionAcces } from "@beile/contracts";
 

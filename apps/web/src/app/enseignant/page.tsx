@@ -7,8 +7,8 @@ import { DecisionAccesCarte } from "@/components/ui/donnees";
 import { Badge, Card, CardHeader, Etiquette } from "@/components/ui/primitives";
 import { dateLongue, nombre } from "@/lib/format";
 import { absentsDuJour, classesEnseignant, elevesClasse, elevesEtablissement, moyennesParMatiere, nomComplet } from "@/lib/scolarite";
-import { DATE_SIMULEE, ETAB_RONIERS } from "@/lib/sim/micro";
-import { elevesEnBaisse } from "@/lib/sim/projections";
+import { DATE_SIMULEE, ETAB_RONIERS } from "@beile/simulation/micro";
+import { elevesEnBaisse } from "@beile/simulation/projections";
 import { useAcces, useMonde, useProfil, type Finalite } from "@/lib/store";
 import type { DecisionAcces } from "@beile/contracts";
 

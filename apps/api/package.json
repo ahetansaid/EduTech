@@ -13,7 +13,8 @@
     "@beile/contracts": "*",
     "@hono/node-server": "^1.19.0",
     "hono": "^4.13.0",
-    "zod": "^4.1.0"
+    "zod": "^4.1.0",
+    "@beile/simulation": "*"
   },
   "devDependencies": {
     "@types/node": "^22",

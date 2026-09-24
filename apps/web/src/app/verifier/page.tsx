@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button, Card } from "@/components/ui/primitives";
 import { useThemeEspace } from "@/lib/useSombre";
 import { cheminVerification } from "@/components/ui/Preuve";
-import { getMonde } from "@/lib/sim/monde";
+import { getMonde } from "@beile/simulation/monde";
 
 export default function Verifier() {
   const router = useRouter();

@@ -9,8 +9,8 @@ import { TuileIndicateur } from "@/components/ui/donnees";
 import { cn } from "@/lib/cn";
 import { useCouches } from "@/lib/donnees";
 import { date, entier, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE } from "@/lib/sim/macro";
-import { DICTIONNAIRE } from "@/lib/sim/semantique";
+import { ANNEE_COURANTE } from "@beile/simulation/macro";
+import { DICTIONNAIRE } from "@beile/simulation/semantique";
 
 /* ------------------------------------------------------------------ Référentiels d'affichage */
 

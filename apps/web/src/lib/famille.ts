@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { situationApprenant } from "./sim/projections";
+import { situationApprenant } from "@beile/simulation/projections";
 import { useMonde, useProfil } from "./store";
 
 /** Enfants rattachés au responsable connecté : lien de filiation vérifié au registre national, jamais déclaré librement. */

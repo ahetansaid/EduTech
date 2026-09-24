@@ -8,8 +8,8 @@ import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { ageAu, elevesClasse } from "@/lib/scolarite";
-import { ANNEE, ETAB_RONIERS } from "@/lib/sim/micro";
-import { situationApprenant } from "@/lib/sim/projections";
+import { ANNEE, ETAB_RONIERS } from "@beile/simulation/micro";
+import { situationApprenant } from "@beile/simulation/projections";
 import { maintenant, useDemo, useMonde } from "@/lib/store";
 
 type Etape = 1 | 2 | 3 | 4;
