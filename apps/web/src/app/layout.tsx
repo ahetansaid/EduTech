@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/montserrat";
+import "@fontsource-variable/jetbrains-mono";
 import { headers } from "next/headers";
 import { ThemeScript } from "@/components/shell/ThemeScript";
 import "./globals.css";
 
-const montserrat = Montserrat({ variable: "--font-montserrat", subsets: ["latin"], weight: ["500", "600", "700", "800"] });
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
-const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], weight: ["400", "500"] });
+/* Polices auto-hébergées (Fontsource) : aucun appel à un service tiers, build indépendant du réseau. */
 
 export const metadata: Metadata = {
   title: { default: "BEILE — Intelligence et parcours éducatifs", template: "%s · BEILE" },
@@ -25,7 +25,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
-    <html lang="fr" suppressHydrationWarning className={`${montserrat.variable} ${inter.variable} ${jetbrains.variable} h-full`}>
+    <html lang="fr" suppressHydrationWarning className="h-full">
       <head>
         <ThemeScript nonce={nonce} />
       </head>

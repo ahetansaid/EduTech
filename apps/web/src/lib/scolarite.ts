@@ -1,7 +1,7 @@
 import type { Apprenant, Classe, Evenement, Matiere } from "@beile/contracts";
 import type { MicroMonde } from "@beile/simulation/micro";
 import { DATE_SIMULEE } from "@beile/simulation/micro";
-import { effectifClasse, notesEffectives, situationApprenant } from "@beile/simulation/projections";
+import { effectifClasse, evenementsApprenant, notesApprenant, situationApprenant } from "@beile/simulation/projections";
 
 /** Fonctions de lecture des parcours individuels (établissements pilotes). */
 
@@ -9,8 +9,8 @@ export const AUJOURDHUI = DATE_SIMULEE.slice(0, 10);
 
 export function moyennesParMatiere(evenements: Evenement[], apprenantId: string, trimestre?: number) {
   const parMatiere = new Map<Matiere, number[]>();
-  for (const e of notesEffectives(evenements)) {
-    if (e.apprenantId !== apprenantId || (trimestre && e.trimestre !== trimestre)) continue;
+  for (const e of notesApprenant(evenements, apprenantId)) {
+    if (trimestre && e.trimestre !== trimestre) continue;
     parMatiere.set(e.matiere, [...(parMatiere.get(e.matiere) ?? []), e.note]);
   }
   return [...parMatiere.entries()].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, n) => s + n, 0) / notes.length, notes }));
@@ -22,7 +22,7 @@ export function moyenneGenerale(evenements: Evenement[], apprenantId: string, tr
 }
 
 export function absences(evenements: Evenement[], apprenantId: string) {
-  return evenements.filter((e): e is Extract<Evenement, { type: "ABSENCE" }> => e.type === "ABSENCE" && e.apprenantId === apprenantId).sort((a, b) => b.date.localeCompare(a.date));
+  return evenementsApprenant(evenements, apprenantId).filter((e): e is Extract<Evenement, { type: "ABSENCE" }> => e.type === "ABSENCE").sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export function absentsDuJour(evenements: Evenement[], classeId?: string) {

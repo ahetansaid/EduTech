@@ -72,7 +72,7 @@ export function CarteBenin({
 
   return (
     <div className={cn("relative", className)}>
-      <svg viewBox={`0 0 ${largeur} ${hauteurReelle}`} className="h-auto w-full" role="img" aria-label={`Carte du Bénin par ${niveau === "communes" ? "commune" : "département"}${libelleValeur ? ` : ${libelleValeur}` : ""}`}>
+      <svg viewBox={`0 0 ${largeur} ${hauteurReelle}`} className="h-auto max-h-[68vh] w-full" role="img" aria-label={`Carte du Bénin par ${niveau === "communes" ? "commune" : "département"}${libelleValeur ? ` : ${libelleValeur}` : ""}`}>
         <defs>
           <pattern id="hachures" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="6" height="6" fill="var(--surface-2)" />

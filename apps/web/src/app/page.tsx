@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/shell/SelecteurProfil";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { ACCUEIL_PROFIL } from "@/lib/navigation";
-import { getMonde } from "@beile/simulation/monde";
+import { getCouches, getMonde } from "@beile/simulation/monde";
+import { useEffect } from "react";
 import { useDemo, useHydratation } from "@/lib/store";
 import { useThemeEspace } from "@/lib/useSombre";
 
@@ -30,6 +31,12 @@ export default function Accueil() {
   const router = useRouter();
   const hydrate = useHydratation();
   useThemeEspace(false);
+  // Préchauffage : le moteur est généré pendant les temps morts, l'espace choisi s'ouvre instantanément.
+  useEffect(() => {
+    const prechauffer = () => { getMonde(); getCouches(); };
+    const id = setTimeout(prechauffer, 250);
+    return () => clearTimeout(id);
+  }, []);
   const changerProfil = useDemo((s) => s.changerProfil);
   const profils = getMonde().profils;
   const entrer = (id: string) => { changerProfil(id); router.push(ACCUEIL_PROFIL[id] ?? "/"); };

@@ -89,7 +89,6 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
                 >
                   <n.icone size={17} aria-hidden className={actif ? "" : "text-ink-muted group-hover:text-ink"} />
                   {!rail && <span className="flex-1 truncate">{n.libelle}</span>}
-                  {!rail && n.processus && <span className={cn("text-[10px] font-semibold tabular", actif ? "text-white/70 dark:text-accent-ink/70" : "text-ink-muted/70")}>{n.processus}</span>}
                 </Link>
               );
             })}
@@ -119,9 +118,9 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
   return (
     <div className="min-h-screen">
       {/* Bandeau permanent : données de démonstration */}
-      <div className="relative z-40 flex items-center justify-center gap-2 bg-warning-bg px-4 py-1.5 text-center text-[12px] font-medium text-warning">
-        <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse-soft" aria-hidden />
-        Prototype de démonstration — toutes les données sont fictives · Date simulée : {dateLongue(DATE_SIMULEE)}
+      <div className="relative z-40 flex h-[30px] items-center justify-center gap-2 bg-warning-bg/80 px-4 text-center text-[11.5px] font-medium text-warning">
+        <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+        Démonstration · données fictives · {dateLongue(DATE_SIMULEE)}
       </div>
 
       <aside className={cn("fixed inset-y-0 left-0 top-[30px] z-30 hidden flex-col border-r border-line/60 bg-surface lg:flex", rail ? "w-[4.75rem]" : "w-[17rem]")}>{barreLaterale}</aside>

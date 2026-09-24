@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { date, nombre } from "@/lib/format";
 import { absences, absentsDuJour, AUJOURDHUI, elevesClasse, moyennesParMatiere, nomComplet } from "@/lib/scolarite";
 import { ANNEE } from "@beile/simulation/micro";
-import { notesEffectives } from "@beile/simulation/projections";
+import { notesApprenant, notesEffectives } from "@beile/simulation/projections";
 import { maintenant, useDemo, useMonde, useProfil } from "@/lib/store";
 
 type Onglet = "appel" | "notes" | "eleves";
@@ -251,7 +251,7 @@ function Eleves({ eleves, matiere }: { eleves: Apprenant[]; matiere: Matiere }) 
     <Card className="p-0">
       <ul className="divide-y divide-line/50">
         {eleves.map((e) => {
-          const notes = notesEffectives(monde.evenements).filter((n) => n.apprenantId === e.id && n.matiere === matiere).sort((a, b) => a.survenuLe.localeCompare(b.survenuLe)).map((n) => n.note);
+          const notes = notesApprenant(monde.evenements, e.id).filter((n) => n.matiere === matiere).sort((a, b) => a.survenuLe.localeCompare(b.survenuLe)).map((n) => n.note);
           const moy = moyennesParMatiere(monde.evenements, e.id).find((m) => m.matiere === matiere)?.moyenne ?? null;
           const baisse = notes.length >= 3 && notes.at(-3)! - notes.at(-1)! >= 5;
           return (

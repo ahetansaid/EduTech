@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { Card, CardHeader, Etiquette } from "@/components/ui/primitives";
 import { date, nombre } from "@/lib/format";
 import { absences, moyenneGenerale, moyennesParMatiere } from "@/lib/scolarite";
-import { evenementsApprenant, notesEffectives, situationApprenant } from "@beile/simulation/projections";
+import { evenementsApprenant, notesApprenant, situationApprenant } from "@beile/simulation/projections";
 import { useMonde, useProfil } from "@/lib/store";
 
 interface Jalon { date: string; titre: string; detail: string; icone: LucideIcon; accent?: boolean; source: string }
@@ -53,7 +53,7 @@ export default function Passeport() {
 
   if (!a || !situation) return null;
   const matieres = moyennesParMatiere(monde.evenements, a.id, 2).sort((x, y) => y.moyenne - x.moyenne);
-  const nbEval = notesEffectives(monde.evenements).filter((e) => e.apprenantId === a.id).length;
+  const nbEval = notesApprenant(monde.evenements, a.id).length;
 
   return (
     <div className="space-y-6">

@@ -32,7 +32,7 @@ export function tonConfiance(score: number) {
   return score >= 90 ? "succes" : score >= 70 ? "avertissement" : "critique";
 }
 
-export function BadgeConfiance({ confiance, detaille = false }: { confiance: IndiceConfiance; detaille?: boolean }) {
+export function BadgeConfiance({ confiance, detaille = false, compact = false }: { confiance: IndiceConfiance; detaille?: boolean; compact?: boolean }) {
   const [ouvert, setOuvert] = useState(false);
   const ton = tonConfiance(confiance.score);
   const couleur = ton === "succes" ? "text-success bg-success-bg" : ton === "avertissement" ? "text-warning bg-warning-bg" : "text-critical bg-critical-bg";
@@ -44,11 +44,12 @@ export function BadgeConfiance({ confiance, detaille = false }: { confiance: Ind
         onClick={() => setOuvert((o) => !o)}
         onBlur={() => setOuvert(false)}
         aria-expanded={ouvert}
-        className={cn("inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-[12px] font-semibold tabular", couleur)}
-        title="Indice de confiance de la donnée"
+        className={cn("inline-flex items-center gap-1.5 rounded-sm text-[12px] font-semibold tabular", compact ? "px-0 py-0 text-ink-muted hover:text-ink" : cn("px-2 py-0.5", couleur))}
+        title="Indice de confiance de la donnée — cliquer pour le détail"
+        aria-label={`Indice de confiance ${confiance.score} %`}
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
-        Confiance {confiance.score} %
+        <span className={cn("h-1.5 w-1.5 rounded-full", compact ? (ton === "succes" ? "bg-success" : ton === "avertissement" ? "bg-warning" : "bg-critical") : "bg-current")} aria-hidden />
+        {compact ? `${confiance.score} %` : `Confiance ${confiance.score} %`}
       </button>
       {(ouvert || detaille) && (
         <span className={cn(detaille ? "relative mt-2 block" : "absolute left-0 top-full z-30 mt-2 w-60 animate-fade-in", "rounded-lg border border-line/70 bg-surface p-3 text-left shadow-pop")}>
@@ -106,7 +107,7 @@ export function TuileIndicateur({
         <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-muted">
           {variation && <span className={cn("font-semibold", variation.favorable ? "text-success" : "text-critical")}>{variation.texte}</span>}
           {indice}
-          {confiance && <BadgeConfiance confiance={confiance} />}
+          {confiance && <BadgeConfiance confiance={confiance} compact />}
         </span>
       )}
     </Comp>

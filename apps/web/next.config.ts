@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  // Démonstrations sans pastille de développement.
+  devIndicators: false,
   transpilePackages: ["@beile/contracts", "@beile/simulation"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
