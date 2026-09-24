@@ -1,5 +1,5 @@
 import type { CodeIndicateur, Dimension, Niveau, Perimetre, ReponseAsk, RequeteSemantique } from "@beile/contracts";
-import { NIVEAUX, RequeteSemantique as SchemaRequete } from "@beile/contracts";
+import { DIMENSION_LIBELLE, NIVEAUX, RequeteSemantique as SchemaRequete } from "@beile/contracts";
 import type { CouchesNationales } from "./macro";
 import { PRENOMS_F, PRENOMS_M } from "./noms";
 import { calculer, communesDuPerimetre, DICTIONNAIRE } from "./semantique";
@@ -144,7 +144,7 @@ export function traduire(question: string): Traduction {
     return { requete: null, interpretation, refus: { motif: "question_ambigue", explication: `L'indicateur « ${DICTIONNAIRE[indicateur].nom} » n'est pas défini selon : ${refusees.join(", ")}. Dimensions publiées : ${autorisees.join(", ")}.` } };
   }
   const ventil = ventilation.slice(0, 2);
-  if (ventil.length) interpretation.push(`Ventilation : ${ventil.join(" × ")}`);
+  if (ventil.length) interpretation.push(`Ventilation : ${ventil.map((d) => DIMENSION_LIBELLE[d].toLowerCase()).join(" × ")}`);
 
   const valide = SchemaRequete.safeParse({ indicateur, filtres, ventilation: ventil });
   if (!valide.success) {

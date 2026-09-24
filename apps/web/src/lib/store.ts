@@ -48,6 +48,27 @@ interface EtatDemo {
 }
 
 let seq = 0;
+
+/** Notifications dérivées des faits : un événement enregistré une fois est restitué aux familles concernées. */
+function notificationsPour(evts: Evenement[], liensLive: LienFamilial[], apprenantsLive: Apprenant[]): Omit<Notification, "id" | "lue">[] {
+  const monde = getMonde();
+  const liens = [...monde.liens, ...liensLive];
+  const apprenants = [...monde.apprenants, ...apprenantsLive];
+  const res: Omit<Notification, "id" | "lue">[] = [];
+  for (const e of evts) {
+    if (e.type !== "ABSENCE" && e.type !== "INSCRIPTION" && e.type !== "EVALUATION") continue;
+    const a = apprenants.find((x) => x.id === e.apprenantId);
+    if (!a) continue;
+    const classe = "classeId" in e ? monde.classes.find((c) => c.id === e.classeId) : undefined;
+    const titre = e.type === "ABSENCE" ? `Absence de ${a.prenoms}` : e.type === "INSCRIPTION" ? `Inscription de ${a.prenoms} confirmée` : `Nouvelle note pour ${a.prenoms}`;
+    const texte = e.type === "ABSENCE"
+      ? `${a.prenoms} a été noté(e) absent(e) aujourd'hui${classe ? ` en ${classe.libelle}` : ""}. Vous pouvez justifier l'absence depuis votre espace.`
+      : e.type === "INSCRIPTION" ? `${a.prenoms} est inscrit(e)${classe ? ` en ${classe.libelle}` : ""} pour l'année ${"anneeScolaire" in e ? e.anneeScolaire : ""}.`
+      : `${e.matiere} : ${e.note}/20.`;
+    for (const l of liens.filter((x) => x.apprenantId === a.id && x.verifie)) res.push({ destinataireNpi: l.responsableNpi, titre, texte, horodatage: e.enregistreLe });
+  }
+  return res;
+}
 const id = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 /** Horloge de démonstration : la date simulée, avec l'heure réelle de la présentation. */
@@ -79,7 +100,10 @@ export const useDemo = create<EtatDemo>()(
 
       enregistrer: (evts) => {
         const complets = evts.map((e) => ({ ...e, id: id("EVT"), enregistreLe: maintenant() }) as Evenement);
-        if (get().enLigne) set((s) => ({ evenementsLive: [...s.evenementsLive, ...complets] }));
+        if (get().enLigne) {
+          const notifs = notificationsPour(complets, get().liensLive, get().apprenantsLive).map((n) => ({ ...n, id: id("NOT"), lue: false }));
+          set((s) => ({ evenementsLive: [...s.evenementsLive, ...complets], notifications: [...notifs, ...s.notifications].slice(0, 300) }));
+        }
         else set((s) => ({ fileAttente: [...s.fileAttente, ...complets] }));
         return complets;
       },
@@ -87,8 +111,11 @@ export const useDemo = create<EtatDemo>()(
       synchroniser: () => {
         const n = get().fileAttente.length;
         // Les événements gardent leur date de survenance ; seule la date d'enregistrement change.
+        const synchronises = get().fileAttente.map((e) => ({ ...e, enregistreLe: maintenant() }));
+        const notifs = notificationsPour(synchronises, get().liensLive, get().apprenantsLive).map((n) => ({ ...n, id: id("NOT"), lue: false }));
         set((s) => ({
-          evenementsLive: [...s.evenementsLive, ...s.fileAttente.map((e) => ({ ...e, enregistreLe: maintenant() }))],
+          evenementsLive: [...s.evenementsLive, ...synchronises],
+          notifications: [...notifs, ...s.notifications].slice(0, 300),
           fileAttente: [],
           enLigne: true,
         }));
