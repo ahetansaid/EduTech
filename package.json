@@ -1,0 +1,20 @@
+{
+  "name": "beile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BEILE — Système national interopérable de parcours et d'intelligence éducatifs (monorepo)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@beile/web",
+    "dev:api": "npm run dev --workspace=@beile/api",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@beile/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.3.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "@beile/contracts": "*",
+    "zod": "^4.1.0",
+    "lucide-react": "^1.48.0",
+    "motion": "^13.4.3",
+    "zustand": "^5.0.8",
+    "d3-geo": "^3.1.1",
+    "qrcode.react": "^4.2.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.6",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "@types/d3-geo": "^3.1.0"
+  }
+}

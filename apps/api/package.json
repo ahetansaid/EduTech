@@ -1,0 +1,23 @@
+{
+  "name": "@beile/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API BEILE (Hono) — branchée après validation du prototype",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@beile/contracts": "*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.13.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.20.0",
+    "typescript": "^5"
+  }
+}
