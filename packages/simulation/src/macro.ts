@@ -226,7 +226,7 @@ export function genererCoucheNationale(graine = 2026): CouchesNationales {
         const occupationEtab = clamp(occupationCommune * r.float(0.85, 1.15), 0.5, 1.7);
         const capacite = Math.round(effectif / occupationEtab);
         const e: EtablissementGenere = {
-          id: `ETB-${c.id.slice(0, 3).toUpperCase()}-${cycle === "primaire" ? "P" : "S"}${String(k + 1).padStart(3, "0")}`,
+          id: `ETB-${c.id.toUpperCase()}-${cycle === "primaire" ? "P" : "S"}${String(k + 1).padStart(3, "0")}`,
           nom: `${prefixe} ${c.nom}${nb > 1 ? ` ${quartier}` : ""}${nb > QUARTIERS.length ? ` ${Math.floor(k / QUARTIERS.length) + 1}` : ""}`,
           cycle,
           statut,

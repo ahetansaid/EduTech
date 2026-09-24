@@ -36,3 +36,24 @@ CREATE TRIGGER ajout_seul BEFORE UPDATE OR DELETE ON workflow.decisions
 -- l'authentification (rôle de base « beile_app » distinct du propriétaire du schéma).
 ALTER TABLE sensible.cas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sensible.cas FORCE ROW LEVEL SECURITY;
+
+-- Rôle applicatif aux droits minimaux. Le propriétaire fourni par l'hébergeur (neondb_owner) possède
+-- BYPASSRLS : il ne doit servir qu'aux migrations. L'API se connecte avec un rôle membre de beile_app.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'beile_app') THEN
+    CREATE ROLE beile_app NOLOGIN NOBYPASSRLS;
+  END IF;
+  -- Le propriétaire peut endosser le rôle (tests, maintenance) sans hériter de ses droits.
+  EXECUTE format('GRANT beile_app TO %I WITH INHERIT FALSE, SET TRUE', current_user);
+END $$;
+
+GRANT USAGE ON SCHEMA core, ledger, audit, analytics, workflow, sensible, gouvernance, registre_simule TO beile_app;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA core TO beile_app;
+GRANT SELECT, INSERT, UPDATE ON workflow.modeles, workflow.demandes TO beile_app;
+-- Tables en ajout seul : lecture et insertion uniquement (seconde barrière, en plus des déclencheurs).
+GRANT SELECT, INSERT ON ledger.evenements, audit.journal, workflow.decisions TO beile_app;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics, gouvernance, registre_simule TO beile_app;
+-- Compartiment sensible : RLS forcée et aucune politique = aucune ligne accessible tant que les
+-- politiques de besoin d'en connaître ne sont pas définies.
+GRANT SELECT, INSERT ON sensible.cas TO beile_app;

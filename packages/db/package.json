@@ -13,7 +13,9 @@
     "generer": "drizzle-kit generate",
     "migrer": "tsx src/migrer.ts",
     "peupler": "tsx src/peupler.ts",
-    "studio": "drizzle-kit studio"
+    "studio": "drizzle-kit studio",
+    "verifier": "tsx src/verifier.ts",
+    "sonde": "tsx src/sonde.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",
