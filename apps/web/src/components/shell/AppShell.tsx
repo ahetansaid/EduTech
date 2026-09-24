@@ -5,10 +5,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { useThemeEspace } from "@/lib/useSombre";
+import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { dateLongue } from "@/lib/format";
 import { ACCUEIL_PROFIL, NAVIGATION, navigationPour } from "@/lib/navigation";
 import { DATE_SIMULEE } from "@/lib/sim/micro";
@@ -17,13 +17,11 @@ import { PaletteCommandes } from "./PaletteCommandes";
 import { SelecteurProfil } from "./SelecteurProfil";
 
 function useTheme() {
-  const [sombre, setSombre] = useState(false);
-  useEffect(() => setSombre(document.documentElement.classList.contains("dark")), []);
+  const sombre = useSombre();
   const basculer = () => {
     const d = !document.documentElement.classList.contains("dark");
     document.documentElement.classList.toggle("dark", d);
     try { localStorage.setItem("beile-theme", d ? "dark" : "light"); } catch { /* stockage indisponible */ }
-    setSombre(d);
   };
   return { sombre, basculer };
 }
@@ -44,12 +42,15 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
   const fileAttente = useDemo((s) => s.fileAttente.length);
   const basculerConnexion = useDemo((s) => s.basculerConnexion);
   const notifications = useDemo((s) => s.notifications);
-  const [mobile, setMobile] = useState(false);
+  // Le tiroir mobile est lié à la page où il a été ouvert : il se referme de lui-même à la navigation.
+  const [mobileSur, setMobileSur] = useState<string | null>(null);
+  const mobile = mobileSur === pathname;
+  const setMobile = (o: boolean) => setMobileSur(o ? pathname : null);
   const [palette, setPalette] = useState(false);
   const { sombre, basculer } = useTheme();
 
   const rolesProfil = profil.habilitations.map((h) => h.role);
-  const nav = useMemo(() => navigationPour(rolesProfil), [rolesProfil.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nav = navigationPour(rolesProfil);
   const groupes = [...new Set(nav.map((n) => n.groupe))];
   const courant = [...nav].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
   const nonLues = profil.npi ? notifications.filter((n) => n.destinataireNpi === profil.npi && !n.lue).length : 0;
@@ -64,7 +65,6 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  useEffect(() => setMobile(false), [pathname]);
 
   const navigation = (
     <nav className={cn("flex-1 overflow-y-auto py-2", rail ? "space-y-3 px-2" : "space-y-5 px-3")} aria-label="Navigation principale">
@@ -190,7 +190,7 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
           </div>
         </footer>
       </div>
-      <PaletteCommandes ouvert={palette} onFermer={() => setPalette(false)} />
+      {palette && <PaletteCommandes onFermer={() => setPalette(false)} />}
     </div>
   );
 }

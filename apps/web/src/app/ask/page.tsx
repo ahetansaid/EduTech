@@ -152,7 +152,7 @@ function Ask() {
   useEffect(() => {
     const q = params.get("q");
     if (q && !deja.current) { deja.current = true; poser(q); }
-  }); // eslint-disable-line react-hooks/exhaustive-deps
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

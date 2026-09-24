@@ -4,7 +4,7 @@ import type { Certificat } from "@beile/contracts";
 import { BadgeCheck, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { date, nombre } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -13,8 +13,7 @@ export const cheminVerification = (c: Certificat) => `/verifier/${encodeURICompo
 
 /** Attestation numérique vérifiable : la preuve se contrôle en quelques secondes, sans compte. */
 export function CartePreuve({ certificat, titulaire, className }: { certificat: Certificat; titulaire: string; className?: string }) {
-  const [origine, setOrigine] = useState("");
-  useEffect(() => setOrigine(window.location.origin), []);
+  const origine = useSyncExternalStore(() => () => {}, () => window.location.origin, () => "");
   const lien = cheminVerification(certificat);
   return (
     <div className={cn("overflow-hidden rounded-xl border border-line/70 bg-surface shadow-float", className)}>

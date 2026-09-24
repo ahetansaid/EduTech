@@ -2,7 +2,7 @@
 
 import { ArrowRight, CornerDownLeft, Search, Sparkles, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { ACCUEIL_PROFIL, navigationPour } from "@/lib/navigation";
 import { getMonde } from "@/lib/sim/monde";
@@ -11,17 +11,12 @@ import { useDemo, useProfil } from "@/lib/store";
 interface Commande { id: string; libelle: string; detail?: string; icone: typeof Search; action: () => void }
 
 /** Palette ⌘K : naviguer, changer de profil, poser une question à Ask Education. */
-export function PaletteCommandes({ ouvert, onFermer }: { ouvert: boolean; onFermer: () => void }) {
+export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
   const router = useRouter();
   const profil = useProfil();
   const changerProfil = useDemo((s) => s.changerProfil);
   const [saisie, setSaisie] = useState("");
   const [index, setIndex] = useState(0);
-  const champ = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (ouvert) { setSaisie(""); setIndex(0); setTimeout(() => champ.current?.focus(), 10); }
-  }, [ouvert]);
 
   const commandes = useMemo<Commande[]>(() => {
     const roles = profil.habilitations.map((h) => h.role);
@@ -43,7 +38,6 @@ export function PaletteCommandes({ ouvert, onFermer }: { ouvert: boolean; onFerm
     return liste.slice(0, 12);
   }, [saisie, profil, router, changerProfil]);
 
-  if (!ouvert) return null;
   const executer = (c?: Commande) => { if (c) { c.action(); onFermer(); } };
 
   return (
@@ -53,7 +47,7 @@ export function PaletteCommandes({ ouvert, onFermer }: { ouvert: boolean; onFerm
         <div className="flex items-center gap-3 border-b border-line/60 px-4">
           <Search size={18} className="text-ink-muted" aria-hidden />
           <input
-            ref={champ}
+            autoFocus
             value={saisie}
             onChange={(e) => { setSaisie(e.target.value.slice(0, 300)); setIndex(0); }}
             onKeyDown={(e) => {

@@ -36,16 +36,21 @@ export function CarteBenin({
 }) {
   const [survol, setSurvol] = useState<{ id: string; x: number; y: number } | null>(null);
   const sombre = useSombre();
-  const largeur = Math.round(hauteur * 0.62);
   const features = niveau === "communes"
     ? COMMUNES_GEO.features.filter((f) => !focusDepartement || f.properties.departementId === focusDepartement)
     : DEPARTEMENTS_GEO.features;
 
-  const { chemin, projection } = useMemo(() => {
+  // Recadrage sur la zone affichée : la hauteur suit les proportions réelles du territoire (pas de vide).
+  const { chemin, projection, largeur, hauteurReelle } = useMemo(() => {
     const collection = { type: "FeatureCollection" as const, features: features as GeoJSON.Feature[] };
-    const proj = geoMercator().fitExtent([[12, 12], [largeur - 12, hauteur - 12]], collection);
-    return { chemin: geoPath(proj), projection: proj };
-  }, [features, largeur, hauteur]);
+    const unite = geoMercator().fitWidth(1000, collection);
+    const [[x0, y0], [x1, y1]] = geoPath(unite).bounds(collection);
+    const ratio = (x1 - x0) / Math.max(1, y1 - y0);
+    const larg = Math.round(Math.min(hauteur * ratio, hauteur * 1.4));
+    const haut = Math.round(larg / ratio);
+    const proj = geoMercator().fitExtent([[12, 12], [larg - 12, haut - 12]], collection);
+    return { chemin: geoPath(proj), projection: proj, largeur: larg, hauteurReelle: haut };
+  }, [features, hauteur]);
 
   const seuils = useMemo(() => {
     if (!valeurs) return [];
@@ -67,7 +72,7 @@ export function CarteBenin({
 
   return (
     <div className={cn("relative", className)}>
-      <svg viewBox={`0 0 ${largeur} ${hauteur}`} className="h-auto w-full" role="img" aria-label={`Carte du Bénin par ${niveau === "communes" ? "commune" : "département"}${libelleValeur ? ` : ${libelleValeur}` : ""}`}>
+      <svg viewBox={`0 0 ${largeur} ${hauteurReelle}`} className="h-auto w-full" role="img" aria-label={`Carte du Bénin par ${niveau === "communes" ? "commune" : "département"}${libelleValeur ? ` : ${libelleValeur}` : ""}`}>
         <defs>
           <pattern id="hachures" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="6" height="6" fill="var(--surface-2)" />

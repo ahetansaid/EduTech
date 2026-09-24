@@ -25,6 +25,8 @@ import {
 import { DATE_SIMULEE } from "./micro";
 import { COMMUNES, communeById, departementById } from "./territoire";
 
+const fr = (v: number, d = 1) => v.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
+
 /**
  * Couche sémantique : le dictionnaire national porte la définition officielle de chaque indicateur,
  * et le moteur la compile en calcul. Deux directions qui interrogent le même indicateur obtiennent
@@ -230,8 +232,8 @@ export function calculer(couches: CouchesNationales, requete: RequeteSemantique,
     return Math.round(v * 100) / 100;
   };
 
-  let totalNum = 0, totalDen = 0, totalEff = 0;
-  for (const g of groupes.values()) { totalNum += g.num; totalDen += g.den; totalEff += g.effectif; }
+  let totalNum = 0, totalDen = 0;
+  for (const g of groupes.values()) { totalNum += g.num; totalDen += g.den; }
 
   const lignes: LigneResultat[] = requete.ventilation.length
     ? [...groupes.entries()].map(([k, g]) => {
@@ -295,11 +297,11 @@ export function priorites(couches: CouchesNationales) {
     const ratio = eff / a.enseignants;
     const maths = mathsParCommune.get(c.communeId) ?? 0;
     const facteurs: Facteur[] = [
-      { libelle: "Croissance des effectifs sur 2 ans", valeur: `${croissance >= 0 ? "+" : ""}${croissance.toFixed(1)} %`, grave: croissance > 10 },
-      { libelle: "Taux d'occupation des établissements", valeur: `${occupation.toFixed(0)} %`, grave: occupation > 112 },
-      { libelle: "Apprenants par enseignant", valeur: ratio.toFixed(0), grave: ratio > 54 },
-      { libelle: "Absentéisme", valeur: `${(a.tauxAbsenteisme * 100).toFixed(1)} %`, grave: a.tauxAbsenteisme > 0.115 },
-      { libelle: "Mathématiques ≥ 15/20 (écart au national)", valeur: `${(maths - nationalMaths >= 0 ? "+" : "")}${(maths - nationalMaths).toFixed(1)} pt`, grave: maths < nationalMaths - 6 },
+      { libelle: "Croissance des effectifs sur 2 ans", valeur: `${croissance >= 0 ? "+" : ""}${fr(croissance)} %`, grave: croissance > 10 },
+      { libelle: "Taux d'occupation des établissements", valeur: `${fr(occupation, 0)} %`, grave: occupation > 112 },
+      { libelle: "Apprenants par enseignant", valeur: fr(ratio, 0), grave: ratio > 54 },
+      { libelle: "Absentéisme", valeur: `${fr(a.tauxAbsenteisme * 100)} %`, grave: a.tauxAbsenteisme > 0.115 },
+      { libelle: "Mathématiques ≥ 15/20 (écart au national)", valeur: `${maths - nationalMaths >= 0 ? "+" : ""}${fr(maths - nationalMaths)} pt`, grave: maths < nationalMaths - 6 },
     ];
     const score = facteurs.filter((x) => x.grave).length;
     const niveau: NiveauAlerte = score >= 3 ? "critique" : score === 2 ? "attention" : score === 1 ? "surveillance" : "favorable";

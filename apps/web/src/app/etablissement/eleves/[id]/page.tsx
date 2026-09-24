@@ -17,12 +17,13 @@ function Dossier({ id }: { id: string }) {
   const monde = useMonde();
   const acces = useAcces();
   const enregistrer = useDemo((s) => s.enregistrer);
-  const [decision, setDecision] = useState<DecisionAcces | null>(null);
   const [confirmer, setConfirmer] = useState<"transfert" | "abandon" | null>(null);
   const a = monde.apprenants.find((x) => x.id === id);
 
+  const decision: DecisionAcces | null = useMemo(() => (a ? acces.evaluer({ ressource: { type: "dossier_apprenant", apprenantId: a.id }, finalite: "gestion" }) : null), [a, acces]);
+  // Chaque ouverture de dossier est journalisée, une fois par dossier affiché.
   useEffect(() => {
-    if (a) setDecision(acces.demander({ ressource: { type: "dossier_apprenant", apprenantId: a.id }, finalite: "gestion" }, "Ouverture d'un dossier apprenant", `${a.prenoms} ${a.nom} (${a.id})`));
+    if (a) acces.demander({ ressource: { type: "dossier_apprenant", apprenantId: a.id }, finalite: "gestion" }, "Ouverture d'un dossier apprenant", `${a.prenoms} ${a.nom} (${a.id})`);
   }, [a?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const situation = a ? situationApprenant(monde, monde.evenements, a.id) : null;

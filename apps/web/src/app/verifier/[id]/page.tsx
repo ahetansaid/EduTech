@@ -10,7 +10,7 @@ import { useThemeEspace } from "@/lib/useSombre";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { empreinteCertificat } from "@/lib/sim/micro";
-import { useHydratation, useMonde } from "@/lib/store";
+import { maintenant, useHydratation, useMonde } from "@/lib/store";
 
 const MENTIONS = ["Passable", "Assez bien", "Bien", "Très bien"];
 
@@ -57,7 +57,7 @@ function Verification({ id }: { id: string }) {
         ) : (
           <p className="mx-auto mt-3 max-w-md text-ink-2">{resultat.explication}</p>
         )}
-        <p className="mt-6 text-[12px] text-ink-muted">Vérifié le {date(new Date().toISOString())} auprès du registre national des certifications (démonstration).</p>
+        <p className="mt-6 text-[12px] text-ink-muted">Vérifié le {date(maintenant())} auprès du registre national des certifications (démonstration).</p>
       </Card>
 
       {cert && !cert.revoque && (

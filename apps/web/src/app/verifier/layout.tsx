@@ -9,7 +9,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-line/60 bg-surface">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-5">
           <Link href="/" aria-label="Accueil BEILE"><Logo /></Link>
-          <span className="text-[12.5px] font-medium text-ink-muted">Service public de vérification des diplômes</span>
+          <span className="hidden text-[12.5px] font-medium text-ink-muted sm:inline">Service public de vérification des diplômes</span>
         </div>
       </header>
       <div className="bg-warning-bg px-4 py-1.5 text-center text-[12px] text-warning">Démonstration — diplômes fictifs</div>
