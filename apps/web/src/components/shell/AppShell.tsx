@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
+import { AnimatePresence, IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { dateLongue } from "@/lib/format";
@@ -82,13 +83,14 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
                   title={rail ? n.libelle : undefined}
                   aria-label={rail ? n.libelle : undefined}
                   className={cn(
-                    "group flex items-center gap-3 rounded-md text-[13.5px] font-medium transition-colors",
+                    "group relative flex items-center gap-3 rounded-md text-[13.5px] font-medium transition-colors duration-200",
                     rail ? "h-11 w-11 justify-center mx-auto" : "px-3 py-2",
-                    actif ? "bg-navy text-white shadow-sm dark:bg-blue-soft dark:text-accent-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                    actif ? "text-white dark:text-accent-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
                   )}
                 >
-                  <n.icone size={17} aria-hidden className={actif ? "" : "text-ink-muted group-hover:text-ink"} />
-                  {!rail && <span className="flex-1 truncate">{n.libelle}</span>}
+                  {actif && <IndicateurActif id={`nav-${variante}`} className="absolute inset-0 -z-0 rounded-md bg-navy shadow-sm dark:bg-blue-soft" />}
+                  <n.icone size={17} aria-hidden className={cn("relative transition-transform duration-200 group-hover:scale-110", actif ? "" : "text-ink-muted group-hover:text-ink")} />
+                  {!rail && <span className="relative flex-1 truncate">{n.libelle}</span>}
                 </Link>
               );
             })}
@@ -189,7 +191,7 @@ export function AppShell({ children, variante = "gestion" }: { children: ReactNo
           </div>
         </footer>
       </div>
-      {palette && <PaletteCommandes onFermer={() => setPalette(false)} />}
+      <AnimatePresence>{palette && <PaletteCommandes key="palette" onFermer={() => setPalette(false)} />}</AnimatePresence>
     </div>
   );
 }

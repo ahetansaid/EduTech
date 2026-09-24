@@ -3,6 +3,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/montserrat";
 import "@fontsource-variable/jetbrains-mono";
 import { headers } from "next/headers";
+import { MotionProvider } from "@/components/motion";
 import { ThemeScript } from "@/components/shell/ThemeScript";
 import "./globals.css";
 
@@ -29,7 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <ThemeScript nonce={nonce} />
       </head>
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full"><MotionProvider>{children}</MotionProvider></body>
     </html>
   );
 }

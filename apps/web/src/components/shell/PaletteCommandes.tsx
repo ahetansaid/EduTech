@@ -3,6 +3,7 @@
 import { ArrowRight, CornerDownLeft, Search, Sparkles, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { motion } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { ACCUEIL_PROFIL, navigationPour } from "@/lib/navigation";
 import { getMonde } from "@beile/simulation/monde";
@@ -42,8 +43,8 @@ export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]" role="dialog" aria-modal="true" aria-label="Palette de commandes">
-      <div className="absolute inset-0 animate-fade-in bg-navy-deep/40 backdrop-blur-sm" onClick={onFermer} />
-      <div className="relative w-full max-w-xl animate-slide-up overflow-hidden rounded-xl border border-line/70 bg-surface shadow-pop">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="absolute inset-0 bg-navy-deep/40 backdrop-blur-sm" onClick={onFermer} />
+      <motion.div initial={{ opacity: 0, y: -12, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ type: "spring", stiffness: 480, damping: 34 }} className="relative w-full max-w-xl overflow-hidden rounded-xl border border-line/70 bg-surface shadow-pop">
         <div className="flex items-center gap-3 border-b border-line/60 px-4">
           <Search size={18} className="text-ink-muted" aria-hidden />
           <input
@@ -68,10 +69,11 @@ export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
               <button
                 onMouseEnter={() => setIndex(i)}
                 onClick={() => executer(c)}
-                className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left", i === index ? "bg-surface-2" : "")}
+                className="relative flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left"
               >
-                <c.icone size={17} className={c.id === "ask" ? "text-amber" : "text-ink-muted"} aria-hidden />
-                <span className="min-w-0 flex-1">
+                {i === index && <motion.span layoutId="palette-survol" className="absolute inset-0 rounded-md bg-surface-2" transition={{ type: "spring", stiffness: 520, damping: 40 }} aria-hidden />}
+                <c.icone size={17} className={cn("relative", c.id === "ask" ? "text-amber" : "text-ink-muted")} aria-hidden />
+                <span className="relative min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-ink">{c.libelle}</span>
                   {c.detail && <span className="block truncate text-[12px] text-ink-muted">{c.detail}</span>}
                 </span>
@@ -81,7 +83,7 @@ export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
           ))}
           {commandes.length === 0 && <li className="px-3 py-6 text-center text-sm text-ink-muted">Aucun résultat</li>}
         </ul>
-      </div>
+      </motion.div>
     </div>
   );
 }

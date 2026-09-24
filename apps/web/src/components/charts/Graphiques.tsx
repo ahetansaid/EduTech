@@ -2,6 +2,7 @@
 
 import { Table2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { EASE, motion } from "@/components/motion";
 import { cn } from "@/lib/cn";
 
 /**
@@ -59,11 +60,13 @@ export function Courbes({ series, formater = (v) => String(v), hauteur = 240, mi
             const k = s.points.lastIndexOf(dernier!);
             return (
               <g key={s.nom}>
-                <polyline points={pts} fill="none" stroke={SERIES[i]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                <motion.polyline key={pts} points={pts} fill="none" stroke={SERIES[i]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
+                  initial={{ pathLength: 0, opacity: 0.4 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 1.1, ease: EASE, delay: i * 0.12 }} />
                 {s.points.map((p, j) => p.y != null && (
-                  <circle key={j} cx={x(j)} cy={y(p.y)} r={survol === j ? 5 : 3.5} fill={SERIES[i]} stroke="var(--surface)" strokeWidth={2} />
+                  <motion.circle key={j} cx={x(j)} cy={y(p.y)} fill={SERIES[i]} stroke="var(--surface)" strokeWidth={2}
+                    initial={{ r: 0 }} animate={{ r: survol === j ? 5.5 : 3.5 }} transition={{ type: "spring", stiffness: 500, damping: 26, delay: survol === null ? 0.25 + j * 0.08 + i * 0.12 : 0 }} />
                 ))}
-                {dernier?.y != null && <text x={x(k) + 10} y={y(dernier.y) + 4} className="fill-[var(--text)] text-[12px] font-semibold tabular">{formater(dernier.y)}</text>}
+                {dernier?.y != null && <motion.text initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.9 + i * 0.12 }} x={x(k) + 10} y={y(dernier.y) + 4} className="fill-[var(--text)] text-[12px] font-semibold tabular">{formater(dernier.y)}</motion.text>}
               </g>
             );
           })}
@@ -122,7 +125,8 @@ export function BarresClassees({ barres, formater = (v) => String(v), max: maxFo
                   {b.masquee ? (
                     <span className="absolute inset-0 rounded-full bg-[repeating-linear-gradient(45deg,var(--border)_0_3px,transparent_3px_6px)]" />
                   ) : (
-                    <span className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500" style={{ width: `${Math.max(1.5, ((b.valeur ?? 0) / (max || 1)) * 100)}%`, background: couleur, opacity: b.accent ? 1 : 0.85 }} />
+                    <motion.span className="absolute inset-y-0 left-0 rounded-full" style={{ background: couleur, opacity: b.accent ? 1 : 0.85 }}
+                      initial={{ width: "0%" }} animate={{ width: `${Math.max(1.5, ((b.valeur ?? 0) / (max || 1)) * 100)}%` }} transition={{ duration: 0.8, ease: EASE, delay: Math.min(i, 20) * 0.035 }} />
                   )}
                   {reference && <span className="absolute -top-1 bottom-[-4px] w-px bg-ink" style={{ left: `${(reference.valeur / (max || 1)) * 100}%` }} title={reference.libelle} />}
                 </span>

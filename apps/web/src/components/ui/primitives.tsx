@@ -1,15 +1,26 @@
+"use client";
+
 import type { LucideIcon } from "lucide-react";
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useId, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { EASE, IndicateurActif, motion } from "@/components/motion";
+import type { HTMLMotionProps } from "motion/react";
 import { cn } from "@/lib/cn";
 
 /* ------------------------------------------------------------------ Carte */
 
-export function Card({ className, interactive, ...props }: HTMLAttributes<HTMLDivElement> & { interactive?: boolean }) {
+/** Carte flottante : se révèle à son entrée à l'écran ; s'élève au survol si elle est cliquable. */
+export function Card({ className, interactive, ...props }: HTMLMotionProps<"div"> & { interactive?: boolean }) {
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-30px" }}
+      transition={{ duration: 0.45, ease: EASE }}
+      whileHover={interactive ? { y: -4 } : undefined}
+      whileTap={interactive ? { scale: 0.99 } : undefined}
       className={cn(
         "rounded-xl border border-line/70 bg-surface p-5 shadow-float",
-        interactive && "cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-pop active:translate-y-0",
+        interactive && "cursor-pointer transition-shadow duration-200 hover:shadow-pop",
         className,
       )}
       {...props}
@@ -133,6 +144,7 @@ export function Squelette({ className }: { className?: string }) {
 /* ------------------------------------------------------------------ Contrôle segmenté */
 
 export function Segmente<T extends string>({ options, valeur, onChange, label }: { options: { valeur: T; libelle: string }[]; valeur: T; onChange: (v: T) => void; label: string }) {
+  const id = useId();
   return (
     <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border border-line/70 bg-surface-2/60 p-0.5">
       {options.map((o) => (
@@ -142,11 +154,12 @@ export function Segmente<T extends string>({ options, valeur, onChange, label }:
           aria-checked={valeur === o.valeur}
           onClick={() => onChange(o.valeur)}
           className={cn(
-            "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors",
-            valeur === o.valeur ? "bg-surface text-ink shadow-soft" : "text-ink-muted hover:text-ink",
+            "relative rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors duration-200",
+            valeur === o.valeur ? "text-ink" : "text-ink-muted hover:text-ink",
           )}
         >
-          {o.libelle}
+          {valeur === o.valeur && <IndicateurActif id={`segmente-${id}`} className="absolute inset-0 rounded-[10px] bg-surface shadow-soft" />}
+          <span className="relative">{o.libelle}</span>
         </button>
       ))}
     </div>

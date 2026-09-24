@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
+import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useThemeEspace } from "@/lib/useSombre";
 import { useDemo, useHydratation, useProfil } from "@/lib/store";
@@ -58,10 +59,10 @@ export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", c
                 key={o.href}
                 href={o.href}
                 aria-current={actif(o.href) ? "page" : undefined}
-                className={cn("rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors", actif(o.href) ? "text-white shadow-sm" : "text-ink-2 hover:bg-surface-2")}
-                style={actif(o.href) ? { background: "var(--acc)" } : undefined}
+                className={cn("relative rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors duration-200", actif(o.href) ? "text-white" : "text-ink-2 hover:bg-surface-2")}
               >
-                {o.libelle}
+                {actif(o.href) && <IndicateurActif id={`onglet-${espace}`} className="absolute inset-0 rounded-md shadow-sm" style={{ background: "var(--acc)" }} />}
+                <span className="relative">{o.libelle}</span>
               </Link>
             ))}
           </nav>
@@ -105,9 +106,10 @@ export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", c
       {/* Onglets en bas d'écran (téléphone) */}
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
         {onglets.map((o) => (
-          <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
-            <o.icone size={20} aria-hidden />
-            {o.libelle}
+          <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
+            {actif(o.href) && <IndicateurActif id={`onglet-mobile-${espace}`} className="absolute inset-0 rounded-md" style={{ background: "var(--acc-doux)" }} />}
+            <o.icone size={20} aria-hidden className="relative" />
+            <span className="relative">{o.libelle}</span>
           </Link>
         ))}
       </nav>

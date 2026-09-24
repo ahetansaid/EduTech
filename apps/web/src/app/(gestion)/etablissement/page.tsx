@@ -6,7 +6,8 @@ import { useMemo, useState } from "react";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { heure, nombre, pourcent } from "@/lib/format";
+import { entier, heure, nombre, pourcent } from "@/lib/format";
+import { Cascade, Compteur, Element } from "@/components/motion";
 import { absentsDuJour, elevesClasse, elevesEtablissement, moyenneGenerale, nomComplet } from "@/lib/scolarite";
 import { ETAB_RONIERS } from "@beile/simulation/micro";
 import { elevesEnBaisse } from "@beile/simulation/projections";
@@ -44,13 +45,13 @@ export default function MonEtablissement() {
         actions={<><Link href="/etablissement/inscription"><Button icone={UserPlus}>Inscrire un apprenant</Button></Link></>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={eleves.length} indice={`${classes.length} classes`} />
-        <TuileIndicateur libelle="Occupation" icone={Percent} accent={eleves.length > etab.capacite ? "critique" : "sarcelle"} valeur={nombre((eleves.length / etab.capacite) * 100, 0)} unite="%" indice={`capacité ${etab.capacite} places`} />
-        <TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={enseignants.length} indice={`${nombre(eleves.length / enseignants.length, 0)} élèves par enseignant`} />
-        <TuileIndicateur libelle="Moyenne générale T2" icone={BookOpenCheck} accent="ambre" valeur={nombre(moy, 2)} unite="/20" />
-        <TuileIndicateur libelle="Absents aujourd'hui" icone={CalendarX2} accent={absentsJour.length ? "critique" : "neutre"} valeur={absentsJour.length} indice={pourcent((absentsJour.length / Math.max(1, eleves.length)) * 100)} />
-      </div>
+      <Cascade className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={eleves.length} format={entier} />} indice={`${classes.length} classes`} /></Element>
+        <Element><TuileIndicateur libelle="Occupation" icone={Percent} accent={eleves.length > etab.capacite ? "critique" : "sarcelle"} valeur={<Compteur valeur={(eleves.length / etab.capacite) * 100} format={(v) => nombre(v, 0)} />} unite="%" indice={`capacité ${etab.capacite} places`} /></Element>
+        <Element><TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={<Compteur valeur={enseignants.length} format={entier} />} indice={`${nombre(eleves.length / enseignants.length, 0)} élèves par enseignant`} /></Element>
+        <Element><TuileIndicateur libelle="Moyenne générale T2" icone={BookOpenCheck} accent="ambre" valeur={<Compteur valeur={moy} format={(v) => nombre(v, 2)} />} unite="/20" /></Element>
+        <Element><TuileIndicateur libelle="Absents aujourd'hui" icone={CalendarX2} accent={absentsJour.length ? "critique" : "neutre"} valeur={<Compteur valeur={absentsJour.length} format={entier} />} indice={pourcent((absentsJour.length / Math.max(1, eleves.length)) * 100)} /></Element>
+      </Cascade>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
         <Card>

@@ -4,6 +4,7 @@ import { Activity, ArrowRight, Building2, GraduationCap, Radio, School, Sparkles
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { BarresClassees, Courbes } from "@/components/charts/Graphiques";
+import { AnimatePresence, Cascade, Compteur, Element, motion } from "@/components/motion";
 import { CarteBenin, COULEUR_ALERTE, LegendeSequentielle } from "@/components/map/CarteBenin";
 import { BadgeConfiance, TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, PageHeader, Segmente } from "@/components/ui/primitives";
@@ -75,13 +76,13 @@ export default function Cockpit() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={compact(effectif.valeur ?? 0)} tendance={serie(effectifSerie)} variation={{ texte: `+${compact((serie(effectifSerie).at(-1) ?? 0) - (serie(effectifSerie).at(-2) ?? 0))} sur un an`, favorable: true }} confiance={effectif.confiance} />
-        <TuileIndicateur libelle="Établissements" icone={School} accent="sarcelle" valeur={entier(nbEtablissements)} indice={`${pourcent((effectif.couverture.etablissementsAyantTransmis / effectif.couverture.etablissementsAttendus) * 100, 0)} ont transmis`} />
-        <TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={compact(enseignants)} tendance={serie(ratio).map((v) => -v)} indice={<span>{nombre(ratio.valeur, 1)} élèves par enseignant</span>} confiance={ratio.confiance} />
-        <TuileIndicateur libelle="Réussite au BEPC" icone={Building2} accent="ambre" valeur={nombre(bepc.valeur, 1)} unite="%" tendance={serie(bepc)} variation={{ texte: variation(bepc), favorable: true }} confiance={bepc.confiance} />
-        <TuileIndicateur libelle="Maths ≥ 15/20" icone={Activity} accent="sarcelle" valeur={nombre(maths.valeur, 1)} unite="%" tendance={serie(maths)} variation={{ texte: variation(maths), favorable: true }} confiance={maths.confiance} />
-      </div>
+      <Cascade className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={effectif.valeur ?? 0} format={compact} />} tendance={serie(effectifSerie)} variation={{ texte: `+${compact((serie(effectifSerie).at(-1) ?? 0) - (serie(effectifSerie).at(-2) ?? 0))} sur un an`, favorable: true }} confiance={effectif.confiance} /></Element>
+        <Element><TuileIndicateur libelle="Établissements" icone={School} accent="sarcelle" valeur={<Compteur valeur={nbEtablissements} format={entier} />} indice={`${pourcent((effectif.couverture.etablissementsAyantTransmis / effectif.couverture.etablissementsAttendus) * 100, 0)} ont transmis`} /></Element>
+        <Element><TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={<Compteur valeur={enseignants} format={compact} />} tendance={serie(ratio).map((v) => -v)} indice={<span>{nombre(ratio.valeur, 1)} élèves par enseignant</span>} confiance={ratio.confiance} /></Element>
+        <Element><TuileIndicateur libelle="Réussite au BEPC" icone={Building2} accent="ambre" valeur={<Compteur valeur={bepc.valeur ?? 0} format={(v) => nombre(v, 1)} />} unite="%" tendance={serie(bepc)} variation={{ texte: variation(bepc), favorable: true }} confiance={bepc.confiance} /></Element>
+        <Element><TuileIndicateur libelle="Maths ≥ 15/20" icone={Activity} accent="sarcelle" valeur={<Compteur valeur={maths.valeur ?? 0} format={(v) => nombre(v, 1)} />} unite="%" tendance={serie(maths)} variation={{ texte: variation(maths), favorable: true }} confiance={maths.confiance} /></Element>
+      </Cascade>
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
         <Card className="p-0">
@@ -111,8 +112,9 @@ export default function Cockpit() {
               )}
             />
             <div className="min-w-0">
+              <AnimatePresence mode="wait">
               {sel && commune ? (
-                <div className="animate-fade-in">
+                <motion.div key={commune} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.28 }}>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{departementById.get(communeById.get(commune)!.departementId)?.nom}</p>
                   <p className="font-display text-[20px] font-bold text-ink">{nomCommune(commune)}</p>
                   <span className="mt-2 inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-[12px] font-semibold text-white" style={{ background: COULEUR_ALERTE[sel.niveau] }}>{LIBELLE_ALERTE[sel.niveau]}</span>
@@ -126,9 +128,9 @@ export default function Cockpit() {
                     ))}
                   </ul>
                   <Link href={`/cockpit/carte?commune=${commune}`} className="mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-blue hover:underline">Descendre jusqu'aux établissements <ArrowRight size={14} /></Link>
-                </div>
+                </motion.div>
               ) : (
-                <div>
+                <motion.div key="liste" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
                   <p className="text-[12px] font-semibold text-ink-2">Zones à examiner en priorité</p>
                   <ul className="mt-2 space-y-1">
                     {critiques.slice(0, 9).map(([id, p]) => (
@@ -142,8 +144,9 @@ export default function Cockpit() {
                     ))}
                   </ul>
                   <p className="mt-3 text-[11.5px] leading-snug text-ink-muted">Chaque couleur s'explique : un niveau résulte du nombre de facteurs dépassant leur seuil (croissance, occupation, encadrement, absentéisme, résultats).</p>
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
             </div>
           </div>
         </Card>
