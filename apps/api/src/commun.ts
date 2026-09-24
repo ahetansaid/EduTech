@@ -6,11 +6,16 @@ import { HTTPException } from "hono/http-exception";
 import { verify } from "hono/jwt";
 import type { z } from "zod";
 import { profilParId } from "./donnees";
-import { env } from "./env";
+import { lireEnv } from "./env";
 
 /** Briques communes de l'API : base (rôle restreint), authentification, journalisation, validation. */
 
-export const { db } = connecter(env.DATABASE_URL_API);
+/** Connexion paresseuse, ouverte à la première requête avec le rôle restreint beile_api. */
+let connexion: ReturnType<typeof connecter> | null = null;
+export function base() {
+  connexion ??= connecter(lireEnv().DATABASE_URL_API);
+  return connexion.db;
+}
 export type Variables = { profil: Profil };
 
 /** Limitation de débit par adresse (mémoire du processus ; Redis en production, cf. INFRASTRUCTURE.md). */
@@ -46,9 +51,9 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   const jeton = entete.startsWith("Bearer ") ? entete.slice(7) : "";
   if (!jeton) throw new HTTPException(401, { message: "Authentification requise" });
   let charge: Record<string, unknown>;
-  try { charge = (await verify(jeton, env.JWT_SECRET, "HS256")) as Record<string, unknown>; }
+  try { charge = (await verify(jeton, lireEnv().JWT_SECRET, "HS256")) as Record<string, unknown>; }
   catch { throw new HTTPException(401, { message: "Jeton invalide ou expiré" }); }
-  const profil = typeof charge.sub === "string" ? await profilParId(db, charge.sub) : null;
+  const profil = typeof charge.sub === "string" ? await profilParId(base(), charge.sub) : null;
   if (!profil) throw new HTTPException(401, { message: "Profil inconnu" });
   c.set("profil", profil);
   await next();
@@ -56,7 +61,7 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
 
 /** Journal d'audit : toute décision d'accès, accordée ou refusée, est inscrite (table en ajout seul). */
 export async function journaliser(profil: Profil, action: string, ressource: string, finalite: Finalite, autorise: boolean, critereManquant: string | null) {
-  await db.insert(schema.journal).values({ id: `AUD-${randomUUID()}`, profilId: profil.id, profilNom: profil.nomAffiche, action, ressource: ressource.slice(0, 200), finalite, autorise, critereManquant });
+  await base().insert(schema.journal).values({ id: `AUD-${randomUUID()}`, profilId: profil.id, profilNom: profil.nomAffiche, action, ressource: ressource.slice(0, 200), finalite, autorise, critereManquant });
 }
 
 export const refuser = (message: string): never => {

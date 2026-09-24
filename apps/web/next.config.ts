@@ -1,4 +1,9 @@
+import { config } from "dotenv";
 import type { NextConfig } from "next";
+
+// En local, la configuration serveur (base, secrets) est lue dans le .env racine du dépôt ;
+// sur Vercel, elle est fournie par les variables d'environnement du projet.
+config({ path: "../../.env", quiet: true });
 
 /** En-têtes de sécurité appliqués à toutes les réponses (la CSP à nonce est posée par proxy.ts). */
 const securityHeaders = [
@@ -18,7 +23,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Démonstrations sans pastille de développement.
   devIndicators: false,
-  transpilePackages: ["@beile/contracts", "@beile/simulation"],
+  transpilePackages: ["@beile/contracts", "@beile/simulation", "@beile/db", "@beile/api"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

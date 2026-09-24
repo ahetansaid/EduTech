@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { authentifie, corps, db, journaliser, limiteDebit, type Variables } from "./commun";
+import { authentifie, base, corps, journaliser, limiteDebit, type Variables } from "./commun";
 import { parcours } from "./parcours";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
@@ -19,7 +19,7 @@ import { sign } from "hono/jwt";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { chargerCouches, contexteApprenant, enEvenement, profilParId } from "./donnees";
-import { env } from "./env";
+import { lireEnv } from "./env";
 
 /**
  * API BEILE v1 — source de vérité : PostgreSQL (Neon), connexion par le rôle restreint beile_api.
@@ -30,7 +30,7 @@ import { env } from "./env";
 export const app = new Hono<{ Variables: Variables }>().basePath("/api/v1");
 
 app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site", xFrameOptions: "DENY" }));
-app.use("*", cors({ origin: env.ORIGINES, allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "Authorization"], maxAge: 600 }));
+app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "Authorization"], maxAge: 600 }));
 app.use("*", bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) }));
 app.use("*", limiteDebit(240, 60_000));
 
@@ -43,23 +43,22 @@ app.notFound((c) => c.json({ erreur: "Ressource introuvable" }, 404));
 
 /* ================================================================== Authentification */
 
-if (env.MODE_DEMO) {
-  app.post("/auth/demo", limiteDebit(30, 60_000), async (c) => {
+app.post("/auth/demo", limiteDebit(30, 60_000), async (c) => {
+    if (!lireEnv().MODE_DEMO) throw new HTTPException(404, { message: "Ressource introuvable" });
     const { profilId } = await corps(c, z.object({ profilId: z.string().regex(/^p-[a-z]+$/) }).strict());
-    const profil = await profilParId(db, profilId);
+    const profil = await profilParId(base(), profilId);
     if (!profil) throw new HTTPException(404, { message: "Profil de démonstration inconnu" });
     const expire = Math.floor(Date.now() / 1000) + 2 * 3600;
-    const jeton = await sign({ sub: profil.id, exp: expire, iat: Math.floor(Date.now() / 1000) }, env.JWT_SECRET, "HS256");
+    const jeton = await sign({ sub: profil.id, exp: expire, iat: Math.floor(Date.now() / 1000) }, lireEnv().JWT_SECRET, "HS256");
     return c.json({ jeton, expire, profil });
-  });
-}
+});
 
 app.get("/moi", authentifie, (c) => c.json(c.get("profil")));
 
 /* ================================================================== Public */
 
 app.get("/sante", async (c) => {
-  const [r] = await db.select({ n: schema.departements.id }).from(schema.departements).limit(1);
+  const [r] = await base().select({ n: schema.departements.id }).from(schema.departements).limit(1);
   return c.json({ statut: "ok", service: "beile-api", version: "0.2.0", base: r ? "connectée" : "vide", horodatage: new Date().toISOString() });
 });
 
@@ -77,8 +76,8 @@ app.get("/certificats/:id/verification", limiteDebit(30, 60_000), async (c) => {
   const id = c.req.param("id");
   if (!/^CERT-[A-Z]+-\d{4}-\d{6}$/.test(id)) throw new HTTPException(400, { message: "Identifiant de diplôme mal formé" });
   const presente = (c.req.query("e") ?? "").toLowerCase().replace(/[^0-9a-f]/g, "").slice(0, 64);
-  const [cert] = await db.select().from(schema.certificats).where(eq(schema.certificats.id, id));
-  const [titulaire] = cert ? await db.select().from(schema.apprenants).where(eq(schema.apprenants.id, cert.apprenantId)) : [];
+  const [cert] = await base().select().from(schema.certificats).where(eq(schema.certificats.id, id));
+  const [titulaire] = cert ? await base().select().from(schema.apprenants).where(eq(schema.apprenants.id, cert.apprenantId)) : [];
   let r: ResultatVerification;
   if (!cert || !titulaire) r = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant." };
   else if (cert.revoque) r = { statut: "revoque", certificatId: id, explication: "Diplôme révoqué par l'autorité de certification." };
@@ -99,7 +98,7 @@ app.post("/indicateurs", authentifie, async (c) => {
   const requete = await corps(c, RequeteSemantique);
   const profil = c.get("profil");
   const perimetre = perimetrePilotage(profil);
-  const resultat = calculer(await chargerCouches(db), requete, perimetre);
+  const resultat = calculer(await chargerCouches(base()), requete, perimetre);
   await journaliser(profil, "Calcul d'indicateur", resultat.definition.nom, "statistique", true, null);
   return c.json(resultat);
 });
@@ -107,7 +106,7 @@ app.post("/indicateurs", authentifie, async (c) => {
 app.post("/ask", authentifie, limiteDebit(20, 60_000), async (c) => {
   const { question } = await corps(c, z.object({ question: z.string().trim().min(3).max(400) }).strict());
   const profil = c.get("profil");
-  const reponse = repondre(await chargerCouches(db), question, perimetrePilotage(profil));
+  const reponse = repondre(await chargerCouches(base()), question, perimetrePilotage(profil));
   if (reponse.statut === "refuse" && (reponse.motif === "hors_perimetre" || reponse.motif === "donnee_individuelle")) {
     await journaliser(profil, "Ask Education — requête refusée", question, "statistique", false, reponse.motif === "hors_perimetre" ? "perimetre" : "relation");
   } else if (reponse.statut === "repondu") {
@@ -118,7 +117,7 @@ app.post("/ask", authentifie, limiteDebit(20, 60_000), async (c) => {
 
 app.get("/priorites", authentifie, async (c) => {
   perimetrePilotage(c.get("profil"));
-  return c.json(Object.fromEntries(priorites(await chargerCouches(db))));
+  return c.json(Object.fromEntries(priorites(await chargerCouches(base()))));
 });
 
 /* ================================================================== Données individuelles (ABAC serveur) */
@@ -131,7 +130,7 @@ app.get("/apprenants/:id", authentifie, async (c) => {
   const apprenantId = c.req.param("id");
   if (!/^APP-\d{6}$/.test(apprenantId)) throw new HTTPException(400, { message: "Identifiant d'apprenant mal formé" });
   const finalite = z.enum(FINALITES).catch("gestion").parse(c.req.query("finalite"));
-  const ctx = await contexteApprenant(db, apprenantId, profil);
+  const ctx = await contexteApprenant(base(), apprenantId, profil);
   const decision = decider(profil, { ressource: { type: "dossier_apprenant", apprenantId }, finalite }, { monde: ctx.monde, evenements: ctx.evenements });
   await journaliser(profil, "Ouverture d'un dossier apprenant", apprenantId, finalite, decision.autorise, decision.criteres.find((x) => !x.satisfait)?.critere ?? null);
   if (!decision.autorise || !ctx.apprenant) return c.json({ decision }, 403);
@@ -156,24 +155,24 @@ app.post("/evenements/absences", authentifie, async (c) => {
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     apprenantIds: z.array(z.string().regex(/^APP-\d{6}$/)).min(1).max(80),
   }).strict());
-  const [enseignant] = profil.npi ? await db.select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : [];
-  const [relation] = enseignant ? await db.select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignant.id), eq(schema.enseignements.classeId, saisie.classeId))).limit(1) : [];
+  const [enseignant] = profil.npi ? await base().select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : [];
+  const [relation] = enseignant ? await base().select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignant.id), eq(schema.enseignements.classeId, saisie.classeId))).limit(1) : [];
   if (!profil.habilitations.some((h) => h.role === "enseignant") || !enseignant || !relation) {
     await journaliser(profil, "Saisie d'absences", saisie.classeId, "evaluation", false, !enseignant ? "role" : "relation");
     throw new HTTPException(403, { message: "Aucune relation pédagogique avec cette classe : saisie refusée et journalisée" });
   }
   // Les apprenants doivent appartenir à la classe à la date de saisie (reconstruit depuis le registre).
-  const evts = (await db.select().from(schema.evenements).where(inArray(schema.evenements.apprenantId, saisie.apprenantIds))).map(enEvenement);
+  const evts = (await base().select().from(schema.evenements).where(inArray(schema.evenements.apprenantId, saisie.apprenantIds))).map(enEvenement);
   const idx = indexer(evts);
   const horsClasse = saisie.apprenantIds.filter((id) => idx.classeCourante.get(id) !== saisie.classeId);
   if (horsClasse.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${horsClasse.join(", ")}` });
-  const [classe] = await db.select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
+  const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
   const lignes = saisie.apprenantIds.map((apprenantId) => ({
     id: `EVT-${randomUUID()}`, type: "ABSENCE", survenuLe: new Date(), auteurId: enseignant.id, source: "beile" as const,
     etablissementId: classe!.etablissementId, apprenantId, enseignantId: null,
     donnees: { apprenantId, classeId: saisie.classeId, date: saisie.date, justifiee: false, anneeScolaire: classe!.anneeScolaire },
   }));
-  await db.insert(schema.evenements).values(lignes);
+  await base().insert(schema.evenements).values(lignes);
   await journaliser(profil, "Saisie d'absences", `${saisie.classeId} (${lignes.length})`, "evaluation", true, null);
   return c.json({ enregistres: lignes.map((l) => l.id) }, 201);
 });
@@ -183,7 +182,7 @@ app.get("/etablissements/:id/absences", authentifie, async (c) => {
   const profil = c.get("profil");
   const etablissementId = c.req.param("id");
   const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(c.req.query("date") ?? new Date().toISOString().slice(0, 10));
-  const [etab] = await db.select({ id: schema.etablissements.id, circonscription: schema.etablissements.circonscription }).from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId));
+  const [etab] = await base().select({ id: schema.etablissements.id, circonscription: schema.etablissements.circonscription }).from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId));
   if (!etab) throw new HTTPException(404, { message: "Établissement inconnu" });
   const autorise = profil.habilitations.some((h) =>
     (h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === etablissementId) ||
@@ -191,7 +190,7 @@ app.get("/etablissements/:id/absences", authentifie, async (c) => {
   await journaliser(profil, "Consultation des absences", etablissementId, "gestion", autorise, autorise ? null : "perimetre");
   if (!autorise) throw new HTTPException(403, { message: "Établissement hors de votre périmètre : refus journalisé" });
   // Filtre sur la date déclarée de l'appel (et non sur l'heure d'enregistrement, qui peut suivre une synchronisation).
-  const lignes = await db.select().from(schema.evenements).where(and(eq(schema.evenements.etablissementId, etablissementId), eq(schema.evenements.type, "ABSENCE"), sql`${schema.evenements.donnees}->>'date' = ${date}`)).orderBy(desc(schema.evenements.enregistreLe));
+  const lignes = await base().select().from(schema.evenements).where(and(eq(schema.evenements.etablissementId, etablissementId), eq(schema.evenements.type, "ABSENCE"), sql`${schema.evenements.donnees}->>'date' = ${date}`)).orderBy(desc(schema.evenements.enregistreLe));
   return c.json(lignes.map(enEvenement));
 });
 
@@ -202,7 +201,7 @@ app.get("/audit", authentifie, async (c) => {
   await journaliser(profil, "Consultation du journal d'audit", "audit.journal", "audit", autorise, autorise ? null : "role");
   if (!autorise) throw new HTTPException(403, { message: "Journal réservé au délégué à la protection des données" });
   const limite = z.coerce.number().int().min(1).max(500).catch(100).parse(c.req.query("limite"));
-  return c.json(await db.select().from(schema.journal).orderBy(desc(schema.journal.horodatage)).limit(limite));
+  return c.json(await base().select().from(schema.journal).orderBy(desc(schema.journal.horodatage)).limit(limite));
 });
 
 

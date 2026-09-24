@@ -9,7 +9,8 @@ export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const dev = process.env.NODE_ENV === "development";
   // Seule origine externe autorisée : l'API BEILE configurée (aucun autre service tiers).
-  const api = process.env.NEXT_PUBLIC_BEILE_API ? new URL(process.env.NEXT_PUBLIC_BEILE_API).origin : "";
+  const urlApi = process.env.NEXT_PUBLIC_BEILE_API ?? "";
+  const api = /^https?:\/\//.test(urlApi) ? new URL(urlApi).origin : ""; // API relative (même origine) : rien à ajouter
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,

@@ -24,5 +24,9 @@
     "@types/node": "^22",
     "tsx": "^4.20.0",
     "typescript": "^5"
+  },
+  "exports": {
+    ".": "./src/app.ts",
+    "./app": "./src/app.ts"
   }
 }

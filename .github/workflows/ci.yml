@@ -1,0 +1,90 @@
+name: Intégration continue
+
+on:
+  push:
+    branches: [main, staging, dev, "feature/**", "hotfix/**"]
+  pull_request:
+    branches: [main, staging, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  qualite:
+    name: Qualité (typage, lint, build, audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typage de tous les paquets
+        run: npm run typecheck
+      - name: Lint de l'interface
+        run: npm run lint --workspace=@beile/web
+      - name: Build de production (mode simulation)
+        run: npm run build --workspace=@beile/web
+      - name: Audit des dépendances (échec sur vulnérabilité élevée ou critique)
+        run: npm audit --audit-level=high
+      - name: Cohérence du moteur de simulation
+        run: npm run verifier --workspace=@beile/simulation
+
+  recette:
+    name: Recette de l'API sur une branche Neon jetable
+    needs: qualite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Nécessite le secret NEON_API_KEY et la variable NEON_PROJECT_ID (Settings → Secrets and variables → Actions).
+    if: ${{ vars.NEON_PROJECT_ID != '' }}
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      BRANCHE: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Créer la branche Neon (copie de la base, isolée)
+        run: npx --yes neonctl@2 branches create --project-id "$NEON_PROJECT_ID" --name "$BRANCHE" --output json > /dev/null
+      - name: Préparer la configuration (.env éphémère)
+        run: |
+          DIRECT=$(npx --yes neonctl@2 connection-string "$BRANCHE" --project-id "$NEON_PROJECT_ID")
+          POOLED=$(npx --yes neonctl@2 connection-string "$BRANCHE" --project-id "$NEON_PROJECT_ID" --pooled)
+          echo "::add-mask::$DIRECT"
+          echo "::add-mask::$POOLED"
+          {
+            echo "DATABASE_URL=$POOLED"
+            echo "DATABASE_URL_UNPOOLED=$DIRECT"
+            echo "BEILE_JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n=+/')"
+            echo "BEILE_MODE_DEMO=true"
+            echo "BEILE_ORIGINES_AUTORISEES=http://localhost:3000"
+          } > .env
+      - name: Migrations et durcissement
+        run: npm run migrer --workspace=@beile/db
+      - name: Rôle applicatif restreint
+        run: npm run role-api --workspace=@beile/db
+      - name: Vérification de la base (ajout seul, droits, RLS)
+        run: npm run verifier --workspace=@beile/db
+      - name: Démarrer l'API
+        run: |
+          npm run start --workspace=@beile/api > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4000/api/v1/sante > /dev/null && exit 0; sleep 1; done
+          cat api.log; exit 1
+      - name: Recette de l'API
+        run: npm run recette --workspace=@beile/api
+      - name: Supprimer la branche Neon
+        if: always()
+        run: npx --yes neonctl@2 branches delete "$BRANCHE" --project-id "$NEON_PROJECT_ID" || true

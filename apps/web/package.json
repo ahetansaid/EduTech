@@ -25,7 +25,10 @@
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.1.0",
-    "zustand": "^5.0.8"
+    "zustand": "^5.0.8",
+    "@beile/api": "*",
+    "hono": "^4.13.0",
+    "dotenv": "^18.0.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
