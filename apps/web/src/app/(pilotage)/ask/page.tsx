@@ -13,6 +13,7 @@ import { useCouches } from "@/lib/donnees";
 import { entier, nombre, pourcent } from "@/lib/format";
 import { QUESTIONS_EXEMPLES, repondre } from "@beile/simulation/ask";
 import { useDemo, useProfil } from "@/lib/store";
+import { apiActive, appelApi } from "@/lib/api";
 
 const MOTIF: Record<string, { titre: string; ton: string }> = {
   donnee_individuelle: { titre: "Donnée individuelle : refus", ton: "Ask Education ne restitue jamais une personne" },
@@ -136,7 +137,18 @@ function Ask() {
     if (!q) return;
     setCalcul(true);
     setSaisie("");
-    // Léger délai : laisse voir l'étape de traduction et de contrôle.
+    // Base nationale : traduction, contrôle du périmètre, calcul et journalisation côté serveur.
+    if (apiActive) {
+      appelApi<ReponseAsk & { erreur?: string }>(profil.id, "POST", "/ask", { question: q })
+        .then((r) => {
+          if (r.statut === 200) setReponses((rs) => [r.donnees, ...rs]);
+          else setReponses((rs) => [{ statut: "refuse", question: q, motif: "hors_perimetre", explication: r.donnees?.erreur ?? `Refus ${r.statut}`, requete: null }, ...rs]);
+        })
+        .catch((e: Error) => setReponses((rs) => [{ statut: "refuse", question: q, motif: "question_ambigue", explication: `Service indisponible : ${e.message}`, requete: null }, ...rs]))
+        .finally(() => setCalcul(false));
+      return;
+    }
+    // Mode simulation — léger délai : laisse voir l'étape de traduction et de contrôle.
     setTimeout(() => {
       const r = repondre(couches, q, perimetre);
       if (r.statut === "refuse" && (r.motif === "hors_perimetre" || r.motif === "donnee_individuelle")) {
