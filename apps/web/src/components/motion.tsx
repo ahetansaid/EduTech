@@ -18,7 +18,7 @@ export function MotionProvider({ children }: { children: ReactNode }) {
 /** Entrée de page : fondu, légère montée et netteté progressive. */
 export function EntreePage({ children }: { children: ReactNode }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 10, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.42, ease: EASE }}>
+    <motion.div initial={{ opacity: 0, y: 10, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none", transform: "none" } }} transition={{ duration: 0.42, ease: EASE }}>
       {children}
     </motion.div>
   );
@@ -31,8 +31,8 @@ const element: Variants = {
 };
 
 /** Cascade : les enfants `Element` apparaissent l'un après l'autre. */
-export function Cascade({ children, className }: { children: ReactNode; className?: string }) {
-  return <motion.div className={className} variants={conteneur} initial="cache" animate="visible">{children}</motion.div>;
+export function Cascade({ children, className, ...rest }: { children: ReactNode; className?: string; "data-guide"?: string }) {
+  return <motion.div className={className} variants={conteneur} initial="cache" animate="visible" {...rest}>{children}</motion.div>;
 }
 
 export function Element({ children, className }: { children: ReactNode; className?: string }) {

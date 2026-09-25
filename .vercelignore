@@ -1,0 +1,13 @@
+# Ne jamais envoyer de secrets ni d'artefacts locaux lors d'un déploiement en ligne de commande.
+.env
+.env.*
+**/.env
+**/.env.*
+*.local.md
+/COMPTES.local.md
+node_modules
+**/node_modules
+**/.next
+**/.vercel
+**/*.log
+.git

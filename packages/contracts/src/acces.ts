@@ -16,6 +16,7 @@ export const Role = z.enum([
   "administration_centrale",
   "chercheur",
   "dpo",
+  "administrateur",
 ]);
 export type Role = z.infer<typeof Role>;
 

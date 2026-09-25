@@ -1,10 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import postgres from "postgres";
+import { tls } from "./index";
 config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
 
 /** Vérification de la base : comptages, PostGIS, ajout seul, rôle applicatif et RLS. Tout est annulé : rien n'est modifié. */
-const s = postgres(process.env.DATABASE_URL_UNPOOLED!, { ssl: "require", max: 1, onnotice: () => {} });
+const s = postgres(process.env.DATABASE_URL_UNPOOLED!, { ssl: tls(process.env.DATABASE_URL_UNPOOLED!), max: 1, onnotice: () => {} });
 
 const [c] = await s`select
   (select count(*) from core.departements)::int dep, (select count(*) from core.communes)::int com,

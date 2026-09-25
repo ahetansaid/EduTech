@@ -324,3 +324,127 @@ export const elementsDonnees = gouvernance.table("elements_donnees", {
   frequence: text("frequence").notNull(),
   version: text("version").notNull(),
 });
+
+/* ------------------------------------------------------------------ Comptes, sessions, notifications */
+
+/**
+ * Comptes de connexion. Une personne peut détenir un compte rattaché à un profil d'habilitations.
+ * Mot de passe : scrypt (sel unique), jamais stocké en clair. Verrouillage après échecs répétés.
+ */
+export const comptes = core.table("comptes", {
+  id: text("id").primaryKey(),
+  identifiant: text("identifiant").notNull().unique(),
+  motDePasseHash: text("mot_de_passe_hash").notNull(),
+  profilId: text("profil_id").notNull().references(() => profils.id),
+  actif: boolean("actif").notNull().default(true),
+  doitChangerMotDePasse: boolean("doit_changer_mot_de_passe").notNull().default(false),
+  echecsConsecutifs: integer("echecs_consecutifs").notNull().default(0),
+  verrouilleJusquA: timestamp("verrouille_jusqu_a", { withTimezone: true }),
+  derniereConnexion: timestamp("derniere_connexion", { withTimezone: true }),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("comptes_profil_idx").on(t.profilId)]);
+
+/** Sessions : seule l'empreinte SHA-256 du jeton est conservée ; le jeton ne vit que dans un cookie HttpOnly. */
+export const sessions = core.table("sessions", {
+  empreinte: text("empreinte").primaryKey(),
+  compteId: text("compte_id").notNull().references(() => comptes.id),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  expireLe: timestamp("expire_le", { withTimezone: true }).notNull(),
+  derniereActivite: timestamp("derniere_activite", { withTimezone: true }).notNull().defaultNow(),
+  adresseIp: text("adresse_ip"),
+  agent: text("agent"),
+  revoquee: boolean("revoquee").notNull().default(false),
+}, (t) => [index("sessions_compte_idx").on(t.compteId)]);
+
+/** Notifications nées des faits du registre (absence, note, inscription…), destinées à une personne. */
+export const notifications = core.table("notifications", {
+  id: text("id").primaryKey(),
+  destinataireNpi: text("destinataire_npi").notNull(),
+  titre: text("titre").notNull(),
+  texte: text("texte").notNull(),
+  evenementId: text("evenement_id"),
+  lue: boolean("lue").notNull().default(false),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("notifications_destinataire_idx").on(t.destinataireNpi, t.creeLe)]);
+
+/* ------------------------------------------------------------------ Projection de lecture (CQRS) */
+
+/**
+ * Situation courante de chaque apprenant, tenue à jour dans la même transaction que l'écriture au registre.
+ * Le registre (ledger.evenements) reste la source de vérité : cette table est reconstructible à tout moment
+ * (npm run projections -w @beile/db). Elle permet des lectures indexées à l'échelle nationale.
+ */
+export const scolarites = core.table("scolarites", {
+  apprenantId: text("apprenant_id").primaryKey().references(() => apprenants.id),
+  classeId: text("classe_id").references(() => classes.id),
+  etablissementId: text("etablissement_id").references(() => etablissements.id),
+  statut: text("statut", { enum: ["scolarise", "abandon", "non_inscrit"] }).notNull(),
+  majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("scolarites_classe_idx").on(t.classeId), index("scolarites_etablissement_idx").on(t.etablissementId, t.statut)]);
+
+/**
+ * Notes effectives (projection) : une ligne par évaluation, la correction la plus récente appliquée.
+ * Tenue à jour dans la transaction d'écriture au registre ; reconstructible depuis ledger.evenements.
+ * Colonnes typées et indexées : les moyennes se calculent sans relire le JSON du registre.
+ */
+export const notes = core.table("notes", {
+  evenementId: text("evenement_id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  classeId: text("classe_id").notNull(),
+  matiere: text("matiere").notNull(),
+  trimestre: integer("trimestre").notNull(),
+  note: doublePrecision("note").notNull(),
+  noteInitiale: doublePrecision("note_initiale").notNull(),
+  corrigee: boolean("corrigee").notNull().default(false),
+  survenuLe: timestamp("survenu_le", { withTimezone: true }).notNull(),
+}, (t) => [index("notes_apprenant_idx").on(t.apprenantId, t.matiere, t.survenuLe), index("notes_classe_idx").on(t.classeId, t.matiere)]);
+
+/* ------------------------------------------------------------------ Assistance (support aux utilisateurs) */
+
+/**
+ * Demandes d'assistance : tout utilisateur connecté en ouvre, l'administration les traite. Aucune suppression :
+ * une demande se clôt, son fil reste consultable (traçabilité du support).
+ */
+export const tickets = core.table("tickets", {
+  id: text("id").primaryKey(),
+  auteurCompteId: text("auteur_compte_id").notNull().references(() => comptes.id),
+  categorie: text("categorie", { enum: ["connexion", "donnees", "acces", "bug", "autre"] }).notNull(),
+  priorite: text("priorite", { enum: ["basse", "normale", "haute", "critique"] }).notNull().default("normale"),
+  sujet: text("sujet").notNull(),
+  description: text("description").notNull(),
+  statut: text("statut", { enum: ["ouvert", "en_cours", "resolu", "clos"] }).notNull().default("ouvert"),
+  assigneCompteId: text("assigne_compte_id").references(() => comptes.id),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
+  resoluLe: timestamp("resolu_le", { withTimezone: true }),
+}, (t) => [index("tickets_auteur_idx").on(t.auteurCompteId, t.majLe), index("tickets_statut_idx").on(t.statut, t.majLe)]);
+
+/** Fil de discussion d'une demande : messages de l'auteur et de l'administration, en ajout seul côté API. */
+export const ticketsMessages = core.table("tickets_messages", {
+  id: text("id").primaryKey(),
+  ticketId: text("ticket_id").notNull().references(() => tickets.id),
+  auteurCompteId: text("auteur_compte_id").notNull().references(() => comptes.id),
+  auteurNom: text("auteur_nom").notNull(),
+  deLAdministration: boolean("de_l_administration").notNull().default(false),
+  contenu: text("contenu").notNull(),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("tickets_messages_ticket_idx").on(t.ticketId, t.creeLe)]);
+
+/* ------------------------------------------------------------------ Calendrier scolaire */
+
+/**
+ * Calendrier de l'année scolaire, géré par l'administration. Chaque échéance porte un statut :
+ * « officiel » (fixé par arrêté) ou « provisoire » (affiché comme tel au public, jamais comme une date officielle).
+ */
+export const calendrier = core.table("calendrier", {
+  id: text("id").primaryKey(),
+  annee: text("annee").notNull(),
+  titre: text("titre").notNull(),
+  categorie: text("categorie", { enum: ["rentree", "trimestre", "conges", "ferie", "examen", "evaluation", "fin", "autre"] }).notNull(),
+  debut: date("debut").notNull(),
+  fin: date("fin").notNull(),
+  statut: text("statut", { enum: ["officiel", "provisoire"] }).notNull().default("provisoire"),
+  note: text("note"),
+  majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
+  majPar: text("maj_par"),
+}, (t) => [index("calendrier_annee_idx").on(t.annee, t.debut)]);

@@ -1,21 +1,19 @@
 "use client";
 
-import { ArrowRight, CornerDownLeft, Search, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, CornerDownLeft, Search, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { motion } from "@/components/motion";
 import { cn } from "@/lib/cn";
-import { ACCUEIL_PROFIL, navigationPour } from "@/lib/navigation";
-import { getMonde } from "@beile/simulation/monde";
-import { useDemo, useProfil } from "@/lib/store";
+import { navigationPour } from "@/lib/navigation";
+import { useProfil } from "@/lib/session";
 
 interface Commande { id: string; libelle: string; detail?: string; icone: typeof Search; action: () => void }
 
-/** Palette ⌘K : naviguer, changer de profil, poser une question à Ask Education. */
+/** Palette ⌘K : naviguer dans ses espaces, poser une question à Ask Education. */
 export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
   const router = useRouter();
   const profil = useProfil();
-  const changerProfil = useDemo((s) => s.changerProfil);
   const [saisie, setSaisie] = useState("");
   const [index, setIndex] = useState(0);
 
@@ -30,14 +28,8 @@ export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
     for (const n of navigationPour(roles)) {
       if (!q || n.libelle.toLowerCase().includes(q)) liste.push({ id: n.href, libelle: n.libelle, detail: n.processus ? `Processus ${n.processus}` : undefined, icone: n.icone, action: () => router.push(n.href) });
     }
-    for (const p of getMonde().profils) {
-      if (p.id === profil.id) continue;
-      if (!q || p.nomAffiche.toLowerCase().includes(q) || p.fonction.toLowerCase().includes(q) || "profil".includes(q)) {
-        liste.push({ id: p.id, libelle: `Devenir ${p.nomAffiche}`, detail: p.fonction, icone: UserRound, action: () => { changerProfil(p.id); router.push(ACCUEIL_PROFIL[p.id] ?? "/"); } });
-      }
-    }
     return liste.slice(0, 12);
-  }, [saisie, profil, router, changerProfil]);
+  }, [saisie, profil, router]);
 
   const executer = (c?: Commande) => { if (c) { c.action(); onFermer(); } };
 

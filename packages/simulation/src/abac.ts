@@ -31,12 +31,14 @@ const FINALITES: Record<Role, Partial<Record<Ressource["type"], Finalite[]>>> = 
   administration_centrale: { indicateur: ["gestion", "controle", "statistique"] },
   chercheur: { indicateur: ["statistique"] },
   dpo: { journal_audit: ["audit"] },
+  // L'administrateur gère les comptes ; il n'a accès à aucune donnée éducative.
+  administrateur: {},
 };
 
 const ROLE_LIBELLE: Record<Role, string> = {
   apprenant: "apprenant", parent: "parent", enseignant: "enseignant", chef_etablissement: "chef d'établissement",
   inspecteur: "inspecteur", direction_departementale: "direction départementale", administration_centrale: "administration centrale",
-  chercheur: "chercheur", dpo: "délégué à la protection des données",
+  chercheur: "chercheur", dpo: "délégué à la protection des données", administrateur: "administrateur de la plateforme",
 };
 
 interface Contexte {

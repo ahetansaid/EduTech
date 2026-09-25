@@ -57,3 +57,45 @@ GRANT SELECT ON ALL TABLES IN SCHEMA analytics, gouvernance, registre_simule TO 
 -- Compartiment sensible : RLS forcée et aucune politique = aucune ligne accessible tant que les
 -- politiques de besoin d'en connaître ne sont pas définies.
 GRANT SELECT, INSERT ON sensible.cas TO beile_app;
+
+-- Comptes et sessions : l'API gère ses sessions et notifications ; aucune suppression physique des comptes.
+GRANT SELECT, INSERT, UPDATE ON core.comptes, core.sessions, core.notifications TO beile_app;
+GRANT DELETE ON core.sessions TO beile_app;
+
+-- Projection de lecture : l'API la tient à jour avec le registre.
+GRANT SELECT, INSERT, UPDATE ON core.scolarites TO beile_app;
+-- Index d'accès aux absences par date déclarée (appel du jour, à l'échelle nationale).
+CREATE INDEX IF NOT EXISTS evenements_absences_date_idx ON ledger.evenements ((donnees->>'date'), etablissement_id) WHERE type = 'ABSENCE';
+
+-- Projection des notes effectives (CQRS) : lecture, ajout, correction par l'API.
+GRANT SELECT, INSERT, UPDATE ON core.notes TO beile_app;
+
+-- Idempotence des saisies (file hors connexion) : rejouer une saisie déjà reçue ne crée jamais de doublon.
+CREATE UNIQUE INDEX IF NOT EXISTS evenements_id_saisie_idx ON ledger.evenements ((donnees->>'idSaisie'), type, apprenant_id)
+  WHERE donnees ? 'idSaisie';
+
+-- Assistance : demandes et fil de messages. Aucune suppression (une demande se clôt, elle ne disparaît pas).
+-- Les messages sont en AJOUT SEUL : une réponse envoyée ne se modifie pas (traçabilité du support).
+GRANT SELECT, INSERT, UPDATE ON core.tickets TO beile_app;
+GRANT SELECT, INSERT ON core.tickets_messages TO beile_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON core.tickets_messages FROM beile_app;
+REVOKE DELETE, TRUNCATE ON core.tickets FROM beile_app;
+DROP TRIGGER IF EXISTS ajout_seul ON core.tickets_messages;
+CREATE TRIGGER ajout_seul BEFORE UPDATE OR DELETE ON core.tickets_messages
+  FOR EACH ROW EXECUTE FUNCTION public.beile_interdire_modification();
+-- Seconde barrière aux valeurs (en plus de la validation zod de l'API).
+ALTER TABLE core.tickets DROP CONSTRAINT IF EXISTS tickets_valeurs_chk;
+ALTER TABLE core.tickets ADD CONSTRAINT tickets_valeurs_chk CHECK (
+  categorie IN ('connexion', 'donnees', 'acces', 'bug', 'autre')
+  AND priorite IN ('basse', 'normale', 'haute', 'critique')
+  AND statut IN ('ouvert', 'en_cours', 'resolu', 'clos')
+  AND char_length(sujet) BETWEEN 5 AND 140
+  AND char_length(description) BETWEEN 10 AND 4000
+);
+ALTER TABLE core.tickets_messages DROP CONSTRAINT IF EXISTS tickets_messages_contenu_chk;
+ALTER TABLE core.tickets_messages ADD CONSTRAINT tickets_messages_contenu_chk CHECK (char_length(contenu) BETWEEN 1 AND 4000);
+
+-- Calendrier scolaire : donnée de configuration gérée par l'administration (suppression permise, journalisée).
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.calendrier TO beile_app;
+ALTER TABLE core.calendrier DROP CONSTRAINT IF EXISTS calendrier_dates_coherentes;
+ALTER TABLE core.calendrier ADD CONSTRAINT calendrier_dates_coherentes CHECK (fin >= debut);

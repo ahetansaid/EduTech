@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "guides:docs": "tsx scripts/generer-guides.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",
@@ -15,6 +16,7 @@
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/montserrat": "^5.3.0",
+    "@tanstack/react-query": "^5.103.2",
     "clsx": "^2.1.1",
     "d3-geo": "^3.1.1",
     "lucide-react": "^1.48.0",
@@ -24,11 +26,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.3.1",
-    "zod": "^4.1.0",
-    "zustand": "^5.0.8",
-    "@beile/api": "*",
-    "hono": "^4.13.0",
-    "dotenv": "^18.0.3"
+    "zod": "^4.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

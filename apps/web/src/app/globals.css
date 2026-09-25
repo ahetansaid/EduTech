@@ -147,9 +147,11 @@
   50% { opacity: 0.45; }
 }
 
+/* « clip » et non « hidden » : coupe le débordement horizontal sans créer de conteneur de défilement,
+   ce qui laisse fonctionner position: sticky (en-têtes, barres d'action). */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
 }
 

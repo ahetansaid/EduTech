@@ -1,17 +1,21 @@
 "use client";
 
 import type { Role } from "@beile/contracts";
-import { Bell, CloudOff, RefreshCw, Wifi, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
+import { BoutonGuide, VisiteGuidee } from "@/components/guide/VisiteGuidee";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useThemeEspace } from "@/lib/useSombre";
-import { useDemo, useHydratation, useProfil } from "@/lib/store";
-import { apiActive, appelApi } from "@/lib/api";
-import { SelecteurProfil } from "./SelecteurProfil";
+import { accueilPour, useProfil } from "@/lib/session";
+import { useTitre } from "@/lib/titre";
+import { Cloche } from "./Cloche";
+import { EtatReseau } from "./EtatReseau";
+import { GardeSession } from "./GardeSession";
+import { MenuUtilisateur } from "./MenuUtilisateur";
 
 export interface Onglet { href: string; libelle: string; icone: LucideIcon }
 
@@ -26,26 +30,25 @@ const ACCENTS = {
  * Enveloppe des espaces personnels : pensée d'abord pour le téléphone, sans barre latérale,
  * onglets en bas d'écran sur mobile et en tête sur ordinateur. Lecture calme, une action par écran.
  */
-export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", children, horsConnexion = false }: {
-  espace: keyof typeof ACCENTS; onglets: Onglet[]; roles: Role[]; largeur?: "etroite" | "large"; children: ReactNode; horsConnexion?: boolean;
-}) {
+type Proprietes = { espace: keyof typeof ACCENTS; onglets: Onglet[]; roles: Role[]; largeur?: "etroite" | "large"; children: ReactNode };
+
+export function EspacePersonnel(props: Proprietes) {
+  useThemeEspace(false);
+  return <GardeSession><Enveloppe {...props} /></GardeSession>;
+}
+
+function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Proprietes) {
   const pathname = usePathname();
   const profil = useProfil();
-  const hydrate = useHydratation();
-  const notifications = useDemo((s) => s.notifications);
-  const enLigne = useDemo((s) => s.enLigne);
-  const fileAttente = useDemo((s) => s.fileAttente.length);
-  const basculerConnexion = useDemo((s) => s.basculerConnexion);
   const a = ACCENTS[espace];
-  useThemeEspace(false);
   const autorise = profil.habilitations.some((h) => roles.includes(h.role));
-  const nonLues = profil.npi ? notifications.filter((n) => n.destinataireNpi === profil.npi && !n.lue).length : 0;
+  useTitre([...onglets].sort((x, y) => y.href.length - x.href.length).find((o) => pathname === o.href || pathname.startsWith(`${o.href}/`))?.libelle ?? a.nom);
   const actif = (href: string) => (href === onglets[0]?.href ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
 
   return (
     <div className="min-h-screen bg-bg" style={{ "--acc": a.accent, "--acc-doux": a.doux } as CSSProperties}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[linear-gradient(180deg,var(--acc-doux),transparent)] dark:opacity-10" aria-hidden />
-      <div className="relative z-40 bg-warning-bg px-4 py-1 text-center text-[11.5px] font-medium text-warning">Démonstration — données entièrement fictives</div>
+      <BandeNationale className="relative z-40 h-[3px]" />
 
       <header className="sticky top-0 z-30 border-b border-line/50 bg-bg/80 backdrop-blur-xl">
         <div className={cn("mx-auto flex h-16 items-center gap-3 px-4", largeur === "large" ? "max-w-6xl" : "max-w-3xl")}>
@@ -54,7 +57,7 @@ export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", c
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--acc)" }}>{a.nom}</p>
             <p className="truncate text-[13px] text-ink-muted">{profil.nomAffiche}</p>
           </div>
-          <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Sections de l'espace">
+          <nav data-guide="onglets" className="ml-6 hidden items-center gap-1 md:flex" aria-label="Sections de l'espace">
             {onglets.map((o) => (
               <Link
                 key={o.href}
@@ -68,55 +71,25 @@ export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", c
             ))}
           </nav>
           <div className="flex-1" />
-          {horsConnexion && (
-            <button
-              onClick={() => {
-                // Au retour du réseau, les absences saisies hors connexion partent aussi vers la base nationale.
-                if (!enLigne && apiActive) {
-                  const parClasse = new Map<string, { date: string; ids: string[] }>();
-                  for (const e of useDemo.getState().fileAttente) if (e.type === "ABSENCE") {
-                    const k = `${e.classeId}|${e.date}`;
-                    parClasse.set(k, { date: e.date, ids: [...(parClasse.get(k)?.ids ?? []), e.apprenantId] });
-                  }
-                  for (const [k, v] of parClasse) void appelApi(profil.id, "POST", "/evenements/absences", { classeId: k.split("|")[0], date: v.date, apprenantIds: v.ids }).catch(() => undefined);
-                }
-                basculerConnexion();
-              }}
-              className={cn("flex h-9 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium", enLigne ? "text-ink-muted hover:bg-surface-2" : "bg-warning-bg text-warning")}
-              title={enLigne ? "Simuler une coupure de connexion" : "Rétablir la connexion et synchroniser"}
-            >
-              {enLigne ? <Wifi size={16} aria-hidden /> : <CloudOff size={16} aria-hidden />}
-              <span className="hidden sm:inline">{enLigne ? "En ligne" : `${fileAttente} en attente`}</span>
-              {!enLigne && <RefreshCw size={13} aria-hidden />}
-            </button>
-          )}
-          {profil.npi && (
-            <span className="relative flex h-9 w-9 items-center justify-center rounded-md text-ink-muted" aria-label={`${nonLues} notifications non lues`}>
-              <Bell size={18} aria-hidden />
-              {nonLues > 0 && <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-critical px-1 text-[10px] font-bold text-white">{nonLues}</span>}
-            </span>
-          )}
-          <div className="w-auto"><SelecteurProfil compact vers="bas" /></div>
+          <EtatReseau />
+          <BoutonGuide libelle={false} />
+          <Cloche />
+          <div className="w-auto" data-guide="compte"><MenuUtilisateur compact vers="bas" /></div>
         </div>
       </header>
 
       <main className={cn("relative mx-auto px-4 pb-28 pt-6 md:pb-12", largeur === "large" ? "max-w-6xl" : "max-w-3xl")}>
-        {!hydrate ? (
-          <div className="space-y-4" aria-busy>
-            <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
-            <div className="h-48 animate-pulse rounded-xl bg-surface-2" />
-          </div>
-        ) : autorise ? children : (
+        {autorise ? children : (
           <div className="rounded-xl border border-line/70 bg-surface p-8 text-center shadow-float">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-critical">Espace non autorisé</p>
-            <p className="mt-2 text-sm text-ink-2">Le profil actif ({profil.nomAffiche}) n'a pas d'habilitation pour cet espace.</p>
-            <div className="mx-auto mt-4 w-72"><SelecteurProfil ouvertParDefaut vers="bas" /></div>
+            <p className="mt-2 text-sm text-ink-2">Votre compte ({profil.nomAffiche}) n'a pas d'habilitation pour cet espace.</p>
+            <Link href={accueilPour(profil.habilitations.map((h) => h.role))} className="mt-4 inline-flex h-10 items-center rounded-md bg-navy px-4 text-sm font-medium text-white">Retour à mon espace</Link>
           </div>
         )}
       </main>
 
       {/* Onglets en bas d'écran (téléphone) */}
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
+      <nav data-guide="onglets" className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
         {onglets.map((o) => (
           <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
             {actif(o.href) && <IndicateurActif id={`onglet-mobile-${espace}`} className="absolute inset-0 rounded-md" style={{ background: "var(--acc-doux)" }} />}
@@ -126,6 +99,7 @@ export function EspacePersonnel({ espace, onglets, roles, largeur = "etroite", c
         ))}
       </nav>
       <BandeNationale className="hidden md:grid" />
+      <VisiteGuidee />
     </div>
   );
 }
