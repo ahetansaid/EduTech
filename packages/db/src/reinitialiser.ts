@@ -11,7 +11,7 @@ import { tls } from "./index";
  * IRRÉVERSIBLE. Le registre en ajout seul interdit tout effacement ligne à ligne : la seule remise à zéro
  * possible est la suppression des schémas par le rôle propriétaire. Garde-fou : l'hôte visé doit être recopié.
  *
- *   npm run reinitialiser -w @beile/db -- --confirmer <hôte de la base>
+ *   npm run reinitialiser -w @beile/db <hôte de la base>
  *
  * Les rôles (beile_app, beile_api) sont conservés : DATABASE_URL_API reste valable.
  * Les comptes sont recréés avec de NOUVEAUX mots de passe, écrits dans COMPTES.local.md.
@@ -22,13 +22,15 @@ const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL_UNPOOLED absent : renseigner .env à la racine du dépôt.");
 const cible = new URL(url);
 const hote = cible.hostname;
+// « --confirmer <hôte> », ou l'hôte seul : PowerShell et npm consomment parfois « -- » et « --confirmer ».
+// Dans tous les cas, l'hôte exact doit être recopié par la personne qui lance la remise à zéro.
 const i = process.argv.indexOf("--confirmer");
-const confirmation = i > 0 ? process.argv[i + 1] : undefined;
+const confirmation = i > 0 ? process.argv[i + 1] : process.argv.slice(2).find((a) => a === hote);
 
 if (confirmation !== hote) {
   console.error(`\nRemise à zéro de la base « ${cible.pathname.slice(1)} » sur ${hote}.`);
   console.error("Toutes les données BEILE seront DÉFINITIVEMENT supprimées puis reconstruites.");
-  console.error(`Pour confirmer, relancez avec :  --confirmer ${hote}\n`);
+  console.error(`Pour confirmer :  npm run reinitialiser -w @beile/db ${hote}\n`);
   process.exit(1);
 }
 
