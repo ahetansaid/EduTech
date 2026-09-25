@@ -9,6 +9,8 @@ import { dirname, join } from "node:path";
 export const BASE = process.env.BEILE_API ?? "http://localhost:4000/api/v1";
 
 function trouverComptes(): Record<string, string> {
+  const lire = (t: string) => Object.fromEntries([...t.matchAll(/\| `([^`]+)` \| `([^`]+)` \|/g)].map((m) => [m[1]!, m[2]!]));
+  if (process.env.BEILE_FICHIER_COMPTES) return lire(readFileSync(process.env.BEILE_FICHIER_COMPTES, "utf8"));
   for (let d = process.cwd(), i = 0; i < 4; i++, d = dirname(d)) {
     try {
       const t = readFileSync(join(d, "COMPTES.local.md"), "utf8");

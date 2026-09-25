@@ -15,6 +15,20 @@
       "when": 1790324321566,
       "tag": "0001_comptes_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790328013394,
+      "tag": "0002_projection_scolarites",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790332630706,
+      "tag": "0003_projection_notes",
+      "breakpoints": true
     }
   ]
 }

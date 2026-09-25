@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, refuser, type Variables } from "./commun";
+import { classesCourantes, effectifClasse, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
 
 /**
@@ -22,15 +23,19 @@ const ID_CLASSE = z.string().regex(/^CLS-[A-Za-z0-9-]+$/);
 
 /* ------------------------------------------------------------------ Lecture d'un dossier complet */
 
-async function dossier(profil: Profil, apprenantId: string, finalite: Finalite, action: string) {
+export async function dossier(profil: Profil, apprenantId: string, finalite: Finalite, action: string) {
   const ctx = await contexteApprenant(base(), apprenantId, profil);
   const decision = decider(profil, { ressource: { type: "dossier_apprenant", apprenantId }, finalite }, { monde: ctx.monde, evenements: ctx.evenements });
-  await journaliser(profil, action, apprenantId, finalite, decision.autorise, decision.criteres.find((x) => !x.satisfait)?.critere ?? null);
-  if (!decision.autorise || !ctx.apprenant) return { decision, dossier: null };
+  const trace = journaliser(profil, action, apprenantId, finalite, decision.autorise, decision.criteres.find((x) => !x.satisfait)?.critere ?? null);
+  if (!decision.autorise || !ctx.apprenant) { await trace; return { decision, dossier: null }; }
   const situation = situationApprenant(ctx.monde, ctx.evenements, apprenantId);
-  const certificats = await base().select().from(schema.certificats).where(eq(schema.certificats.apprenantId, apprenantId));
   const idsEtab = [...new Set([situation.etablissementId, ...ctx.evenements.flatMap((e) => [e.etablissementId, "deEtablissementId" in e ? e.deEtablissementId : null, "versEtablissementId" in e ? e.versEtablissementId : null])].filter((x): x is string => !!x))];
-  const etabs = idsEtab.length ? await base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom }).from(schema.etablissements).where(inArray(schema.etablissements.id, idsEtab)) : [];
+  // Le journal est écrit AVANT toute réponse (await), mais en parallèle des lectures complémentaires.
+  const [, certificats, etabs] = await Promise.all([
+    trace,
+    base().select().from(schema.certificats).where(eq(schema.certificats.apprenantId, apprenantId)),
+    idsEtab.length ? base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom }).from(schema.etablissements).where(inArray(schema.etablissements.id, idsEtab)) : Promise.resolve([]),
+  ]);
   return {
     decision,
     dossier: {
@@ -48,11 +53,7 @@ parcours.get("/famille/enfants", authentifie, async (c) => {
   const profil = c.get("profil");
   if (!profil.npi || !profil.habilitations.some((h) => h.role === "parent")) refuser("Aucune habilitation « parent »");
   const liens = await base().select().from(schema.liensFamiliaux).where(and(eq(schema.liensFamiliaux.responsableNpi, profil.npi!), eq(schema.liensFamiliaux.verifie, true)));
-  const dossiers = [];
-  for (const l of liens) {
-    const r = await dossier(profil, l.apprenantId, "suivi_familial", "Consultation familiale");
-    if (r.dossier) dossiers.push(r.dossier);
-  }
+  const dossiers = (await Promise.all(liens.map((l) => dossier(profil, l.apprenantId, "suivi_familial", "Consultation familiale")))).flatMap((r) => (r.dossier ? [r.dossier] : []));
   return c.json(dossiers);
 });
 
@@ -68,17 +69,10 @@ parcours.get("/moi/passeport", authentifie, async (c) => {
 
 /* ------------------------------------------------------------------ Notes */
 
-async function enseignantDe(profil: Profil) {
+export async function enseignantDe(profil: Profil) {
   if (!profil.npi || !profil.habilitations.some((h) => h.role === "enseignant")) return null;
   const [e] = await base().select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi));
   return e ?? null;
-}
-
-/** Classe courante de chaque apprenant, reconstruite depuis le registre. */
-async function classesCourantes(apprenantIds: string[]) {
-  if (!apprenantIds.length) return new Map<string, string | null>();
-  const evts = (await base().select().from(schema.evenements).where(inArray(schema.evenements.apprenantId, apprenantIds))).map(enEvenement);
-  return indexer(evts).classeCourante;
 }
 
 parcours.post("/evenements/evaluations", authentifie, async (c) => {
@@ -99,14 +93,12 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
   const hors = saisie.notes.filter((n) => courantes.get(n.apprenantId) !== saisie.classeId).map((n) => n.apprenantId);
   if (hors.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${hors.join(", ")}` });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
-  const lignes = saisie.notes.map((n) => ({
-    id: `EVT-${randomUUID()}`, type: "EVALUATION", survenuLe: new Date(), auteurId: enseignant!.id, source: "beile" as const,
-    etablissementId: classe!.etablissementId, apprenantId: n.apprenantId, enseignantId: null,
+  const enregistres = await inscrireAuRegistre(saisie.notes.map((n) => ({
+    type: "EVALUATION", auteurId: enseignant!.id, etablissementId: classe!.etablissementId, apprenantId: n.apprenantId,
     donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire },
-  }));
-  await base().insert(schema.evenements).values(lignes);
-  await journaliser(profil, "Saisie de notes", `${saisie.classeId} · ${saisie.matiere} (${lignes.length})`, "evaluation", true, null);
-  return c.json({ enregistres: lignes.map((l) => l.id) }, 201);
+  })));
+  await journaliser(profil, "Saisie de notes", `${saisie.classeId} · ${saisie.matiere} (${enregistres.length})`, "evaluation", true, null);
+  return c.json({ enregistres }, 201);
 });
 
 /** Correction : la note d'origine reste au registre ; un événement correctif est ajouté, avec son motif. */
@@ -126,11 +118,10 @@ parcours.post("/evenements/corrections", authentifie, async (c) => {
     await journaliser(profil, "Correction de note", saisie.evenementCorrigeId, "evaluation", false, !enseignant ? "role" : "relation");
     refuser("Correction réservée à l'enseignant de la matière dans cette classe");
   }
-  const id = `EVT-${randomUUID()}`;
-  await base().insert(schema.evenements).values({
-    id, type: "CORRECTION_EVALUATION", survenuLe: new Date(), auteurId: enseignant!.id, source: "beile", etablissementId: origine.etablissementId, apprenantId: d.apprenantId, enseignantId: null,
-    donnees: { apprenantId: d.apprenantId, evenementCorrigeId: saisie.evenementCorrigeId, nouvelleNote: saisie.nouvelleNote, motif: saisie.motif },
-  });
+  const [id] = await inscrireAuRegistre([{
+    type: "CORRECTION_EVALUATION", auteurId: enseignant!.id, etablissementId: origine.etablissementId, apprenantId: d.apprenantId,
+    donnees: { apprenantId: d.apprenantId, evenementCorrigeId: saisie.evenementCorrigeId, nouvelleNote: saisie.nouvelleNote, motif: saisie.motif, classeId: d.classeId },
+  }]);
   await journaliser(profil, "Correction de note", `${saisie.evenementCorrigeId} → ${saisie.nouvelleNote}`, "evaluation", true, null);
   return c.json({ enregistre: id }, 201);
 });
@@ -189,10 +180,8 @@ parcours.post("/inscriptions", authentifie, async (c) => {
     refuser("Inscription possible uniquement dans une classe de votre établissement");
   }
 
-  // Capacité de la classe, reconstituée depuis le registre.
-  const places = await base().select({ a: schema.evenements.apprenantId }).from(schema.evenements).where(or(sql`${schema.evenements.donnees}->>'classeId' = ${saisie.classeId}`, sql`${schema.evenements.donnees}->>'versClasseId' = ${saisie.classeId}`));
-  const courantes = await classesCourantes([...new Set(places.map((p) => p.a).filter((x): x is string => !!x))]);
-  const effectif = [...courantes.values()].filter((x) => x === saisie.classeId).length;
+  // Capacité de la classe, lue dans la projection de lecture (indexée).
+  const effectif = await effectifClasse(saisie.classeId);
   if (effectif >= classe!.capacite) throw new HTTPException(409, { message: `Classe complète (${effectif}/${classe!.capacite})` });
 
   let identite: { npi: string | null; nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; parentsNpi: string[] };
@@ -209,22 +198,15 @@ parcours.post("/inscriptions", authentifie, async (c) => {
 
   const [{ max } = { max: null }] = await base().select({ max: sql<string | null>`max(${schema.apprenants.id})` }).from(schema.apprenants);
   const id = `APP-${String(Number(String(max ?? "APP-0").slice(4)) + 1).padStart(6, "0")}`;
-  const maintenant = new Date();
-  const evenements: (typeof schema.evenements.$inferInsert)[] = [{
-    id: `EVT-${randomUUID()}`, type: "INSCRIPTION", survenuLe: maintenant, auteurId: profil.id, source: "beile", etablissementId: etab, apprenantId: id, enseignantId: null,
-    donnees: { apprenantId: id, classeId: saisie.classeId, anneeScolaire: classe!.anneeScolaire },
-  }];
-  if (!identite.npi) evenements.push({
-    id: `EVT-${randomUUID()}`, type: "REGULARISATION_IDENTITE_DEMANDEE", survenuLe: maintenant, auteurId: profil.id, source: "beile", etablissementId: etab, apprenantId: id, enseignantId: null,
-    donnees: { apprenantId: id, motif: `Absence d'acte de naissance — responsable déclaré : ${saisie.sansActe?.responsable || "non renseigné"}` },
-  });
+  const faits: NouveauFait[] = [{ type: "INSCRIPTION", auteurId: profil.id, etablissementId: etab, apprenantId: id, donnees: { apprenantId: id, classeId: saisie.classeId, anneeScolaire: classe!.anneeScolaire } }];
+  if (!identite.npi) faits.push({ type: "REGULARISATION_IDENTITE_DEMANDEE", auteurId: profil.id, etablissementId: etab, apprenantId: id, donnees: { apprenantId: id, motif: `Absence d'acte de naissance — responsable déclaré : ${saisie.sansActe?.responsable || "non renseigné"}` } });
 
-  await base().transaction(async (tx) => {
+  // Identité, filiation, parcours, événements et projection : une seule transaction.
+  const evenements = await inscrireAuRegistre(faits, async (tx) => {
     await tx.insert(schema.apprenants).values({ id, npi: identite.npi, statutIdentite: identite.npi ? "verifiee" : "regularisation_en_cours", nom: identite.nom, prenoms: identite.prenoms, dateNaissance: identite.dateNaissance, sexe: identite.sexe, besoinsParticuliers: false });
     if (identite.parentsNpi.length) await tx.insert(schema.liensFamiliaux).values(identite.parentsNpi.map((npi) => ({ responsableNpi: npi, apprenantId: id, nature: "parent" as const, verifie: true })));
     await tx.insert(schema.parcours).values({ id: `PRC-${id}`, apprenantId: id, type: "scolaire", institutionId: etab, intitule: "Scolarité", statut: "en_cours" });
-    await tx.insert(schema.evenements).values(evenements);
   });
   await journaliser(profil, "Inscription d'un apprenant", `${id} → ${saisie.classeId}`, "gestion", true, null);
-  return c.json({ apprenantId: id, statutIdentite: identite.npi ? "verifiee" : "regularisation_en_cours", evenements: evenements.map((e) => `${e.id} · ${e.type}`) }, 201);
+  return c.json({ apprenantId: id, statutIdentite: identite.npi ? "verifiee" : "regularisation_en_cours", evenements }, 201);
 });

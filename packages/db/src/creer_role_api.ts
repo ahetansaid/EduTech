@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import postgres from "postgres";
+import { tls } from "./index";
 
 /**
  * Crée (ou réinitialise) le rôle de connexion de l'API : beile_api, membre de beile_app (droits minimaux,
@@ -14,7 +15,7 @@ const direct = process.env.DATABASE_URL_UNPOOLED;
 if (!direct) throw new Error("DATABASE_URL_UNPOOLED absent");
 
 const motDePasse = randomBytes(24).toString("base64url");
-const s = postgres(direct, { ssl: "require", max: 1, onnotice: () => {} });
+const s = postgres(direct, { ssl: tls(direct), max: 1, onnotice: () => {} });
 try {
   const [existe] = await s`select 1 as ok from pg_roles where rolname = 'beile_api'`;
   if (existe) await s.unsafe(`ALTER ROLE beile_api WITH LOGIN NOBYPASSRLS NOCREATEROLE NOCREATEDB PASSWORD '${motDePasse}'`);

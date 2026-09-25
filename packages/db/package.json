@@ -18,7 +18,8 @@
     "verifier": "tsx src/verifier.ts",
     "sonde": "tsx src/sonde.ts",
     "role-api": "tsx src/creer_role_api.ts",
-    "comptes": "tsx src/creer_comptes.ts"
+    "comptes": "tsx src/creer_comptes.ts",
+    "projections": "tsx src/projections.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",

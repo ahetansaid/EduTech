@@ -1,14 +1,16 @@
 {
   "name": "@beile/api",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "API BEILE (Hono) — branchée après validation du prototype",
+  "description": "API BEILE (Hono sur Node.js) — sessions serveur, ABAC, registre en ajout seul, projections CQRS",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "recette": "tsx src/recette.ts"
+    "recette": "tsx src/recette.ts",
+    "recette:ecritures": "tsx src/recette.ts --ecritures",
+    "charge": "tsx src/charge.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",

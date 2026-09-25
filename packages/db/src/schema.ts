@@ -366,3 +366,35 @@ export const notifications = core.table("notifications", {
   lue: boolean("lue").notNull().default(false),
   creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("notifications_destinataire_idx").on(t.destinataireNpi, t.creeLe)]);
+
+/* ------------------------------------------------------------------ Projection de lecture (CQRS) */
+
+/**
+ * Situation courante de chaque apprenant, tenue à jour dans la même transaction que l'écriture au registre.
+ * Le registre (ledger.evenements) reste la source de vérité : cette table est reconstructible à tout moment
+ * (npm run projections -w @beile/db). Elle permet des lectures indexées à l'échelle nationale.
+ */
+export const scolarites = core.table("scolarites", {
+  apprenantId: text("apprenant_id").primaryKey().references(() => apprenants.id),
+  classeId: text("classe_id").references(() => classes.id),
+  etablissementId: text("etablissement_id").references(() => etablissements.id),
+  statut: text("statut", { enum: ["scolarise", "abandon", "non_inscrit"] }).notNull(),
+  majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("scolarites_classe_idx").on(t.classeId), index("scolarites_etablissement_idx").on(t.etablissementId, t.statut)]);
+
+/**
+ * Notes effectives (projection) : une ligne par évaluation, la correction la plus récente appliquée.
+ * Tenue à jour dans la transaction d'écriture au registre ; reconstructible depuis ledger.evenements.
+ * Colonnes typées et indexées : les moyennes se calculent sans relire le JSON du registre.
+ */
+export const notes = core.table("notes", {
+  evenementId: text("evenement_id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  classeId: text("classe_id").notNull(),
+  matiere: text("matiere").notNull(),
+  trimestre: integer("trimestre").notNull(),
+  note: doublePrecision("note").notNull(),
+  noteInitiale: doublePrecision("note_initiale").notNull(),
+  corrigee: boolean("corrigee").notNull().default(false),
+  survenuLe: timestamp("survenu_le", { withTimezone: true }).notNull(),
+}, (t) => [index("notes_apprenant_idx").on(t.apprenantId, t.matiere, t.survenuLe), index("notes_classe_idx").on(t.classeId, t.matiere)]);

@@ -61,3 +61,11 @@ GRANT SELECT, INSERT ON sensible.cas TO beile_app;
 -- Comptes et sessions : l'API gère ses sessions et notifications ; aucune suppression physique des comptes.
 GRANT SELECT, INSERT, UPDATE ON core.comptes, core.sessions, core.notifications TO beile_app;
 GRANT DELETE ON core.sessions TO beile_app;
+
+-- Projection de lecture : l'API la tient à jour avec le registre.
+GRANT SELECT, INSERT, UPDATE ON core.scolarites TO beile_app;
+-- Index d'accès aux absences par date déclarée (appel du jour, à l'échelle nationale).
+CREATE INDEX IF NOT EXISTS evenements_absences_date_idx ON ledger.evenements ((donnees->>'date'), etablissement_id) WHERE type = 'ABSENCE';
+
+-- Projection des notes effectives (CQRS) : lecture, ajout, correction par l'API.
+GRANT SELECT, INSERT, UPDATE ON core.notes TO beile_app;

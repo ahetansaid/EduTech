@@ -56,7 +56,7 @@ try {
     ...lignes,
     "",
   ].join("\n");
-  writeFileSync(fileURLToPath(new URL("../../../COMPTES.local.md", import.meta.url)), doc);
+  writeFileSync(process.env.BEILE_FICHIER_COMPTES ?? fileURLToPath(new URL("../../../COMPTES.local.md", import.meta.url)), doc);
   console.log(`${lignes.length} comptes prêts ; identifiants écrits dans COMPTES.local.md (mots de passe non affichés).`);
 } finally {
   await client.end();

@@ -40,16 +40,26 @@ jobs:
         run: npm run verifier --workspace=@beile/simulation
 
   recette:
-    name: Recette de l'API sur une branche Neon jetable
+    name: Recette de bout en bout (PostgreSQL + PostGIS jetable)
     needs: qualite
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Nécessite le secret NEON_API_KEY et la variable NEON_PROJECT_ID (Settings → Secrets and variables → Actions).
-    if: ${{ vars.NEON_PROJECT_ID != '' }}
+    timeout-minutes: 25
+    # Base éphémère propre à chaque exécution : aucune donnée de production, aucun secret requis.
+    # Mot de passe généré à la volée ; la base n'écoute que sur l'hôte du job.
+    services:
+      postgres:
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_PASSWORD: ci-postgres-jetable
+          POSTGRES_DB: beile
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-      BRANCHE: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      DATABASE_URL: postgres://postgres:ci-postgres-jetable@localhost:5432/beile?sslmode=disable
+      DATABASE_URL_UNPOOLED: postgres://postgres:ci-postgres-jetable@localhost:5432/beile?sslmode=disable
+      BEILE_ORIGINES_AUTORISEES: http://localhost:3000
+      BEILE_FICHIER_COMPTES: ${{ github.workspace }}/comptes-ci.md
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,34 +67,31 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Créer la branche Neon (copie de la base, isolée)
-        run: npx --yes neonctl@2 branches create --project-id "$NEON_PROJECT_ID" --name "$BRANCHE" --output json > /dev/null
-      - name: Préparer la configuration (.env éphémère)
-        run: |
-          DIRECT=$(npx --yes neonctl@2 connection-string "$BRANCHE" --project-id "$NEON_PROJECT_ID")
-          POOLED=$(npx --yes neonctl@2 connection-string "$BRANCHE" --project-id "$NEON_PROJECT_ID" --pooled)
-          echo "::add-mask::$DIRECT"
-          echo "::add-mask::$POOLED"
-          {
-            echo "DATABASE_URL=$POOLED"
-            echo "DATABASE_URL_UNPOOLED=$DIRECT"
-            echo "BEILE_JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n=+/')"
-            echo "BEILE_MODE_DEMO=true"
-            echo "BEILE_ORIGINES_AUTORISEES=http://localhost:3000"
-          } > .env
-      - name: Migrations et durcissement
+      - name: Migrations et durcissement (ajout seul, RLS, rôle applicatif)
         run: npm run migrer --workspace=@beile/db
-      - name: Rôle applicatif restreint
-        run: npm run role-api --workspace=@beile/db
-      - name: Vérification de la base (ajout seul, droits, RLS)
+      - name: Peuplement (registre, cube national, référentiels)
+        run: npm run peupler --workspace=@beile/db
+      - name: Rôle de connexion de l'API (beile_api ⊂ beile_app, sans BYPASSRLS)
+        run: |
+          MDP=$(openssl rand -hex 24)
+          echo "::add-mask::$MDP"
+          PGPASSWORD=ci-postgres-jetable psql -h localhost -U postgres -d beile -v ON_ERROR_STOP=1             -c "CREATE ROLE beile_api WITH LOGIN NOBYPASSRLS NOCREATEROLE NOCREATEDB PASSWORD '$MDP' IN ROLE beile_app"
+          echo "DATABASE_URL_API=postgres://beile_api:$MDP@localhost:5432/beile?sslmode=disable" >> "$GITHUB_ENV"
+      - name: Comptes (mots de passe générés, jamais affichés) et projections
+        run: |
+          npm run comptes --workspace=@beile/db
+          npm run projections --workspace=@beile/db
+      - name: Vérification de la base (ajout seul, droits, RLS, témoins)
         run: npm run verifier --workspace=@beile/db
       - name: Démarrer l'API
         run: |
           npm run start --workspace=@beile/api > api.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf http://localhost:4000/api/v1/sante > /dev/null && exit 0; sleep 1; done
+          for i in $(seq 1 40); do curl -sf http://localhost:4000/api/v1/sante > /dev/null && exit 0; sleep 1; done
           cat api.log; exit 1
-      - name: Recette de l'API
-        run: npm run recette --workspace=@beile/api
-      - name: Supprimer la branche Neon
-        if: always()
-        run: npx --yes neonctl@2 branches delete "$BRANCHE" --project-id "$NEON_PROJECT_ID" || true
+      - name: Recette complète, écritures multi-utilisateurs comprises
+        run: npm run recette:ecritures --workspace=@beile/api
+      - name: Test de charge (100 utilisateurs, 30 s)
+        run: npm run charge --workspace=@beile/api -- --utilisateurs 100 --duree 30
+      - name: Journal de l'API en cas d'échec
+        if: failure()
+        run: tail -n 200 api.log

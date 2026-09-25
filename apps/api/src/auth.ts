@@ -6,7 +6,7 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { adresseIp, authentifie, base, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, journaliser, limiteDebit, refuser, type Variables } from "./commun";
+import { adresseIp, authentifie, base, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
 
 /**
  * Authentification : identifiant + mot de passe (scrypt), session serveur de 12 h dans un cookie HttpOnly,
@@ -28,7 +28,9 @@ function poserCookies(c: Context, jeton: string) {
   setCookie(c, COOKIE_CSRF, randomBytes(24).toString("base64url"), { httpOnly: false, secure, sameSite: "Strict", path: "/", maxAge: DUREE_SESSION_MS / 1000 });
 }
 
-auth.post("/auth/connexion", limiteDebit(10, 60_000), async (c) => {
+// Limite par IP large : établissements et réseaux mobiles partagent souvent une IP (NAT). La force brute
+// est bornée par le verrouillage par compte (5 échecs → 15 min).
+auth.post("/auth/connexion", limiteDebit(60, 60_000), async (c) => {
   controlerOrigine(c);
   const { identifiant, motDePasse } = await corps(c, z.object({ identifiant: z.string().trim().toLowerCase().min(3).max(80), motDePasse: z.string().min(1).max(200) }).strict());
   const [compte] = await base().select().from(schema.comptes).where(eq(schema.comptes.identifiant, identifiant));
@@ -61,6 +63,7 @@ auth.get("/auth/session", authentifie, (c) => c.json({ profil: c.get("profil"), 
 
 auth.post("/auth/deconnexion", authentifie, async (c) => {
   await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.empreinte, c.get("compte").empreinteSession));
+  oublierSession(c.get("compte").empreinteSession);
   await journaliser(c.get("profil"), "Déconnexion", c.get("compte").identifiant, "gestion", true, null);
   deleteCookie(c, COOKIE_SESSION, { path: "/" });
   deleteCookie(c, COOKIE_CSRF, { path: "/" });
