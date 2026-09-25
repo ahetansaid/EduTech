@@ -1,6 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { authentifie, base, corps, journaliser, limiteDebit, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, type Variables } from "./commun";
 import { parcours } from "./parcours";
+import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
+import { auth } from "./auth";
+import { perimetrePilotage, pilotage } from "./pilotage";
+import { etablissement } from "./etablissement";
+import { enseignant } from "./enseignant";
+import { plateforme } from "./plateforme";
+import { complementsPilotage } from "./complements-pilotage";
+import { complementsEtablissement } from "./complements-etablissement";
+import { complementsEnseignant } from "./complements-enseignant";
+import { complementsFamille } from "./complements-famille";
+import { complementsGouvernance } from "./complements-gouvernance";
+import { administration } from "./administration";
+import { publique } from "./public";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -15,10 +28,9 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
-import { sign } from "hono/jwt";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
-import { chargerCouches, contexteApprenant, enEvenement, profilParId } from "./donnees";
+import { chargerCouches, contexteApprenant, enEvenement, memo } from "./donnees";
 import { lireEnv } from "./env";
 
 /**
@@ -30,28 +42,33 @@ import { lireEnv } from "./env";
 export const app = new Hono<{ Variables: Variables }>().basePath("/api/v1");
 
 app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site", xFrameOptions: "DENY" }));
-app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "Authorization"], maxAge: 600 }));
+app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "X-CSRF-Token"], credentials: true, maxAge: 600 }));
 app.use("*", bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) }));
-app.use("*", limiteDebit(240, 60_000));
+// Deux plafonds : par IP (large — un établissement entier peut partager une IP publique) et par utilisateur.
+app.use("*", limiteDebit(1500, 60_000));
+app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return c.json({ erreur: err.message }, err.status);
-  console.error(err);
+  // Doublon de saisie détecté par l'index d'idempotence (deux rejeux simultanés) : déjà enregistré.
+  if ((err as { code?: string; cause?: { code?: string } }).code === "23505" || (err as { cause?: { code?: string } }).cause?.code === "23505") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
+  // Paramètre d'URL ou de requête invalide (validation zod) : erreur du client, jamais un 500.
+  if (err instanceof z.ZodError) return c.json({ erreur: "Paramètre invalide", champs: err.issues.map((i) => i.path.join(".") || "valeur") }, 422);
+  // Journal minimal : jamais la requête SQL ni ses paramètres (identifiants d'élèves) dans les journaux de l'hébergeur.
+  const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+  console.error(JSON.stringify({
+    niveau: "erreur", methode: c.req.method, route: c.req.routePath, chemin: new URL(c.req.url).pathname.replace(/APP-\d{6}/g, "APP-…"),
+    type: err.name, code: cause?.code ?? (err as { code?: string }).code ?? null,
+    // Première ligne seulement : le message des requêtes échouées contient ensuite le SQL et ses paramètres.
+    message: (cause?.message ?? err.message).split(/\r?\n/)[0]!.slice(0, 200),
+  }));
   return c.json({ erreur: "Erreur interne" }, 500);
 });
 app.notFound((c) => c.json({ erreur: "Ressource introuvable" }, 404));
 
-/* ================================================================== Authentification */
+/* ================================================================== Authentification (sessions) */
 
-app.post("/auth/demo", limiteDebit(30, 60_000), async (c) => {
-    if (!lireEnv().MODE_DEMO) throw new HTTPException(404, { message: "Ressource introuvable" });
-    const { profilId } = await corps(c, z.object({ profilId: z.string().regex(/^p-[a-z]+$/) }).strict());
-    const profil = await profilParId(base(), profilId);
-    if (!profil) throw new HTTPException(404, { message: "Profil de démonstration inconnu" });
-    const expire = Math.floor(Date.now() / 1000) + 2 * 3600;
-    const jeton = await sign({ sub: profil.id, exp: expire, iat: Math.floor(Date.now() / 1000) }, lireEnv().JWT_SECRET, "HS256");
-    return c.json({ jeton, expire, profil });
-});
+app.route("/", auth);
 
 app.get("/moi", authentifie, (c) => c.json(c.get("profil")));
 
@@ -59,7 +76,7 @@ app.get("/moi", authentifie, (c) => c.json(c.get("profil")));
 
 app.get("/sante", async (c) => {
   const [r] = await base().select({ n: schema.departements.id }).from(schema.departements).limit(1);
-  return c.json({ statut: "ok", service: "beile-api", version: "0.2.0", base: r ? "connectée" : "vide", horodatage: new Date().toISOString() });
+  return c.json({ statut: "ok", service: "beile-api", version: "0.3.0", base: r ? "connectée" : "vide", horodatage: new Date().toISOString() });
 });
 
 app.get("/referentiels/departements", (c) => c.json(DEPARTEMENTS));
@@ -83,27 +100,25 @@ app.get("/certificats/:id/verification", limiteDebit(30, 60_000), async (c) => {
   else if (cert.revoque) r = { statut: "revoque", certificatId: id, explication: "Diplôme révoqué par l'autorité de certification." };
   else if (presente && !empreinteCertificat(cert, `${titulaire.prenoms} ${titulaire.nom}`).startsWith(presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
   else r = { statut: "authentique", certificatId: id, titulaire: `${titulaire.prenoms} ${titulaire.nom}`, examen: cert.examen, session: cert.session, mention: cert.mention, delivreLe: cert.delivreLe };
+  // Chaque vérification publique est tracée (sans donnée sur le demandeur) : volume et tentatives de fraude.
+  await journaliser({ id: "public", nomAffiche: "Vérification publique" }, "Vérification de diplôme", `${id} · ${r.statut}`, "controle", true, null);
   return c.json(r);
 });
 
 /* ================================================================== Pilotage (agrégats sous périmètre) */
 
-function perimetrePilotage(profil: Profil): Perimetre {
-  const h = profil.habilitations.find((x) => ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"].includes(x.role));
-  if (!h) throw new HTTPException(403, { message: "Aucune habilitation de pilotage" });
-  return h.perimetre;
-}
 
 app.post("/indicateurs", authentifie, async (c) => {
   const requete = await corps(c, RequeteSemantique);
   const profil = c.get("profil");
   const perimetre = perimetrePilotage(profil);
-  const resultat = calculer(await chargerCouches(base()), requete, perimetre);
+  const couches = await chargerCouches(base());
+  const resultat = memo(couches, `indicateur:${JSON.stringify(perimetre)}:${JSON.stringify(requete)}`, () => calculer(couches, requete, perimetre));
   await journaliser(profil, "Calcul d'indicateur", resultat.definition.nom, "statistique", true, null);
   return c.json(resultat);
 });
 
-app.post("/ask", authentifie, limiteDebit(20, 60_000), async (c) => {
+app.post("/ask", authentifie, limiteDebit(20, 60_000, cleUtilisateur), async (c) => {
   const { question } = await corps(c, z.object({ question: z.string().trim().min(3).max(400) }).strict());
   const profil = c.get("profil");
   const reponse = repondre(await chargerCouches(base()), question, perimetrePilotage(profil));
@@ -117,7 +132,8 @@ app.post("/ask", authentifie, limiteDebit(20, 60_000), async (c) => {
 
 app.get("/priorites", authentifie, async (c) => {
   perimetrePilotage(c.get("profil"));
-  return c.json(Object.fromEntries(priorites(await chargerCouches(base()))));
+  const couches = await chargerCouches(base());
+  return c.json(memo(couches, "priorites:json", () => Object.fromEntries(priorites(couches))));
 });
 
 /* ================================================================== Données individuelles (ABAC serveur) */
@@ -154,6 +170,7 @@ app.post("/evenements/absences", authentifie, async (c) => {
     classeId: z.string().regex(/^CLS-[A-Za-z0-9-]+$/),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     apprenantIds: z.array(z.string().regex(/^APP-\d{6}$/)).min(1).max(80),
+    idSaisie: ID_SAISIE,
   }).strict());
   const [enseignant] = profil.npi ? await base().select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : [];
   const [relation] = enseignant ? await base().select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignant.id), eq(schema.enseignements.classeId, saisie.classeId))).limit(1) : [];
@@ -161,20 +178,19 @@ app.post("/evenements/absences", authentifie, async (c) => {
     await journaliser(profil, "Saisie d'absences", saisie.classeId, "evaluation", false, !enseignant ? "role" : "relation");
     throw new HTTPException(403, { message: "Aucune relation pédagogique avec cette classe : saisie refusée et journalisée" });
   }
-  // Les apprenants doivent appartenir à la classe à la date de saisie (reconstruit depuis le registre).
-  const evts = (await base().select().from(schema.evenements).where(inArray(schema.evenements.apprenantId, saisie.apprenantIds))).map(enEvenement);
-  const idx = indexer(evts);
-  const horsClasse = saisie.apprenantIds.filter((id) => idx.classeCourante.get(id) !== saisie.classeId);
+  // Les apprenants doivent appartenir à la classe (projection de lecture indexée).
+  const courantes = await classesCourantes(saisie.apprenantIds);
+  const horsClasse = saisie.apprenantIds.filter((id) => courantes.get(id) !== saisie.classeId);
   if (horsClasse.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${horsClasse.join(", ")}` });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
-  const lignes = saisie.apprenantIds.map((apprenantId) => ({
-    id: `EVT-${randomUUID()}`, type: "ABSENCE", survenuLe: new Date(), auteurId: enseignant.id, source: "beile" as const,
-    etablissementId: classe!.etablissementId, apprenantId, enseignantId: null,
-    donnees: { apprenantId, classeId: saisie.classeId, date: saisie.date, justifiee: false, anneeScolaire: classe!.anneeScolaire },
-  }));
-  await base().insert(schema.evenements).values(lignes);
-  await journaliser(profil, "Saisie d'absences", `${saisie.classeId} (${lignes.length})`, "evaluation", true, null);
-  return c.json({ enregistres: lignes.map((l) => l.id) }, 201);
+  const deja = await dejaSaisi(saisie.idSaisie, "ABSENCE");
+  if (deja) return c.json({ enregistres: deja, deja: true }, 200);
+  const enregistres = await inscrireAuRegistre(saisie.apprenantIds.map((apprenantId) => ({
+    type: "ABSENCE", auteurId: enseignant.id, etablissementId: classe!.etablissementId, apprenantId,
+    donnees: { apprenantId, classeId: saisie.classeId, date: saisie.date, justifiee: false, anneeScolaire: classe!.anneeScolaire, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
+  })));
+  await journaliser(profil, "Saisie d'absences", `${saisie.classeId} (${enregistres.length})`, "evaluation", true, null);
+  return c.json({ enregistres }, 201);
 });
 
 /** Absences d'un établissement : chef d'établissement (son établissement) ou inspecteur (sa circonscription). */
@@ -208,3 +224,14 @@ app.get("/audit", authentifie, async (c) => {
 /* ================================================================== Parcours : famille, apprenant, notes, inscription */
 
 app.route("/", parcours);
+app.route("/", pilotage);
+app.route("/", etablissement);
+app.route("/", enseignant);
+app.route("/", plateforme);
+app.route("/", complementsPilotage);
+app.route("/", complementsEtablissement);
+app.route("/", complementsEnseignant);
+app.route("/", complementsFamille);
+app.route("/", complementsGouvernance);
+app.route("/", administration);
+app.route("/", publique);

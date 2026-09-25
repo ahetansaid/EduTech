@@ -1,101 +1,68 @@
 "use client";
 
 import type { ResultatVerification } from "@beile/contracts";
-import { ArrowLeft, CircleAlert, CircleCheckBig, FileWarning, Ban, FlaskConical } from "lucide-react";
+import { ArrowLeft, Ban, CircleAlert, CircleCheckBig, FileWarning, FlaskConical, Info, RefreshCw, ScanLine, ShieldCheck, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, use, useEffect, useState } from "react";
-import { Card } from "@/components/ui/primitives";
-import { useThemeEspace } from "@/lib/useSombre";
+import { Suspense, use, useState } from "react";
+import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
+import { Button, Card, Squelette } from "@/components/ui/primitives";
+import { FORMAT_CERTIFICAT, NOM_EXAMEN, useVerification } from "@/lib/api/parcours";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
-import { empreinteCertificat } from "@beile/simulation/micro";
-import { maintenant, useHydratation, useMonde } from "@/lib/store";
+import { ErreurApi } from "@/lib/http";
+import { useThemeEspace } from "@/lib/useSombre";
 
-const MENTIONS = ["Passable", "Assez bien", "Bien", "Très bien"];
+type Statut = ResultatVerification["statut"];
 
-/** Service public : appel sans compte ni jeton, comme le ferait un employeur ou une université. */
-function useVerificationPublique(id: string, empreinte: string) {
-  const [r, setR] = useState<{ cle: string; resultat: ResultatVerification } | null>(null);
-  const cle = `${id}|${empreinte}`;
-  useEffect(() => {
-    const api = process.env.NEXT_PUBLIC_BEILE_API;
-    if (!api) return;
-    let actif = true;
-    fetch(`${api}/certificats/${encodeURIComponent(id)}/verification${empreinte ? `?e=${empreinte}` : ""}`)
-      .then((x) => (x.ok ? (x.json() as Promise<ResultatVerification>) : null))
-      .then((resultat) => { if (actif && resultat) setR({ cle, resultat }); })
-      .catch(() => undefined);
-    return () => { actif = false; };
-  }, [id, empreinte, cle]);
-  return r?.cle === cle ? r.resultat : null;
-}
+/* Mapping central des quatre verdicts. */
+const VERDICT: Record<Statut, { icone: LucideIcon; titre: string; couleur: string; fond: string; bord: string; conseil: string }> = {
+  authentique: { icone: CircleCheckBig, titre: "Diplôme authentique", couleur: "text-success", fond: "bg-success-bg", bord: "border-success/40", conseil: "Les informations ci-dessous proviennent du registre national : comparez-les au document présenté." },
+  altere: { icone: FileWarning, titre: "Document altéré", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/40", conseil: "Le diplôme existe, mais le document présenté a été modifié (nom, mention, note ou session). Ne l'acceptez pas ; demandez l'original ou le lien de vérification au titulaire." },
+  revoque: { icone: Ban, titre: "Diplôme révoqué", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/40", conseil: "L'autorité de certification a retiré ce diplôme. Il ne doit pas être accepté." },
+  introuvable: { icone: CircleAlert, titre: "Diplôme introuvable", couleur: "text-warning", fond: "bg-warning-bg", bord: "border-warning/40", conseil: "Aucun diplôme ne porte cet identifiant. Vérifiez la saisie ; si le document affirme le contraire, il est suspect." },
+};
+
+/** Simule un document retouché : un seul caractère de l'empreinte change, comme après une modification du contenu. */
+const empreinteModifiee = (e: string) => e.slice(0, -1) + (e.at(-1) === "0" ? "1" : "0");
 
 function Verification({ id }: { id: string }) {
-  const params = useSearchParams();
-  const monde = useMonde();
-  useHydratation();
   useThemeEspace(false);
+  const params = useSearchParams();
   const presente = (params.get("e") ?? "").toLowerCase().replace(/[^0-9a-f]/g, "").slice(0, 64);
-  const cert = monde.certificats.find((c) => c.id === id);
-  const titulaire = cert ? monde.apprenants.find((a) => a.id === cert.apprenantId) : undefined;
-  const nom = titulaire ? `${titulaire.prenoms} ${titulaire.nom}` : "";
-  const [falsification, setFalsification] = useState<string | null>(null);
+  const [falsifie, setFalsifie] = useState(false);
+  const empreinte = falsifie && presente ? empreinteModifiee(presente) : presente;
+  const formatValide = FORMAT_CERTIFICAT.test(id);
+  const q = useVerification(id, empreinte);
 
-  // Empreinte envoyée au service de vérification : celle du QR code, ou celle d'un document modifié (démonstration de fraude).
-  const empreinteEnvoyee = cert && falsification ? empreinteCertificat({ ...cert, mention: falsification }, nom).slice(0, 32) : presente;
-  const distant = useVerificationPublique(id, empreinteEnvoyee);
-
-  let resultat: ResultatVerification;
-  if (distant) resultat = distant;
-  else if (!cert || !titulaire) resultat = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant dans le registre des certifications." };
-  else {
-    // Empreinte du document présenté : celle du QR code, ou recalculée si l'on simule une modification du document.
-    const empreintePresentee = falsification ? empreinteCertificat({ ...cert, mention: falsification }, nom) : presente || cert.empreinte;
-    if (cert.revoque) resultat = { statut: "revoque", certificatId: cert.id, explication: "Ce diplôme a été révoqué par l'autorité de certification. Il ne doit pas être accepté." };
-    else if (!cert.empreinte.startsWith(empreintePresentee.slice(0, 32))) resultat = { statut: "altere", certificatId: cert.id, explication: "Le document présenté ne correspond pas au diplôme délivré : au moins une information (nom, mention, note, session) a été modifiée." };
-    else resultat = { statut: "authentique", certificatId: cert.id, titulaire: nom, examen: cert.examen, session: cert.session, mention: cert.mention, delivreLe: cert.delivreLe };
-  }
-
-  const style = {
-    authentique: { icone: CircleCheckBig, titre: "Diplôme authentique", couleur: "text-success", fond: "bg-success-bg", bord: "border-success/30" },
-    altere: { icone: FileWarning, titre: "Document altéré", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/30" },
-    revoque: { icone: Ban, titre: "Diplôme révoqué", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/30" },
-    introuvable: { icone: CircleAlert, titre: "Diplôme introuvable", couleur: "text-warning", fond: "bg-warning-bg", bord: "border-warning/30" },
-  }[resultat.statut];
+  const resultat: ResultatVerification | undefined = !formatValide ? { statut: "introuvable", explication: "Identifiant mal formé." } : q.data;
 
   return (
-    <div className="space-y-6">
-      <Link href="/verifier" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-ink"><ArrowLeft size={15} /> Nouvelle vérification</Link>
-      <Card className={cn("animate-slide-up border-2 text-center", style.bord)}>
-        <span className={cn("mx-auto flex h-16 w-16 items-center justify-center rounded-full", style.fond, style.couleur)}><style.icone size={32} aria-hidden /></span>
-        <h1 className={cn("mt-4 text-[26px] font-bold", style.couleur)}>{style.titre}</h1>
-        {resultat.statut === "authentique" ? (
-          <dl className="mx-auto mt-6 grid max-w-md gap-3 text-left text-[14px]">
-            {[["Titulaire", resultat.titulaire], ["Diplôme", resultat.examen === "CEP" ? "Certificat d'études primaires (CEP)" : resultat.examen], ["Session", resultat.session], ["Mention", resultat.mention], ["Délivré le", date(resultat.delivreLe)], ["Identifiant", resultat.certificatId]].map(([l, v]) => (
-              <div key={l} className="flex justify-between gap-4 border-b border-line/60 pb-2"><dt className="text-ink-muted">{l}</dt><dd className={cn("text-right font-semibold text-ink", l === "Identifiant" && "font-mono text-[12.5px]")}>{v}</dd></div>
-            ))}
-          </dl>
-        ) : (
-          <p className="mx-auto mt-3 max-w-md text-ink-2">{resultat.explication}</p>
-        )}
-        <p className="mt-6 text-[12px] text-ink-muted">Vérifié le {date(maintenant())} {distant ? "par l'API du registre national des certifications (base nationale)" : "auprès du registre national des certifications (démonstration)"}.</p>
-      </Card>
+    <div className="space-y-5">
+      <Link href="/verifier" className="inline-flex h-10 items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-ink"><ArrowLeft size={15} aria-hidden /> Nouvelle vérification</Link>
 
-      {cert && !cert.revoque && (
-        <Card>
+      {formatValide && q.isPending ? <EnCours id={id} /> : formatValide && q.isError ? (
+        <Card className="text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-ink-muted"><RefreshCw size={24} aria-hidden /></span>
+          <p className="mt-3 text-[17px] font-semibold text-ink">{q.error instanceof ErreurApi && q.error.statut === 429 ? "Trop de vérifications en peu de temps" : "Vérification impossible pour le moment"}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-ink-2">{q.error instanceof ErreurApi && q.error.statut === 429 ? "Par mesure de protection, le service limite le nombre de vérifications par minute. Réessayez dans un instant." : `${q.error.message}. Aucun verdict n'est donné sans réponse du registre.`}</p>
+          <Button className="mt-4" variante="secondaire" icone={RefreshCw} onClick={() => q.refetch()}>Réessayer</Button>
+        </Card>
+      ) : resultat && (
+        <Verdict r={resultat} id={id} presente={!!presente} maj={formatValide ? q.dataUpdatedAt : 0} />
+      )}
+
+      {formatValide && presente && resultat && (resultat.statut === "authentique" || falsifie) && (
+        <Card className="min-w-0">
           <div className="flex items-start gap-3">
             <FlaskConical size={20} className="mt-0.5 shrink-0 text-amber" aria-hidden />
-            <div className="flex-1">
-              <p className="text-[14px] font-semibold text-ink">Tester la détection de fraude</p>
-              <p className="mt-1 text-[13px] text-ink-2">Simulez un document dont la mention aurait été modifiée à la main. Son empreinte ne correspond plus à celle du diplôme délivré.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {MENTIONS.filter((m) => m !== cert.mention).map((m) => (
-                  <button key={m} onClick={() => setFalsification(m)} className={cn("rounded-md px-3 py-1.5 text-[12.5px] font-medium ring-1 ring-inset", falsification === m ? "bg-critical text-white ring-critical" : "ring-line hover:bg-surface-2")}>
-                    Mention falsifiée : « {m} »
-                  </button>
-                ))}
-                {falsification && <button onClick={() => setFalsification(null)} className="rounded-md px-3 py-1.5 text-[12.5px] font-medium text-blue hover:underline">Revenir au document original</button>}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-ink">Tester la détection de fraude</p>
+              <p className="mt-1 text-[13px] text-ink-2">Présentez au registre l&apos;empreinte d&apos;un document retouché (un seul caractère diffère) : la requête part réellement vers le service et le verdict change.</p>
+              <div className="mt-3">
+                {falsifie
+                  ? <Button taille="sm" variante="secondaire" onClick={() => setFalsifie(false)}>Revenir au document original</Button>
+                  : <Button taille="sm" variante="danger" onClick={() => setFalsifie(true)}>Présenter un document retouché</Button>}
               </div>
             </div>
           </div>
@@ -105,7 +72,76 @@ function Verification({ id }: { id: string }) {
   );
 }
 
+function Verdict({ r, id, presente, maj }: { r: ResultatVerification; id: string; presente: boolean; maj: number }) {
+  const v = VERDICT[r.statut];
+  const negatif = r.statut === "altere" || r.statut === "revoque";
+  return (
+    <motion.div key={`${r.statut}-${maj}`} initial={{ opacity: 0, y: 16, scale: 0.97 }} animate={negatif ? { opacity: 1, y: 0, scale: 1, x: [0, -8, 8, -5, 5, 0] } : { opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE, x: { delay: 0.35, duration: 0.45 } }}>
+      <Card className={cn("border-2 text-center", v.bord)}>
+        <div className="relative mx-auto h-20 w-20">
+          {r.statut === "authentique" && <motion.span className="absolute inset-0 rounded-full bg-success/25" initial={{ scale: 0.8, opacity: 0.8 }} animate={{ scale: 1.8, opacity: 0 }} transition={{ duration: 1.2, delay: 0.25, ease: "easeOut" }} aria-hidden />}
+          <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 380, damping: 16, delay: 0.1 }} className={cn("relative flex h-20 w-20 items-center justify-center rounded-full", v.fond, v.couleur)}>
+            <v.icone size={40} aria-hidden />
+          </motion.span>
+        </div>
+        <h1 className={cn("mt-4 text-[26px] font-bold leading-tight sm:text-[28px]", v.couleur)} aria-live="polite">{v.titre}</h1>
+        <p className="mx-auto mt-2 max-w-md text-sm text-ink-2">{r.statut === "authentique" ? v.conseil : r.explication}</p>
+
+        {r.statut === "authentique" ? (
+          <Cascade className="mx-auto mt-6 max-w-md space-y-0 text-left">
+            {([
+              ["Titulaire", r.titulaire],
+              ["Diplôme", `${NOM_EXAMEN[r.examen] ?? r.examen} (${r.examen})`],
+              ["Session", r.session],
+              ["Mention", r.mention],
+              ["Délivré le", date(r.delivreLe)],
+              ["Identifiant", r.certificatId],
+            ] as const).map(([l, val]) => (
+              <Element key={l} className="flex items-baseline justify-between gap-4 border-b border-line py-2.5 text-sm">
+                <span className="shrink-0 text-ink-muted">{l}</span>
+                <span className={cn("min-w-0 break-words text-right font-semibold text-ink", l === "Identifiant" && "font-mono text-[12.5px]")}>{val}</span>
+              </Element>
+            ))}
+          </Cascade>
+        ) : (
+          <p className={cn("mx-auto mt-4 max-w-md rounded-lg px-4 py-3 text-left text-[13px]", v.fond, v.couleur)}>{v.conseil}</p>
+        )}
+
+        {r.statut === "authentique" && !presente && (
+          <p className="mx-auto mt-4 flex max-w-md items-start gap-2 rounded-lg bg-info-bg px-3.5 py-2.5 text-left text-[12.5px] text-info">
+            <Info size={15} className="mt-0.5 shrink-0" aria-hidden />
+            Vérification par identifiant seul : le diplôme existe, mais l&apos;intégrité du document papier n&apos;a pas été contrôlée. Scannez son QR code pour la contrôler.
+          </p>
+        )}
+
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-ink-muted">
+          <ShieldCheck size={13} aria-hidden />
+          {maj ? `Réponse du registre national des certifications · ${new Date(maj).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}` : `Identifiant « ${id.slice(0, 40)} » non conforme : aucune requête envoyée`}
+        </p>
+      </Card>
+    </motion.div>
+  );
+}
+
+function EnCours({ id }: { id: string }) {
+  return (
+    <Card className="text-center" aria-busy>
+      <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
+        <motion.span className="absolute inset-0 rounded-full border-2 border-blue/30" animate={{ scale: [1, 1.25, 1], opacity: [0.8, 0, 0.8] }} transition={{ duration: 1.6, repeat: Infinity }} aria-hidden />
+        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-soft text-accent-ink"><ScanLine size={34} aria-hidden /></span>
+      </div>
+      <p className="mt-4 text-[17px] font-semibold text-ink">Interrogation du registre national…</p>
+      <p className="mt-1 font-mono text-xs text-ink-muted">{id}</p>
+      <div className="mx-auto mt-6 max-w-md space-y-2.5">{[0, 1, 2].map((i) => <Squelette key={i} className="h-6" />)}</div>
+    </Card>
+  );
+}
+
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  return <Suspense><Verification id={decodeURIComponent(id)} /></Suspense>;
+  return (
+    <EntreePage>
+      <Suspense fallback={<EnCours id={decodeURIComponent(id)} />}><Verification id={decodeURIComponent(id).toUpperCase()} /></Suspense>
+    </EntreePage>
+  );
 }

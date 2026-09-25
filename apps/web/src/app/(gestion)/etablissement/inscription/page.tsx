@@ -1,243 +1,332 @@
 "use client";
 
-import type { Apprenant, LienFamilial, NouvelEvenement, PersonneRegistre } from "@beile/contracts";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CircleUserRound, Database, Fingerprint, Search, ShieldCheck, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CircleUserRound, Database, FileWarning, Fingerprint, FolderOpen, Search, ShieldCheck, UserPlus } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives";
+import { useState, type FormEvent } from "react";
+import { AnimatePresence, EASE, EntreePage, IndicateurActif, motion } from "@/components/motion";
+import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
+import { jourCourant, useInscriptionMutation, useRechercheRegistre, useTableau, type ClasseTableau, type CorpsInscription, type PersonneRegistre, type ResultatInscription } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
-import { date } from "@/lib/format";
-import { ageAu, elevesClasse } from "@/lib/scolarite";
-import { ANNEE, ETAB_RONIERS } from "@beile/simulation/micro";
-import { situationApprenant } from "@beile/simulation/projections";
-import { maintenant, useDemo, useMonde, useProfil } from "@/lib/store";
-import { apiActive, appelApi, useLectureApi } from "@/lib/api";
+import { ErreurApi } from "@/lib/http";
+import { useEtablissementCourant } from "@/lib/session";
+import { ageEnAnnees, classeChamp, dateCourte, EtatErreur, HorsPerimetre, Info, LienBouton } from "../_composants";
 
 type Etape = 1 | 2 | 3 | 4;
-const ETAPES = ["Registre national", "Filiation", "Classe", "Confirmation"];
+const ETAPES = ["Registre national", "Identité et filiation", "Classe", "Confirmation"];
+interface SansActe { nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; responsable: string }
 
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+const masquerNpi = (npi: string) => `${npi.slice(0, 3)}••••${npi.slice(-3)}`;
 
-export default function Inscription() {
-  const monde = useMonde();
-  const enregistrer = useDemo((s) => s.enregistrer);
-  const ajouterApprenant = useDemo((s) => s.ajouterApprenant);
+export default function Page() {
+  const id = useEtablissementCourant();
+  return <EntreePage>{id ? <Inscription id={id} /> : <HorsPerimetre />}</EntreePage>;
+}
+
+function Inscription({ id }: { id: string }) {
   const [etape, setEtape] = useState<Etape>(1);
+  const [sens, setSens] = useState(1);
   const [nom, setNom] = useState("");
-  const [prenom, setPrenom] = useState("");
-  const [cherche, setCherche] = useState(false);
+  const [prenoms, setPrenoms] = useState("");
+  const [requete, setRequete] = useState<{ nom: string; prenoms: string } | null>(null);
   const [enfant, setEnfant] = useState<PersonneRegistre | null>(null);
-  const [sansActe, setSansActe] = useState<{ nom: string; prenoms: string; sexe: "F" | "M"; naissance: string; responsable: string } | null>(null);
+  const [sansActe, setSansActe] = useState<SansActe | null>(null);
   const [classeId, setClasseId] = useState<string | null>(null);
-  const [resultat, setResultat] = useState<{ apprenant: Apprenant; evts: string[] } | null>(null);
+  const [resultat, setResultat] = useState<ResultatInscription | null>(null);
 
-  const profil = useProfil();
-  const cheminRecherche = cherche && (nom.trim() || prenom.trim()) ? `/registre/personnes?nom=${encodeURIComponent(nom.trim())}&prenoms=${encodeURIComponent(prenom.trim())}` : null;
-  const distant = useLectureApi<{ npi: string; nom: string; prenoms: string; dateNaissance: string; sexe: "F" | "M"; parents: { nom: string; prenoms: string; sexe: "F" | "M" }[]; dejaInscrit: boolean }[]>(profil.id, cheminRecherche);
-  const [baseInscription, setBaseInscription] = useState<{ ok: boolean; texte: string } | null>(null);
-  const resultatsLocaux = useMemo(() => {
-    if (!cherche || (!nom.trim() && !prenom.trim())) return [];
-    return monde.registre.filter((p) => p.dateNaissance >= "2008-01-01" && (!nom.trim() || norm(p.nom).includes(norm(nom))) && (!prenom.trim() || norm(p.prenoms).includes(norm(prenom)))).slice(0, 8);
-  }, [monde, nom, prenom, cherche]);
+  const recherche = useRechercheRegistre(requete?.nom ?? "", requete?.prenoms ?? "", !!requete);
+  const tableau = useTableau(id);
+  const inscrire = useInscriptionMutation();
 
-  // Résultats unifiés : base nationale (API) ou registre de démonstration.
-  const resultats: PersonneRegistre[] = distant.donnees
-    ? distant.donnees.map((p) => ({ npi: p.npi, nom: p.nom, prenoms: p.prenoms, dateNaissance: p.dateNaissance, sexe: p.sexe, communeNaissanceId: "", parentsNpi: [] }))
-    : resultatsLocaux;
-  const parentsDistants = new Map((distant.donnees ?? []).map((p) => [p.npi, p.parents]));
-  const dejaInscrit = (npi: string) => {
-    const d = distant.donnees?.find((p) => p.npi === npi);
-    if (d) return d.dejaInscrit ? "un établissement (base nationale)" : null;
-    const a = monde.apprenants.find((x) => x.npi === npi);
-    if (!a) return null;
-    const s = situationApprenant(monde, monde.evenements, a.id);
-    return s.statut === "scolarise" ? monde.etablissements.find((e) => e.id === s.etablissementId)?.nom ?? "un établissement" : null;
+  const aller = (e: Etape) => { setSens(e > etape ? 1 : -1); setEtape(e); inscrire.reset(); };
+  const recommencer = () => { setResultat(null); setEnfant(null); setSansActe(null); setClasseId(null); setNom(""); setPrenoms(""); setRequete(null); setSens(-1); setEtape(1); inscrire.reset(); };
+
+  const identite = enfant
+    ? { nom: enfant.nom, prenoms: enfant.prenoms, sexe: enfant.sexe, dateNaissance: enfant.dateNaissance }
+    : sansActe ? { nom: sansActe.nom.trim().toUpperCase(), prenoms: sansActe.prenoms.trim(), sexe: sansActe.sexe, dateNaissance: sansActe.dateNaissance } : null;
+  const classe = tableau.data?.classes.find((c) => c.id === classeId) ?? null;
+
+  const erreursSansActe = sansActe ? {
+    nom: sansActe.nom.trim().length < 2 ? "Au moins 2 caractères." : null,
+    prenoms: sansActe.prenoms.trim().length < 2 ? "Au moins 2 caractères." : null,
+    dateNaissance: !/^\d{4}-\d{2}-\d{2}$/.test(sansActe.dateNaissance) ? "Date requise." : sansActe.dateNaissance > jourCourant() ? "Date dans le futur." : null,
+  } : null;
+  const sansActeValide = !!erreursSansActe && !Object.values(erreursSansActe).some(Boolean);
+
+  const chercher = (e: FormEvent) => {
+    e.preventDefault();
+    if (nom.trim().length + prenoms.trim().length < 2) return;
+    setRequete({ nom: nom.trim(), prenoms: prenoms.trim() });
   };
-  const parents: { npi: string; nom: string; prenoms: string; sexe: "F" | "M" }[] = enfant
-    ? parentsDistants.has(enfant.npi)
-      ? (parentsDistants.get(enfant.npi) ?? []).map((p, i) => ({ npi: `distant-${i}`, ...p }))
-      : monde.registre.filter((p) => enfant.parentsNpi.includes(p.npi))
-    : [];
-  const classes = monde.classes.filter((c) => c.etablissementId === ETAB_RONIERS).map((c) => ({ c, n: elevesClasse(monde, monde.evenements, c).length }));
-  const identite = enfant ? { nom: enfant.nom, prenoms: enfant.prenoms, sexe: enfant.sexe, naissance: enfant.dateNaissance } : sansActe ? { nom: sansActe.nom.toUpperCase(), prenoms: sansActe.prenoms, sexe: sansActe.sexe, naissance: sansActe.naissance } : null;
 
   const confirmer = () => {
-    if (!identite || !classeId) return;
-    const apprenant: Apprenant = {
-      id: `APP-${String(900000 + monde.apprenants.length + 1)}`,
-      npi: enfant?.npi ?? null,
-      statutIdentite: enfant ? "verifiee" : "regularisation_en_cours",
-      nom: identite.nom, prenoms: identite.prenoms, dateNaissance: identite.naissance, sexe: identite.sexe, besoinsParticuliers: false,
-    };
-    const liens: LienFamilial[] = parents.map((p) => ({ responsableNpi: p.npi, apprenantId: apprenant.id, nature: "parent", verifie: true }));
-    ajouterApprenant(apprenant, liens, null);
-    const base = { survenuLe: maintenant(), auteurId: "p-directeur", source: "beile" as const, etablissementId: ETAB_RONIERS };
-    const evts: NouvelEvenement[] = [{ type: "INSCRIPTION", apprenantId: apprenant.id, classeId, anneeScolaire: ANNEE, ...base }];
-    if (!enfant) evts.push({ type: "REGULARISATION_IDENTITE_DEMANDEE", apprenantId: apprenant.id, motif: `Absence d'acte de naissance — responsable déclaré : ${sansActe?.responsable || "non renseigné"}`, ...base });
-    const crees = enregistrer(evts);
-    setResultat({ apprenant, evts: crees.map((e) => `${e.id} · ${e.type}`) });
-    if (apiActive) {
-      const corpsApi = enfant ? { classeId, npi: enfant.npi } : { classeId, sansActe: { nom: identite.nom, prenoms: identite.prenoms, sexe: identite.sexe, dateNaissance: identite.naissance, responsable: sansActe?.responsable ?? "" } };
-      appelApi<{ apprenantId?: string; evenements?: string[]; erreur?: string }>(profil.id, "POST", "/inscriptions", corpsApi)
-        .then((r) => setBaseInscription(r.statut === 201 ? { ok: true, texte: `inscription enregistrée sous l'identifiant ${r.donnees.apprenantId} (${r.donnees.evenements?.length ?? 0} événement(s))` } : { ok: false, texte: r.donnees.erreur ?? `Refus ${r.statut}` }))
-        .catch((e: Error) => setBaseInscription({ ok: false, texte: e.message }));
-    }
+    if (!classeId || !identite) return;
+    const corps: CorpsInscription = enfant ? { classeId, npi: enfant.npi } : { classeId, sansActe: { ...identite, responsable: sansActe!.responsable.trim() } };
+    inscrire.mutate(corps, { onSuccess: (r) => setResultat(r) });
   };
 
-  if (resultat) {
-    const a = resultat.apprenant;
-    return (
-      <div className="mx-auto max-w-2xl space-y-6">
-        <Card className="animate-slide-up text-center">
-          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success-bg text-success"><Check size={28} /></span>
-          <h1 className="mt-4 text-[24px] font-bold text-ink">{a.prenoms} {a.nom} est inscrit·e</h1>
-          <p className="mt-1 text-ink-2">Identifiant éducatif <span className="font-mono font-semibold text-ink">{a.id}</span> — stable d'un établissement et d'un cycle à l'autre.</p>
-          {a.statutIdentite === "regularisation_en_cours" && (
-            <p className="mx-auto mt-4 max-w-md rounded-md bg-warning-bg px-4 py-3 text-[13px] text-warning">L'enfant n'a pas été exclu faute d'acte de naissance : l'inscription est effective et une régularisation a été transmise à l'agence d'identification.</p>
-          )}
-          <div className="mx-auto mt-5 max-w-md text-left">
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">Événements inscrits au registre</p>
-            <ul className="mt-2 space-y-1 font-mono text-[12px] text-ink-2">{resultat.evts.map((e) => <li key={e}>{e}</li>)}</ul>
-            {baseInscription && <p className={cn("mt-3 rounded-md px-3 py-2 text-[12.5px] font-medium", baseInscription.ok ? "bg-info-bg text-info" : "bg-critical-bg text-critical")}>Base nationale : {baseInscription.texte}</p>}
-            <p className="mt-3 text-[12.5px] text-ink-muted">Ils alimentent immédiatement les effectifs de la classe, le passeport éducatif, la notification aux parents vérifiés et les indicateurs territoriaux.</p>
-          </div>
-          <div className="mt-6 flex justify-center gap-2">
-            <Link href="/etablissement"><Button variante="secondaire">Tableau de bord</Button></Link>
-            <Button icone={UserPlus} onClick={() => { setResultat(null); setEtape(1); setEnfant(null); setSansActe(null); setClasseId(null); setNom(""); setPrenom(""); setCherche(false); }}>Nouvelle inscription</Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+  if (resultat && identite) return <Succes r={resultat} identite={identite} classe={classe} onNouveau={recommencer} />;
+
+  const erreur = inscrire.error instanceof ErreurApi ? inscrire.error : null;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <Link href="/etablissement" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-ink"><ArrowLeft size={15} /> Mon établissement</Link>
-      <PageHeader surtitre="Processus P4 · P6" titre="Inscrire un apprenant" sousTitre="Le système éducatif ne crée jamais une identité : il interroge le registre national, puis rattache l'apprenant." />
+    <div className="mx-auto max-w-4xl space-y-5">
+      <Link href="/etablissement" className="inline-flex min-h-10 items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-ink"><ArrowLeft size={15} aria-hidden /> Mon établissement</Link>
+      <PageHeader surtitre="Processus P4 · P6" titre="Inscrire un apprenant" sousTitre="Le système éducatif ne crée jamais une identité : il interroge le registre national, puis rattache l'apprenant à une classe." />
 
-      <ol className="grid grid-cols-4 gap-2" aria-label="Étapes">
+      {/* Étapes */}
+      <ol data-guide="inscription-etapes" className="grid grid-cols-4 gap-1.5 rounded-lg border border-line/70 bg-surface-2/60 p-1" aria-label="Étapes">
         {ETAPES.map((l, i) => {
           const n = (i + 1) as Etape;
+          const faite = n < etape;
           return (
-            <li key={l} className={cn("rounded-md px-3 py-2 text-[12.5px] font-medium", n === etape ? "bg-navy text-white dark:bg-blue dark:text-navy-deep" : n < etape ? "bg-success-bg text-success" : "bg-surface-2 text-ink-muted")} aria-current={n === etape ? "step" : undefined}>
-              <span className="tabular">{n}.</span> {l}
+            <li key={l} aria-current={n === etape ? "step" : undefined} className="relative">
+              {n === etape && <IndicateurActif id="etape-inscription" className="absolute inset-0 rounded-md bg-surface shadow-soft" />}
+              <span className={cn("relative flex min-h-10 items-center justify-center gap-2 rounded-md px-2 py-2 text-center text-[12.5px] font-medium", n === etape ? "text-ink" : faite ? "text-success" : "text-ink-muted")}>
+                <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold", n === etape ? "bg-navy text-white dark:bg-blue dark:text-navy-deep" : faite ? "bg-success text-white" : "bg-surface text-ink-muted ring-1 ring-line")}>
+                  {faite ? <Check size={12} aria-hidden /> : n}
+                </span>
+                <span className="hidden sm:inline">{l}</span>
+              </span>
             </li>
           );
         })}
       </ol>
+      <p className="text-[13px] font-medium text-ink-2 sm:hidden">Étape {etape} sur 4 · {ETAPES[etape - 1]}</p>
 
-      {etape === 1 && (
-        <Card>
-          <form onSubmit={(e) => { e.preventDefault(); setCherche(true); }} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <label className="block"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Nom</span>
-              <input value={nom} onChange={(e) => { setNom(e.target.value.slice(0, 40)); setCherche(false); }} className="h-11 w-full rounded-md border border-line bg-surface px-3 text-[14px] uppercase" placeholder="WOROU" /></label>
-            <label className="block"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Prénom(s)</span>
-              <input value={prenom} onChange={(e) => { setPrenom(e.target.value.slice(0, 40)); setCherche(false); }} className="h-11 w-full rounded-md border border-line bg-surface px-3 text-[14px]" placeholder="Sidonie" /></label>
-            <Button type="submit" className="self-end" taille="lg" icone={Search} disabled={!nom.trim() && !prenom.trim()}>Interroger le registre</Button>
-          </form>
-          <p className="mt-2 flex items-center gap-1.5 text-[12px] text-ink-muted"><Database size={13} /> Requête transmise via la plateforme nationale d'interopérabilité (simulée). Exemples : WOROU Sidonie, HOUESSOU Landry, ou un nom absent du registre.</p>
-          {cherche && (
-            <div className="mt-5 animate-fade-in">
-              {resultats.length > 0 ? (
-                <ul className="divide-y divide-line/60 rounded-lg border border-line/70">
-                  {resultats.map((p) => {
-                    const deja = dejaInscrit(p.npi);
-                    return (
-                      <li key={p.npi} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                        <CircleUserRound size={20} className="text-ink-muted" aria-hidden />
+      <AnimatePresence mode="wait" custom={sens} initial={false}>
+        <motion.div key={etape} custom={sens}
+          initial={{ opacity: 0, x: sens * 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: sens * -24 }}
+          transition={{ duration: 0.28, ease: EASE }}>
+
+          {etape === 1 && (
+            <Card data-guide="inscription-recherche" className="space-y-4">
+              <form onSubmit={chercher} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Nom</span>
+                  <input value={nom} onChange={(e) => setNom(e.target.value.slice(0, 40))} className={cn(classeChamp, "uppercase")} placeholder="WOROU" autoComplete="off" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Prénom(s)</span>
+                  <input value={prenoms} onChange={(e) => setPrenoms(e.target.value.slice(0, 40))} className={classeChamp} placeholder="Sidonie" autoComplete="off" />
+                </label>
+                <Button type="submit" className="self-end" icone={Search} chargement={recherche.isFetching} disabled={nom.trim().length + prenoms.trim().length < 2}>Interroger le registre</Button>
+              </form>
+              <p className="flex items-start gap-1.5 text-xs text-ink-muted"><Database size={13} className="mt-0.5 shrink-0" aria-hidden /> Requête transmise au registre national des personnes via la plateforme d'interopérabilité ; seuls les enfants en âge scolaire sont renvoyés. Chaque recherche est journalisée.</p>
+
+              {requete && (
+                recherche.isPending ? (
+                  <div className="space-y-2">{Array.from({ length: 3 }, (_, i) => <Squelette key={i} className="h-16" />)}</div>
+                ) : recherche.isError ? (
+                  <EtatErreur erreur={recherche.error} reessayer={() => recherche.refetch()} />
+                ) : recherche.data.length > 0 ? (
+                  <ul className="divide-y divide-line/60 overflow-hidden rounded-lg border border-line/70">
+                    {recherche.data.map((p, i) => (
+                      <motion.li key={p.npi} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 12) * 0.035 }}
+                        className="flex flex-wrap items-center gap-3 px-4 py-3">
+                        <CircleUserRound size={22} className="shrink-0 text-ink-muted" aria-hidden />
                         <div className="min-w-0 flex-1">
-                          <p className="text-[14px] font-semibold text-ink">{p.nom} {p.prenoms}</p>
-                          <p className="text-[12.5px] text-ink-muted">Né·e le {date(p.dateNaissance)} ({ageAu(p.dateNaissance)} ans) · NPI {p.npi.slice(0, 3)}••••{p.npi.slice(-3)}</p>
+                          <p className="text-sm font-medium text-ink">{p.nom} {p.prenoms}</p>
+                          <p className="text-xs text-ink-muted">Né·e le {dateCourte(p.dateNaissance)} ({ageEnAnnees(p.dateNaissance, jourCourant())} ans) · NPI {masquerNpi(p.npi)}</p>
                         </div>
-                        {deja ? <Badge ton="avertissement" icone={AlertTriangle}>Déjà inscrit·e : {deja}</Badge> : (
-                          <Button taille="sm" icone={ArrowRight} onClick={() => { setEnfant(p); setSansActe(null); setEtape(2); }}>Sélectionner</Button>
+                        {p.dejaInscrit ? (
+                          <Badge ton="avertissement" icone={AlertTriangle}>Déjà inscrit·e — procéder par transfert</Badge>
+                        ) : (
+                          <Button taille="sm" icone={ArrowRight} className="w-full sm:w-auto" onClick={() => { setEnfant(p); setSansActe(null); aller(2); }}>Sélectionner</Button>
                         )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="rounded-lg border border-warning/30 bg-warning-bg/60 p-4">
-                  <p className="text-[14px] font-semibold text-warning">Aucune personne correspondante au registre national</p>
-                  <p className="mt-1 text-[13px] text-ink-2">Tous les enfants ne disposent pas d'un acte d'état civil. Refuser l'inscription exclurait les plus vulnérables : la règle est d'inscrire, signaler et régulariser.</p>
-                  <Button className="mt-3" variante="secondaire" taille="sm" onClick={() => { setSansActe({ nom, prenoms: prenom, sexe: "F", naissance: "2013-06-01", responsable: "" }); setEnfant(null); setEtape(2); }}>Inscrire avec procédure de régularisation</Button>
-                </div>
+                      </motion.li>
+                    ))}
+                  </ul>
+                ) : (
+                  <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-warning/30 bg-warning-bg/60 p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-warning"><FileWarning size={16} aria-hidden /> Aucune personne correspondante au registre national</p>
+                    <p className="mt-1 text-[13px] text-ink-2">Tous les enfants ne disposent pas d'un acte d'état civil. Refuser l'inscription exclurait les plus vulnérables : la règle est d'inscrire, signaler et régulariser.</p>
+                    <Button className="mt-3" variante="secondaire" taille="sm" onClick={() => { setSansActe({ nom: requete.nom, prenoms: requete.prenoms, sexe: "F", dateNaissance: "", responsable: "" }); setEnfant(null); aller(2); }}>
+                      Inscrire avec procédure de régularisation
+                    </Button>
+                  </motion.div>
+                )
               )}
-            </div>
+            </Card>
           )}
-        </Card>
-      )}
 
-      {etape === 2 && (
-        <Card>
-          {enfant ? (
-            <>
-              <div className="flex items-center gap-2"><Badge ton="succes" icone={Fingerprint}>Identité vérifiée au registre national</Badge></div>
-              <p className="mt-3 font-display text-[20px] font-bold text-ink">{enfant.nom} {enfant.prenoms}</p>
-              <p className="text-[13px] text-ink-muted">Né·e le {date(enfant.dateNaissance)} · sexe {enfant.sexe === "F" ? "féminin" : "masculin"}</p>
-              <p className="mt-5 text-[13px] font-semibold text-ink-2">Responsables légaux (lien de filiation issu du registre, non déclaratif)</p>
-              <ul className="mt-2 space-y-2">
-                {parents.map((p) => (
-                  <li key={p.npi} className="flex items-center gap-3 rounded-md bg-surface-2/70 px-3 py-2.5 text-[13.5px]"><ShieldCheck size={16} className="text-success" /> <span className="flex-1 text-ink">{p.prenoms} {p.nom}</span><Badge>{p.sexe === "F" ? "Mère" : "Père"}</Badge></li>
-                ))}
-              </ul>
-              <p className="mt-3 text-[12.5px] text-ink-muted">Ces responsables recevront l'accès à l'espace famille. Aucun autre adulte ne peut se déclarer parent.</p>
-            </>
-          ) : sansActe && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <p className="sm:col-span-2 rounded-md bg-warning-bg px-3 py-2 text-[13px] text-warning">Identité déclarative, en attente de régularisation. Le lien familial ne sera vérifié qu'après enregistrement à l'état civil.</p>
-              <label className="block"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Nom</span><input value={sansActe.nom} onChange={(e) => setSansActe({ ...sansActe, nom: e.target.value.slice(0, 40) })} className="h-11 w-full rounded-md border border-line bg-surface px-3 uppercase" /></label>
-              <label className="block"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Prénom(s)</span><input value={sansActe.prenoms} onChange={(e) => setSansActe({ ...sansActe, prenoms: e.target.value.slice(0, 40) })} className="h-11 w-full rounded-md border border-line bg-surface px-3" /></label>
-              <label className="block"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Date de naissance déclarée</span><input type="date" value={sansActe.naissance} onChange={(e) => setSansActe({ ...sansActe, naissance: e.target.value })} className="h-11 w-full rounded-md border border-line bg-surface px-3" /></label>
-              <label className="block"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Sexe</span><select value={sansActe.sexe} onChange={(e) => setSansActe({ ...sansActe, sexe: e.target.value as "F" | "M" })} className="h-11 w-full rounded-md border border-line bg-surface px-3"><option value="F">Féminin</option><option value="M">Masculin</option></select></label>
-              <label className="block sm:col-span-2"><span className="mb-1 block text-[12.5px] font-medium text-ink-2">Responsable déclaré</span><input value={sansActe.responsable} onChange={(e) => setSansActe({ ...sansActe, responsable: e.target.value.slice(0, 60) })} className="h-11 w-full rounded-md border border-line bg-surface px-3" placeholder="Nom et prénom du parent ou tuteur" /></label>
-            </div>
+          {etape === 2 && (
+            <Card className="space-y-4">
+              {enfant ? (
+                <>
+                  <Badge ton="succes" icone={Fingerprint}>Identité vérifiée au registre national</Badge>
+                  <div>
+                    <p className="font-display text-[20px] font-bold text-ink">{enfant.nom} {enfant.prenoms}</p>
+                    <p className="text-[13px] text-ink-muted">Né·e le {dateCourte(enfant.dateNaissance)} · {enfant.sexe === "F" ? "féminin" : "masculin"} · NPI {masquerNpi(enfant.npi)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-ink">Responsables légaux</p>
+                    <p className="text-xs text-ink-muted">Lien de filiation issu du registre, non déclaratif.</p>
+                    {enfant.parents.length ? (
+                      <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {enfant.parents.map((p) => (
+                          <li key={`${p.nom}-${p.prenoms}`} className="flex items-center gap-3 rounded-md bg-surface-2/70 px-3 py-2.5 text-sm">
+                            <ShieldCheck size={16} className="shrink-0 text-success" aria-hidden />
+                            <span className="min-w-0 flex-1 truncate text-ink">{p.prenoms} {p.nom}</span>
+                            <Badge>{p.sexe === "F" ? "Mère" : "Père"}</Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="mt-2 rounded-md bg-surface-2/70 px-3 py-2.5 text-[13px] text-ink-2">Aucun parent rattaché au registre.</p>}
+                    <p className="mt-2 text-xs text-ink-muted">Ces responsables recevront l'accès à l'espace famille. Aucun autre adulte ne peut se déclarer parent.</p>
+                  </div>
+                </>
+              ) : sansActe && erreursSansActe && (
+                <>
+                  <p className="rounded-md bg-warning-bg px-3 py-2.5 text-[13px] text-warning">Identité déclarative, en attente de régularisation. Le lien familial ne sera vérifié qu'après enregistrement à l'état civil.</p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Champ libelle="Nom" erreur={sansActe.nom ? erreursSansActe.nom : null}>
+                      <input value={sansActe.nom} onChange={(e) => setSansActe({ ...sansActe, nom: e.target.value.slice(0, 40) })} className={cn(classeChamp, "uppercase")} />
+                    </Champ>
+                    <Champ libelle="Prénom(s)" erreur={sansActe.prenoms ? erreursSansActe.prenoms : null}>
+                      <input value={sansActe.prenoms} onChange={(e) => setSansActe({ ...sansActe, prenoms: e.target.value.slice(0, 60) })} className={classeChamp} />
+                    </Champ>
+                    <Champ libelle="Date de naissance déclarée" erreur={sansActe.dateNaissance ? erreursSansActe.dateNaissance : null}>
+                      <input type="date" value={sansActe.dateNaissance} max={jourCourant()} onChange={(e) => setSansActe({ ...sansActe, dateNaissance: e.target.value })} className={classeChamp} />
+                    </Champ>
+                    <Champ libelle="Sexe">
+                      <select value={sansActe.sexe} onChange={(e) => setSansActe({ ...sansActe, sexe: e.target.value as "F" | "M" })} className={classeChamp}>
+                        <option value="F">Féminin</option><option value="M">Masculin</option>
+                      </select>
+                    </Champ>
+                    <Champ libelle="Responsable déclaré" className="sm:col-span-2">
+                      <input value={sansActe.responsable} onChange={(e) => setSansActe({ ...sansActe, responsable: e.target.value.slice(0, 80) })} className={classeChamp} placeholder="Nom et prénom du parent ou tuteur" />
+                    </Champ>
+                  </div>
+                </>
+              )}
+              <div className="flex justify-end gap-3 border-t border-line/60 pt-4">
+                <Button variante="secondaire" onClick={() => aller(1)}>Retour</Button>
+                <Button icone={ArrowRight} disabled={!!sansActe && !sansActeValide} onClick={() => aller(3)}>Choisir la classe</Button>
+              </div>
+            </Card>
           )}
-          <div className="mt-6 flex justify-between">
-            <Button variante="fantome" onClick={() => setEtape(1)}>Retour</Button>
-            <Button icone={ArrowRight} disabled={!!sansActe && (!sansActe.nom.trim() || !sansActe.prenoms.trim())} onClick={() => setEtape(3)}>Choisir la classe</Button>
-          </div>
-        </Card>
-      )}
 
-      {etape === 3 && (
-        <Card>
-          <p className="text-[14px] font-semibold text-ink">Classe d'accueil — année {ANNEE}</p>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {classes.map(({ c, n }) => {
-              const pleine = n >= c.capacite;
-              return (
-                <li key={c.id}>
-                  <button disabled={pleine} onClick={() => setClasseId(c.id)} aria-pressed={classeId === c.id}
-                    className={cn("flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition", classeId === c.id ? "border-blue ring-2 ring-blue/30" : "border-line/70 hover:bg-surface-2", pleine && "cursor-not-allowed opacity-60")}>
-                    <span className="flex-1"><span className="block text-[15px] font-semibold text-ink">{c.libelle}</span><span className="text-[12.5px] text-ink-muted">{n}/{c.capacite} élèves</span></span>
-                    {pleine ? <Badge ton="critique">Complète</Badge> : <Badge ton="succes">{c.capacite - n} places</Badge>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="mt-6 flex justify-between">
-            <Button variante="fantome" onClick={() => setEtape(2)}>Retour</Button>
-            <Button icone={ArrowRight} disabled={!classeId} onClick={() => setEtape(4)}>Vérifier</Button>
-          </div>
-        </Card>
-      )}
+          {etape === 3 && (
+            <Card className="space-y-4">
+              <CardHeader className="mb-0" title="Classe d'accueil" subtitle="Effectifs lus en temps réel dans la projection du registre ; une classe complète ne peut pas recevoir d'inscription." />
+              {tableau.isPending ? (
+                <div className="grid gap-2 sm:grid-cols-2">{Array.from({ length: 4 }, (_, i) => <Squelette key={i} className="h-16" />)}</div>
+              ) : tableau.isError ? (
+                <EtatErreur erreur={tableau.error} reessayer={() => tableau.refetch()} />
+              ) : tableau.data.classes.length === 0 ? (
+                <EtatVide icone={FolderOpen} titre="Aucune classe ouverte" />
+              ) : (
+                <ul className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Classe d'accueil">
+                  {tableau.data.classes.map((c) => <ChoixClasse key={c.id} c={c} actif={classeId === c.id} onChoisir={() => setClasseId(c.id)} />)}
+                </ul>
+              )}
+              <div className="flex justify-end gap-3 border-t border-line/60 pt-4">
+                <Button variante="secondaire" onClick={() => aller(2)}>Retour</Button>
+                <Button icone={ArrowRight} disabled={!classe || classe.effectif >= classe.capacite} onClick={() => aller(4)}>Vérifier</Button>
+              </div>
+            </Card>
+          )}
 
-      {etape === 4 && identite && (
-        <Card>
-          <p className="text-[14px] font-semibold text-ink">Récapitulatif</p>
-          <dl className="mt-3 grid gap-2 text-[14px] sm:grid-cols-2">
-            {[["Apprenant", `${identite.nom} ${identite.prenoms}`], ["Identité", enfant ? "Vérifiée (registre national)" : "Régularisation à engager"], ["Classe", classes.find((x) => x.c.id === classeId)?.c.libelle ?? ""], ["Année scolaire", ANNEE], ["Responsables", enfant ? parents.map((p) => `${p.prenoms} ${p.nom}`).join(", ") : sansActe?.responsable || "—"], ["Établissement", "CEG Les Rôniers"]].map(([l, v]) => (
-              <div key={l} className="rounded-md bg-surface-2/60 px-3 py-2"><dt className="text-[12px] text-ink-muted">{l}</dt><dd className="font-medium text-ink">{v}</dd></div>
-            ))}
-          </dl>
-          <div className="mt-6 flex justify-between">
-            <Button variante="fantome" onClick={() => setEtape(3)}>Retour</Button>
-            <Button variante="valider" icone={Check} onClick={confirmer}>Confirmer l'inscription</Button>
+          {etape === 4 && identite && (
+            <Card className="space-y-4">
+              <CardHeader className="mb-0" title="Récapitulatif" subtitle="L'inscription crée l'identifiant éducatif et inscrit les événements au registre, en une seule transaction." />
+              <dl className="grid gap-2 sm:grid-cols-2">
+                <Info libelle="Apprenant">{identite.nom} {identite.prenoms}</Info>
+                <Info libelle="Identité">{enfant ? "Vérifiée (registre national)" : "Régularisation à engager"}</Info>
+                <Info libelle="Classe">{classe ? `${classe.libelle} · ${classe.effectif}/${classe.capacite} élèves` : "—"}</Info>
+                <Info libelle="Naissance">{identite.dateNaissance ? dateCourte(identite.dateNaissance) : "—"}</Info>
+                <Info libelle="Responsables">{enfant ? (enfant.parents.map((p) => `${p.prenoms} ${p.nom}`).join(", ") || "—") : sansActe?.responsable.trim() || "Non renseigné"}</Info>
+                <Info libelle="Établissement">{tableau.data?.etablissement.nom ?? "—"}</Info>
+              </dl>
+
+              <AnimatePresence>
+                {erreur && (
+                  <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} role="alert"
+                    className="rounded-lg border border-critical/30 bg-critical-bg/60 p-4">
+                    <p className="text-sm font-semibold text-critical">
+                      {erreur.statut === 409 ? (/complète/i.test(erreur.message) ? "Classe complète" : "Déjà inscrit·e") : erreur.statut === 422 ? "Données non conformes" : erreur.statut === 403 ? "Inscription refusée" : erreur.statut === 404 ? "Personne introuvable" : "Inscription non enregistrée"}
+                    </p>
+                    <p className="mt-1 text-[13px] text-ink-2">{erreur.message}</p>
+                    {erreur.statut === 409 && (
+                      /complète/i.test(erreur.message)
+                        ? <Button className="mt-3" variante="secondaire" taille="sm" onClick={() => { setClasseId(null); aller(3); }}>Choisir une autre classe</Button>
+                        : <Button className="mt-3" variante="secondaire" taille="sm" onClick={() => aller(1)}>Revenir à la recherche</Button>
+                    )}
+                    {erreur.statut === 422 && !enfant && <Button className="mt-3" variante="secondaire" taille="sm" onClick={() => aller(2)}>Corriger l'identité</Button>}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex justify-end gap-3 border-t border-line/60 pt-4">
+                <Button variante="secondaire" onClick={() => aller(3)} disabled={inscrire.isPending}>Retour</Button>
+                <Button variante="valider" icone={Check} chargement={inscrire.isPending} onClick={confirmer}>Confirmer l'inscription</Button>
+              </div>
+            </Card>
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Champ({ libelle, erreur, className, children }: { libelle: string; erreur?: string | null; className?: string; children: React.ReactNode }) {
+  return (
+    <label className={cn("block", className)}>
+      <span className="mb-1.5 block text-sm font-medium text-ink">{libelle}</span>
+      {children}
+      {erreur && <span className="mt-1 block text-xs text-critical">{erreur}</span>}
+    </label>
+  );
+}
+
+function ChoixClasse({ c, actif, onChoisir }: { c: ClasseTableau; actif: boolean; onChoisir: () => void }) {
+  const places = c.capacite - c.effectif;
+  const pleine = places <= 0;
+  return (
+    <li>
+      <button type="button" role="radio" aria-checked={actif} disabled={pleine} onClick={onChoisir}
+        className={cn("flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-all active:scale-[0.99]",
+          actif ? "border-blue bg-blue-soft/40 ring-4 ring-blue/15" : "border-line/70 hover:-translate-y-0.5 hover:bg-surface-2/60 hover:shadow-soft", pleine && "cursor-not-allowed opacity-55 hover:translate-y-0")}>
+        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2", actif ? "border-blue bg-blue text-white" : "border-line")}>{actif && <Check size={12} aria-hidden />}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold text-ink">{c.libelle}</span>
+          <span className="text-xs text-ink-muted">{c.effectif}/{c.capacite} élèves{c.professeurPrincipal ? ` · PP ${c.professeurPrincipal}` : ""}</span>
+        </span>
+        {pleine ? <Badge ton="critique">Complète</Badge> : <Badge ton={places <= 3 ? "avertissement" : "succes"}>{places} place{places > 1 ? "s" : ""}</Badge>}
+      </button>
+    </li>
+  );
+}
+
+function Succes({ r, identite, classe, onNouveau }: { r: ResultatInscription; identite: { nom: string; prenoms: string }; classe: ClasseTableau | null; onNouveau: () => void }) {
+  return (
+    <div className="mx-auto max-w-2xl space-y-5">
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.45, ease: EASE }}>
+        <Card className="text-center">
+          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 18, delay: 0.15 }}
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success-bg text-success"><Check size={28} aria-hidden /></motion.span>
+          <h1 className="mt-4 text-[22px] font-bold text-ink sm:text-[24px]">{identite.prenoms} {identite.nom} est inscrit·e{classe ? ` en ${classe.libelle}` : ""}</h1>
+          <p className="mt-1 text-ink-2">Identifiant éducatif <span className="font-mono font-semibold text-ink">{r.apprenantId}</span> — stable d'un établissement et d'un cycle à l'autre.</p>
+          {r.statutIdentite === "regularisation_en_cours" && (
+            <p className="mx-auto mt-4 max-w-md rounded-md bg-warning-bg px-4 py-3 text-[13px] text-warning">L'enfant n'a pas été exclu faute d'acte de naissance : l'inscription est effective et une demande de régularisation a été transmise.</p>
+          )}
+          <div className="mx-auto mt-5 max-w-md text-left">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Événements inscrits au registre</p>
+            <ul className="mt-2 space-y-1">
+              {r.evenements.map((e, i) => (
+                <motion.li key={e} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.08 }} className="flex items-center gap-2 font-mono text-[12px] text-ink-2">
+                  <Check size={12} className="text-success" aria-hidden /> <span className="truncate">{e}</span>
+                </motion.li>
+              ))}
+            </ul>
+            <p className="mt-3 text-[12.5px] text-ink-muted">Ils alimentent immédiatement l'effectif de la classe, le passeport éducatif, la notification aux parents vérifiés et les indicateurs territoriaux.</p>
+          </div>
+          <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+            <LienBouton href={`/etablissement/eleves/${r.apprenantId}`} variante="secondaire" icone={FolderOpen}>Ouvrir le dossier</LienBouton>
+            <Button icone={UserPlus} onClick={onNouveau}>Nouvelle inscription</Button>
           </div>
         </Card>
-      )}
+      </motion.div>
     </div>
   );
 }

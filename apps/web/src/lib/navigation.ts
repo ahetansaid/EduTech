@@ -1,7 +1,7 @@
 import type { Role } from "@beile/contracts";
 import {
   Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, Database, FileSearch, GitMerge, GraduationCap,
-  Landmark, Map, MessageSquareText, Network, ScrollText, ShieldCheck, Sparkles, UserPlus, Users, type LucideIcon,
+  KeyRound, Landmark, Map, MessageSquareText, Network, ScrollText, ShieldCheck, Sparkles, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
 export interface EntreeNav {
@@ -34,27 +34,16 @@ export const NAVIGATION: EntreeNav[] = [
 
   { href: "/plateforme/dictionnaire", libelle: "Dictionnaire national", icone: Database, roles: ["administration_centrale", "chercheur", "direction_departementale"], groupe: "Données", processus: "P1 · P13" },
   { href: "/plateforme/qualite", libelle: "Qualité des données", icone: Activity, roles: ["administration_centrale", "direction_departementale"], groupe: "Données", processus: "P13" },
-  { href: "/plateforme/interoperabilite", libelle: "Interopérabilité", icone: Network, roles: ["administration_centrale"], groupe: "Données", processus: "P12" },
+  { href: "/plateforme/interoperabilite", libelle: "Interopérabilité", icone: Network, roles: ["administration_centrale", "administrateur", "dpo"], groupe: "Données", processus: "P12" },
 
   { href: "/audit", libelle: "Journal d'audit", icone: ScrollText, roles: ["dpo"], groupe: "Conformité", processus: "P11 · P14" },
   { href: "/audit/traitements", libelle: "Registre des traitements", icone: ShieldCheck, roles: ["dpo"], groupe: "Conformité", processus: "P14" },
-  { href: "/plateforme/etat", libelle: "État du service", icone: FileSearch, roles: ["administration_centrale", "dpo"], groupe: "Conformité", processus: "P15" },
+  { href: "/plateforme/etat", libelle: "État du service", icone: FileSearch, roles: ["administration_centrale", "dpo", "administrateur"], groupe: "Conformité", processus: "P15" },
+
+  { href: "/administration", libelle: "Comptes et accès", icone: KeyRound, roles: ["administrateur"], groupe: "Administration" },
 ];
 
 export const ENTREE_PUBLIQUE = { href: "/verifier", libelle: "Vérifier un diplôme", icone: MessageSquareText };
-
-/** Page d'accueil de chaque profil. */
-export const ACCUEIL_PROFIL: Record<string, string> = {
-  "p-apprenant": "/apprenant",
-  "p-parent": "/famille",
-  "p-enseignant": "/enseignant",
-  "p-directeur": "/etablissement",
-  "p-inspecteur": "/territoire",
-  "p-departement": "/territoire",
-  "p-central": "/cockpit",
-  "p-chercheur": "/ask",
-  "p-dpo": "/audit",
-};
 
 export function navigationPour(roles: Role[]) {
   return NAVIGATION.filter((e) => e.roles.some((r) => roles.includes(r)));

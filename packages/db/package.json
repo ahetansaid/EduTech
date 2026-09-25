@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/schema.ts",
+    "./securite": "./src/securite.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -16,7 +17,11 @@
     "studio": "drizzle-kit studio",
     "verifier": "tsx src/verifier.ts",
     "sonde": "tsx src/sonde.ts",
-    "role-api": "tsx src/creer_role_api.ts"
+    "role-api": "tsx src/creer_role_api.ts",
+    "comptes": "tsx src/creer_comptes.ts",
+    "projections": "tsx src/projections.ts",
+    "reinitialiser": "tsx src/reinitialiser.ts",
+    "calendrier": "tsx src/calendrier.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",
