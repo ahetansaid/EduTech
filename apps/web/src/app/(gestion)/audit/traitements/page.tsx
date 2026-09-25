@@ -1,13 +1,15 @@
 "use client";
 
-import { Archive, ClipboardCheck, EyeOff, FileCheck2, Filter, Gavel, GraduationCap, Landmark, Search, ShieldCheck, Sparkles, UserPlus, Users, X, type LucideIcon } from "lucide-react";
+import { Archive, ClipboardCheck, ScrollText, EyeOff, FileCheck2, Filter, Gavel, GraduationCap, Landmark, Search, ShieldCheck, Sparkles, UserPlus, Users, X, type LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Cascade, Element, EntreePage } from "@/components/motion";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { entier } from "@/lib/format";
 
-/* ------------------------------------------------------------------ Registre (prototype) */
+/* ------------------------------------------------------------------ Registre des traitements (article du registre tenu par le DPO) */
 
 type Criticite = 1 | 2 | 3 | 4;
 type Saisine = "avis_favorable" | "en_instruction" | "a_saisir";
@@ -138,20 +140,21 @@ export default function TraitementsPage() {
   const avisFavorables = TRAITEMENTS.filter((t) => t.saisine === "avis_favorable").length;
 
   return (
+    <EntreePage>
     <div className="space-y-6">
       <PageHeader
         surtitre="Conformité · P14"
         titre="Registre des traitements"
         sousTitre="Chaque usage de données personnelles, avec sa finalité, sa base légale, ses destinataires et sa durée de conservation. C'est le document que l'Autorité de protection des données personnelles (APDP) peut demander à tout moment."
-        actions={<Badge ton="avertissement">Registre de démonstration</Badge>}
+        actions={<Link href="/audit" className="inline-flex h-8 items-center gap-2 rounded-md bg-surface px-3 text-[13px] font-medium text-ink ring-1 ring-inset ring-line transition-all hover:bg-surface-2 active:scale-[0.97]"><ScrollText size={14} aria-hidden />Journal d'audit</Link>}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <TuileIndicateur libelle="Traitements déclarés" icone={ClipboardCheck} accent="bleu" valeur={entier(TRAITEMENTS.length)} indice="tous avec une finalité unique" />
-        <TuileIndicateur libelle="Hautement sensibles" icone={ShieldCheck} accent="critique" valeur={entier(hautementSensibles)} indice="niveau 4 : identité, certification" />
-        <TuileIndicateur libelle="Avis de l'APDP" icone={Gavel} accent="sarcelle" valeur={`${avisFavorables}/${TRAITEMENTS.length}`} indice="avis favorables obtenus" />
-        <TuileIndicateur libelle="Mise en service" icone={FileCheck2} accent="ambre" valeur="Après avis" indice="aucun traitement sans saisine" />
-      </div>
+      <Cascade data-guide="traitements-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Element><TuileIndicateur libelle="Traitements déclarés" icone={ClipboardCheck} accent="bleu" valeur={entier(TRAITEMENTS.length)} indice="tous avec une finalité unique" /></Element>
+        <Element><TuileIndicateur libelle="Hautement sensibles" icone={ShieldCheck} accent="critique" valeur={entier(hautementSensibles)} indice="niveau 4 : identité, certification" /></Element>
+        <Element><TuileIndicateur libelle="Avis de l'APDP" icone={Gavel} accent="sarcelle" valeur={`${avisFavorables}/${TRAITEMENTS.length}`} indice="avis favorables obtenus" /></Element>
+        <Element><TuileIndicateur libelle="Mise en service" icone={FileCheck2} accent="ambre" valeur="Après avis" indice="aucun traitement sans saisine" /></Element>
+      </Cascade>
 
       <section aria-labelledby="titre-principes">
         <h2 id="titre-principes" className="mb-3 text-[18px] font-bold text-ink">Principes appliqués à tous les traitements</h2>
@@ -168,7 +171,7 @@ export default function TraitementsPage() {
         </ul>
       </section>
 
-      <Card className="p-0">
+      <Card data-guide="traitements-liste" className="p-0">
         <div className="flex flex-col gap-3 border-b border-line/60 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <label htmlFor="recherche-traitements" className="text-[12px] font-semibold text-ink-2">Rechercher un traitement</label>
@@ -226,6 +229,7 @@ export default function TraitementsPage() {
         </ul>
       </Card>
     </div>
+    </EntreePage>
   );
 }
 

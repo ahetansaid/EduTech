@@ -4,6 +4,7 @@ import { schema, type Base } from "@beile/db";
 import { ANNEES, type Annee, type CelluleNiveau, type CommuneStats, type CouchesNationales, type EtablissementGenere, type StatCommuneAnnee } from "@beile/simulation/macro";
 import type { Enseignement, MicroMonde } from "@beile/simulation/micro";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { indexer } from "@beile/simulation/projections";
 
 /**
  * Accès aux données : la source de vérité est désormais PostgreSQL. Les moteurs (couche sémantique,
@@ -15,8 +16,35 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 let cache: { couches: CouchesNationales; charge: number } | null = null;
 const DUREE_CACHE_MS = 5 * 60_000;
 
+let enVol: Promise<CouchesNationales> | null = null;
+
+/**
+ * Cube national en mémoire : un seul chargement à la fois (single-flight — pas d'effet de troupeau à froid),
+ * et rafraîchissement en arrière-plan une fois périmé (les requêtes servent le cube précédent pendant ce temps).
+ */
 export async function chargerCouches(db: Base): Promise<CouchesNationales> {
   if (cache && Date.now() - cache.charge < DUREE_CACHE_MS) return cache.couches;
+  enVol ??= chargerCouchesDepuisBase(db).finally(() => { enVol = null; });
+  if (cache) { enVol.catch((e) => console.error("Rafraîchissement du cube :", e)); return cache.couches; }
+  return enVol;
+}
+
+/**
+ * Mémoïsation d'un calcul dérivé du cube : le résultat vit aussi longtemps que l'instance du cube
+ * (WeakMap) — invalidation automatique au rechargement, aucune donnée plus ancienne que le cube lui-même.
+ */
+const memos = new WeakMap<CouchesNationales, Map<string, unknown>>();
+export function memo<T>(couches: CouchesNationales, cle: string, calcul: () => T): T {
+  let m = memos.get(couches);
+  if (!m) { m = new Map(); memos.set(couches, m); }
+  if (m.has(cle)) return m.get(cle) as T;
+  const v = calcul();
+  // Borne mémoire : les clés peuvent dépendre de requêtes utilisateur (indicateurs) ; au-delà, calcul sans stockage.
+  if (m.size < 2000) m.set(cle, v);
+  return v;
+}
+
+async function chargerCouchesDepuisBase(db: Base): Promise<CouchesNationales> {
   const [communes, cellules, parAnnee, etabs] = await Promise.all([
     db.select({ id: schema.communes.id, departementId: schema.communes.departementId, milieu: schema.communes.milieu }).from(schema.communes),
     db.select().from(schema.cellules),
@@ -80,15 +108,21 @@ const enEvenement = (r: typeof schema.evenements.$inferSelect): Evenement =>
  * Aucune autre donnée individuelle n'est chargée.
  */
 export async function contexteApprenant(db: Base, apprenantId: string, profil: Profil): Promise<{ monde: MicroMonde; evenements: Evenement[]; apprenant: Apprenant | null }> {
-  const [apprenant] = await db.select().from(schema.apprenants).where(eq(schema.apprenants.id, apprenantId));
-  const evenements = (await db.select().from(schema.evenements).where(eq(schema.evenements.apprenantId, apprenantId)).orderBy(schema.evenements.survenuLe)).map(enEvenement);
-  const liens = await db.select().from(schema.liensFamiliaux).where(eq(schema.liensFamiliaux.apprenantId, apprenantId));
+  // Requêtes indépendantes en parallèle : le coût est celui de deux allers-retours, pas de six.
+  const [[apprenant], lignes, liens, enseignants] = await Promise.all([
+    db.select().from(schema.apprenants).where(eq(schema.apprenants.id, apprenantId)),
+    db.select().from(schema.evenements).where(eq(schema.evenements.apprenantId, apprenantId)).orderBy(schema.evenements.survenuLe),
+    db.select().from(schema.liensFamiliaux).where(eq(schema.liensFamiliaux.apprenantId, apprenantId)),
+    profil.npi ? db.select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : Promise.resolve([]),
+  ]);
+  const evenements = lignes.map(enEvenement);
   const classeIds = [...new Set(evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])))];
-  const classes = classeIds.length ? await db.select().from(schema.classes).where(inArray(schema.classes.id, classeIds)) : [];
-  const enseignants = profil.npi ? await db.select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : [];
-  const enseignements = enseignants[0] && classeIds.length
-    ? await db.select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignants[0].id), inArray(schema.enseignements.classeId, classeIds)))
-    : [];
+  const [classes, enseignements] = await Promise.all([
+    classeIds.length ? db.select().from(schema.classes).where(inArray(schema.classes.id, classeIds)) : Promise.resolve([]),
+    enseignants[0] && classeIds.length
+      ? db.select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignants[0].id), inArray(schema.enseignements.classeId, classeIds)))
+      : Promise.resolve([]),
+  ]);
   const monde: MicroMonde = {
     etablissements: [], registre: [], certificats: [], profils: [profil], enfantsAInscrire: [],
     apprenants: apprenant ? [apprenant as Apprenant] : [],
@@ -102,3 +136,27 @@ export async function contexteApprenant(db: Base, apprenantId: string, profil: P
 }
 
 export { enEvenement };
+
+/* ------------------------------------------------------------------ Établissement complet */
+
+/**
+ * Charge le périmètre d'un établissement : ses classes, ses apprenants actuellement scolarisés, leurs
+ * événements (parcours complet), ses enseignants et la relation pédagogique. Une requête par table.
+ */
+export async function chargerEtablissement(db: Base, etablissementId: string) {
+  const [etab] = await db.select().from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId));
+  if (!etab) return null;
+  const classes = (await db.select().from(schema.classes).where(eq(schema.classes.etablissementId, etablissementId))) as Classe[];
+  const idsClasses = classes.map((c) => c.id);
+  // Apprenants ayant au moins un événement dans l'établissement, puis leur parcours complet.
+  const ids = (await db.selectDistinct({ id: schema.evenements.apprenantId }).from(schema.evenements).where(eq(schema.evenements.etablissementId, etablissementId))).map((r) => r.id).filter((x): x is string => !!x);
+  const evenements = ids.length ? (await db.select().from(schema.evenements).where(inArray(schema.evenements.apprenantId, ids)).orderBy(schema.evenements.survenuLe)).map(enEvenement) : [];
+  const idx = indexer(evenements);
+  const scolarises = ids.filter((id) => { const cl = idx.classeCourante.get(id); return cl && idsClasses.includes(cl); });
+  const apprenants = scolarises.length ? ((await db.select().from(schema.apprenants).where(inArray(schema.apprenants.id, scolarises))) as Apprenant[]) : [];
+  const enseignants = (await db.select().from(schema.enseignants).where(eq(schema.enseignants.etablissementId, etablissementId))) as Enseignant[];
+  const enseignements = idsClasses.length ? ((await db.select().from(schema.enseignements).where(inArray(schema.enseignements.classeId, idsClasses))) as Enseignement[]) : [];
+  const monde: MicroMonde = { etablissements: [], registre: [], certificats: [], profils: [], enfantsAInscrire: [], apprenants, enseignants, liens: [], classes, enseignements, evenements };
+  return { etab, classes, apprenants, enseignants, enseignements, evenements, idx, monde };
+}
+export type PerimetreEtablissement = NonNullable<Awaited<ReturnType<typeof chargerEtablissement>>>;

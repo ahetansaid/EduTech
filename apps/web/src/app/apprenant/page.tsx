@@ -1,103 +1,177 @@
 "use client";
 
-import type { Evenement } from "@beile/contracts";
-import { ArrowRightLeft, Award, BookOpenCheck, CalendarCheck, GraduationCap, School, Sparkles, type LucideIcon } from "lucide-react";
+import {
+  ArrowRightLeft, Award, BookOpenCheck, CalendarCheck, CalendarX2, Check, ChevronRight, Fingerprint, GraduationCap, NotebookPen, RefreshCw,
+  Route, School, ShieldAlert, Sigma, Sparkles, TrendingUp, type LucideIcon,
+} from "lucide-react";
+import Link from "next/link";
 import { useMemo } from "react";
-import { Card, CardHeader, Etiquette } from "@/components/ui/primitives";
+import { Courbes } from "@/components/charts/Graphiques";
+import { Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
+import { TuileIndicateur } from "@/components/ui/donnees";
+import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Squelette } from "@/components/ui/primitives";
+import {
+  absencesParJour, jalonsParcours, libelleTrimestre, moyennesParMatiere, NOM_EXAMEN, nomComplet, syntheseScolaire, usePasseport,
+  type Dossier, type Jalon, type TypeJalon,
+} from "@/lib/api/parcours";
+import { cn } from "@/lib/cn";
 import { date, nombre } from "@/lib/format";
-import { absences, moyenneGenerale, moyennesParMatiere } from "@/lib/scolarite";
-import { evenementsApprenant, notesApprenant } from "@beile/simulation/projections";
-import { useMonde } from "@/lib/store";
-import { usePasseport } from "@/lib/sources";
+import { ErreurApi } from "@/lib/http";
 
-interface Jalon { date: string; titre: string; detail: string; icone: LucideIcon; accent?: boolean; source: string }
-
-const SOURCE: Record<string, string> = { beile: "BEILE", educmaster: "EducMaster", examens: "Système d'examens", registre_national: "Registre national" };
+const ICONES: Record<TypeJalon, LucideIcon> = {
+  inscription: School, transfert: ArrowRightLeft, passage: GraduationCap, examen: BookOpenCheck, diplome: Award, bilan: CalendarCheck,
+  abandon: ShieldAlert, reprise: RefreshCw, justification: Check,
+};
 
 export default function Passeport() {
-  const monde = useMonde();
-  const { dossier, chargement, base } = usePasseport();
-  const a = dossier?.apprenant;
-  const evenementsSource = dossier?.evenements ?? [];
-  const etab = (eid: string | null) => dossier?.nomEtablissement(eid) ?? (eid ? eid : "École primaire (hors pilote)");
-  const libelleClasse = (cid: string) => (dossier?.classe?.id === cid ? dossier.classe.libelle : monde.classes.find((c) => c.id === cid)?.libelle ?? "classe");
+  const q = usePasseport();
+  return (
+    <EntreePage>
+      <div className="space-y-5">
+        <PageHeader surtitre="Passeport éducatif" titre="Mon parcours" sousTitre="Tout votre parcours scolaire, reconstitué à partir de faits vérifiables, quelle que soit l'école fréquentée." />
+        {q.isPending ? <Chargement /> : q.isError ? <Erreur erreur={q.error} onReessayer={() => q.refetch()} /> : <Contenu d={q.data} />}
+      </div>
+    </EntreePage>
+  );
+}
 
-  const jalons = useMemo<Jalon[]>(() => {
-    if (!a) return [];
-    const evts = evenementsApprenant(evenementsSource, a.id);
-    const res: Jalon[] = [];
-    const parTrimestre = new Map<string, Evenement[]>();
-    for (const e of evts) {
-      const src = SOURCE[e.source] ?? e.source;
-      switch (e.type) {
-        case "INSCRIPTION": res.push({ date: e.survenuLe, titre: `Inscription en ${libelleClasse(e.classeId)}`, detail: etab(e.etablissementId), icone: School, source: src }); break;
-        case "TRANSFERT": res.push({ date: e.survenuLe, titre: "Transfert d'établissement", detail: `${etab(e.deEtablissementId)} → ${etab(e.versEtablissementId)} · le parcours vous a suivi·e, sans ressaisie`, icone: ArrowRightLeft, accent: true, source: src }); break;
-        case "PASSAGE": res.push({ date: e.survenuLe, titre: `Passage en ${e.versNiveau}`, detail: `Décision du conseil de classe · année ${e.anneeScolaire}`, icone: GraduationCap, source: src }); break;
-        case "RESULTAT_EXAMEN": res.push({ date: e.survenuLe, titre: `${e.examen} ${e.admis ? "obtenu" : "non obtenu"}`, detail: `Session ${e.session} · moyenne ${nombre(e.moyenne, 2)}/20`, icone: BookOpenCheck, source: src }); break;
-        case "CERTIFICATION": res.push({ date: e.survenuLe, titre: `Diplôme délivré : ${e.examen}`, detail: `Mention ${e.mention} · preuve vérifiable en ligne`, icone: Award, accent: true, source: src }); break;
-        case "EVALUATION": {
-          const k = `${e.anneeScolaire}-T${e.trimestre}`;
-          parTrimestre.set(k, [...(parTrimestre.get(k) ?? []), e]);
-          break;
-        }
-      }
-    }
-    for (const [k, l] of parTrimestre) {
-      const t = Number(k.slice(-1));
-      const moy = moyenneGenerale(evenementsSource, a.id, t);
-      const derniere = l.map((x) => x.survenuLe).sort().at(-1)!;
-      res.push({ date: derniere, titre: `Bilan du ${t === 1 ? "1er" : "2e"} trimestre`, detail: `${l.length} évaluations · moyenne générale ${nombre(moy, 2)}/20`, icone: CalendarCheck, source: "BEILE" });
-    }
-    return res.sort((x, y) => y.date.localeCompare(x.date));
-  }, [dossier, a]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (chargement) return <div className="space-y-4" aria-busy><div className="h-48 animate-pulse rounded-xl bg-surface-2" /><div className="h-64 animate-pulse rounded-xl bg-surface-2" /></div>;
-  if (!a || !dossier) return null;
-  const matieres = moyennesParMatiere(evenementsSource, a.id, 2).sort((x, y) => y.moyenne - x.moyenne);
-  const nbEval = notesApprenant(evenementsSource, a.id).length;
+function Contenu({ d }: { d: Dossier }) {
+  const s = useMemo(() => syntheseScolaire(d), [d]);
+  const jalons = useMemo(() => jalonsParcours(d), [d]);
+  const absences = useMemo(() => absencesParJour(d.evenements), [d]);
+  const annuelles = useMemo(() => moyennesParMatiere(s.notes, s.annee).sort((a, b) => b.moyenne - a.moyenne), [s]);
+  const a = d.apprenant;
+  const etab = d.situation.etablissementId ? d.etablissements[d.situation.etablissementId] : null;
 
   return (
-    <div className="space-y-6">
-      <div className="overflow-hidden rounded-xl text-white shadow-pop" style={{ background: "linear-gradient(135deg, var(--acc), #0a3764)" }}>
-        <div className="p-5 sm:p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">Passeport éducatif</p>
-          <p className="mt-2 font-display text-[26px] font-bold leading-tight">{a.prenoms} {a.nom}</p>
-          <p className="mt-1 text-[14px] text-white/85">{dossier.classe?.libelle} · {dossier.etablissementNom}</p>
-          <div className="mt-5 grid grid-cols-3 gap-3">
-            {[["Moyenne T2", nombre(moyenneGenerale(evenementsSource, a.id, 2), 2)], ["Évaluations", String(nbEval)], ["Absences", String(absences(evenementsSource, a.id).length)]].map(([l, v]) => (
-              <div key={l} className="rounded-lg bg-white/12 px-3 py-2.5 backdrop-blur"><p className="text-[11px] text-white/75">{l}</p><p className="font-display text-[20px] font-bold tabular">{v}</p></div>
-            ))}
+    <>
+      <motion.div data-guide="apprenant-passeport" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE }}
+        className="relative overflow-hidden rounded-2xl text-white shadow-pop" style={{ background: "linear-gradient(135deg, var(--acc), #0a3764)" }}>
+        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" aria-hidden />
+        <div className="relative p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">République du Bénin · passeport éducatif</p>
+            <Fingerprint size={22} className="shrink-0 text-white/70" aria-hidden />
           </div>
-          <p className="mt-4 font-mono text-[11px] text-white/70">Identifiant éducatif {a.id} · rattaché au registre national{base ? " · lu dans la base nationale" : ""}</p>
+          <p className="mt-3 font-display text-[26px] font-bold leading-tight sm:text-[30px]">{nomComplet(a)}</p>
+          <p className="mt-1 text-sm text-white/85">{d.situation.classe?.libelle ?? "Aucune classe en cours"}{etab ? ` · ${etab}` : ""}</p>
+          <div className="mt-4 flex flex-wrap gap-2 text-[11.5px]">
+            <span className="rounded-full bg-white/15 px-2.5 py-1 font-mono">{a.id}</span>
+            <span className="rounded-full bg-white/15 px-2.5 py-1">{a.statutIdentite === "verifiee" ? "Identité vérifiée au registre national" : "Identité en cours de régularisation"}</span>
+            {d.situation.classe && <span className="rounded-full bg-white/15 px-2.5 py-1">Année {d.situation.classe.anneeScolaire}</span>}
+          </div>
         </div>
-      </div>
+      </motion.div>
 
-      <Card>
-        <CardHeader icon={Sparkles} title="Mes points forts ce trimestre" subtitle="Moyennes du 2e trimestre, de la plus haute à la plus basse" />
-        <div className="flex flex-wrap gap-2">
-          {matieres.map((m, i) => (
-            <span key={m.matiere} className="rounded-md px-3 py-1.5 text-[13px] font-medium" style={i < 3 ? { background: "var(--acc-doux)", color: "var(--acc)" } : undefined}>
-              {m.matiere} <span className="font-semibold tabular">{nombre(m.moyenne, 1)}</span>
-            </span>
-          ))}
-        </div>
-      </Card>
+      <Cascade data-guide="apprenant-indicateurs" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Element>
+          <TuileIndicateur libelle={s.courant ? `Moyenne T${s.courant}` : "Moyenne"} icone={Sigma} accent="bleu" valeur={s.moyenne != null ? <Compteur valeur={s.moyenne} format={(n) => nombre(n, 2)} /> : "—"} unite={s.moyenne != null ? "/20" : undefined}
+            variation={s.evolution != null ? { texte: `${s.evolution >= 0 ? "+" : ""}${nombre(s.evolution, 2)} depuis le T${s.precedent}`, favorable: s.evolution >= 0 } : undefined} />
+        </Element>
+        <Element><TuileIndicateur libelle="Évaluations" icone={NotebookPen} valeur={<Compteur valeur={s.notes.filter((n) => n.anneeScolaire === s.annee).length} format={(n) => nombre(n)} />} indice={`année ${s.annee ?? "—"}`} /></Element>
+        <Element><TuileIndicateur libelle="Absences" icone={CalendarX2} accent={absences.some((x) => x.statut === "a_justifier") ? "ambre" : "neutre"} valeur={<Compteur valeur={absences.length} format={(n) => nombre(n)} />} indice={absences.length ? `dernière le ${date(absences[0]!.date)}` : "aucune"} /></Element>
+        <Element><TuileIndicateur libelle="Diplômes" icone={Award} accent="sarcelle" valeur={<Compteur valeur={d.certificats.filter((c) => !c.revoque).length} format={(n) => nombre(n)} />} indice="vérifiables en ligne" /></Element>
+      </Cascade>
 
-      <Card>
-        <CardHeader icon={GraduationCap} title="Mon parcours" subtitle="Reconstitué à partir d'événements vérifiables, quelle que soit l'école fréquentée" />
-        <ol className="relative ml-3 border-l-2 border-line/80 pl-7">
-          {jalons.map((j, i) => (
-            <li key={i} className="relative animate-row pb-6 last:pb-0" style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
-              <span className="absolute -left-[42px] flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-surface" style={{ background: j.accent ? "var(--acc)" : "var(--surface-2)", color: j.accent ? "#fff" : "var(--acc)" }}>
-                <j.icone size={15} aria-hidden />
-              </span>
-              <Etiquette>{date(j.date)} · source {j.source}</Etiquette>
-              <p className="mt-0.5 text-[15px] font-semibold text-ink">{j.titre}</p>
-              <p className="text-[13.5px] text-ink-2">{j.detail}</p>
-            </li>
-          ))}
-        </ol>
+      {annuelles.length > 0 ? (
+        <Card data-guide="apprenant-points-forts" className="min-w-0">
+          <CardHeader icon={Sparkles} title="Mes points forts" subtitle={`Moyennes de l'année ${s.annee}, de la plus haute à la plus basse`} />
+          <ul className="space-y-3">
+            {annuelles.map((m, i) => (
+              <li key={m.matiere} className="flex items-center gap-3">
+                <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold", i < 3 ? "text-white" : "bg-surface-2 text-ink-muted")} style={i < 3 ? { background: "var(--acc)" } : undefined}>{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-3 text-sm"><span className="truncate text-ink">{m.matiere}</span><span className="shrink-0 font-semibold tabular-nums text-ink">{nombre(m.moyenne, 2)}</span></div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                    <motion.div className="h-full rounded-full" initial={{ width: 0 }} whileInView={{ width: `${(m.moyenne / 20) * 100}%` }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.05 * i, ease: EASE }} style={{ background: m.moyenne >= 10 ? "var(--acc)" : "var(--critical)" }} />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {s.parTrimestre.length > 1 && (
+            <div className="mt-6 min-w-0">
+              <Etiquette>Progression de la moyenne générale</Etiquette>
+              <Courbes className="mt-2 w-full" hauteur={170} formater={(v) => nombre(v, 2)} series={[{ nom: "Moyenne générale", points: s.parTrimestre.map((t) => ({ x: libelleTrimestre(t.trimestre), y: t.moyenne })) }]} />
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card><EtatVide icone={NotebookPen} titre="Pas encore de note cette année" texte="Vos moyennes apparaîtront dès la première évaluation saisie par vos enseignants." /></Card>
+      )}
+
+      {d.certificats.length > 0 && (
+        <Link href="/apprenant/preuves" className="flex items-center gap-3 rounded-xl border border-line/70 bg-surface p-4 shadow-float transition hover:-translate-y-1 hover:shadow-pop">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: "var(--acc)" }}><Award size={20} aria-hidden /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink">{d.certificats.map((c) => NOM_EXAMEN[c.examen] ?? c.examen).join(" · ")}</p>
+            <p className="text-[13px] text-ink-2">Partagez vos diplômes : QR code et lien de vérification</p>
+          </div>
+          <ChevronRight size={18} className="shrink-0 text-ink-muted" aria-hidden />
+        </Link>
+      )}
+
+      <Card data-guide="apprenant-frise" className="min-w-0">
+        <CardHeader icon={Route} title="Ma frise" subtitle="Du plus récent au plus ancien · chaque étape indique sa source" />
+        {jalons.length ? <Frise jalons={jalons} /> : <EtatVide icone={Route} titre="Parcours vide" texte="Votre parcours se construira au fil de votre scolarité." />}
       </Card>
+    </>
+  );
+}
+
+/** Frise chronologique : regroupée par année, le fil se trace à mesure que l'on fait défiler. */
+function Frise({ jalons }: { jalons: Jalon[] }) {
+  const annees = useMemo(() => {
+    const m = new Map<string, Jalon[]>();
+    for (const j of jalons) { const k = j.date.slice(0, 4); m.set(k, [...(m.get(k) ?? []), j]); }
+    return [...m];
+  }, [jalons]);
+  return (
+    <div className="space-y-6">
+      {annees.map(([annee, liste]) => (
+        <section key={annee}>
+          <motion.p initial={{ opacity: 0, x: -8 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className="mb-3 inline-flex rounded-full px-3 py-1 font-display text-sm font-bold" style={{ background: "var(--acc-doux)", color: "var(--acc)" }}>{annee}</motion.p>
+          <ol className="relative ml-4 pl-7">
+            <motion.span className="absolute bottom-2 left-0 top-2 w-0.5 origin-top rounded-full bg-line" initial={{ scaleY: 0 }} whileInView={{ scaleY: 1 }} viewport={{ once: true, margin: "-40px" }} transition={{ duration: 0.8, ease: EASE }} aria-hidden />
+            {liste.map((j, i) => {
+              const Icone = ICONES[j.type];
+              return (
+                <motion.li key={j.id} initial={{ opacity: 0, x: 14 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true, margin: "-30px" }} transition={{ duration: 0.45, delay: Math.min(i, 12) * 0.05, ease: EASE }} className="relative pb-5 last:pb-0">
+                  <motion.span initial={{ scale: 0 }} whileInView={{ scale: 1 }} viewport={{ once: true }} transition={{ type: "spring", stiffness: 420, damping: 20, delay: Math.min(i, 12) * 0.05 + 0.1 }}
+                    className="absolute -left-[43px] flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-surface" style={{ background: j.accent ? "var(--acc)" : "var(--surface-2)", color: j.accent ? "#fff" : "var(--acc)" }}>
+                    <Icone size={15} aria-hidden />
+                  </motion.span>
+                  <Etiquette>{date(j.date)} · source {j.source}</Etiquette>
+                  <p className="mt-0.5 text-[15px] font-semibold text-ink">{j.titre}</p>
+                  <p className="text-[13.5px] text-ink-2">{j.detail}</p>
+                  {j.type === "diplome" && <Badge ton="succes" className="mt-1.5">Preuve vérifiable</Badge>}
+                </motion.li>
+              );
+            })}
+          </ol>
+        </section>
+      ))}
     </div>
+  );
+}
+
+function Chargement() {
+  return (
+    <div className="space-y-5" aria-busy aria-label="Chargement du passeport">
+      <Squelette className="h-44 rounded-2xl" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[0, 1, 2, 3].map((i) => <Squelette key={i} className="h-[92px] rounded-lg" />)}</div>
+      <div className="space-y-3 rounded-xl border border-line/70 bg-surface p-5 shadow-float">{[0, 1, 2, 3, 4].map((i) => <Squelette key={i} className="h-7" />)}</div>
+    </div>
+  );
+}
+
+function Erreur({ erreur, onReessayer }: { erreur: Error; onReessayer: () => void }) {
+  const refus = erreur instanceof ErreurApi && erreur.refus;
+  return (
+    <Card>
+      <EtatVide icone={refus ? ShieldAlert : TrendingUp} titre={refus ? "Accès refusé" : "Passeport momentanément indisponible"}
+        texte={refus ? `${erreur.message.startsWith("Erreur ") ? "Le contrôle d'accès n'autorise pas la consultation de ce passeport" : erreur.message}. Ce refus a été enregistré au journal d'audit.` : `${erreur.message}. Réessayez dans un instant.`}
+        action={refus ? undefined : <Button variante="secondaire" icone={RefreshCw} onClick={onReessayer}>Réessayer</Button>} />
+    </Card>
   );
 }

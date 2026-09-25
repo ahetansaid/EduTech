@@ -9,7 +9,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       espace="enseignant"
       roles={["enseignant"]}
       largeur="large"
-      horsConnexion
       onglets={[
         { href: "/enseignant", libelle: "Mes classes", icone: CalendarCheck },
         { href: "/enseignant/carriere", libelle: "Parcours pro", icone: GraduationCap },

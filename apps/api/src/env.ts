@@ -7,8 +7,6 @@ import { z } from "zod";
 
 const Schema = z.object({
   DATABASE_URL_API: z.string().url().refine((u) => !u.includes("neondb_owner"), "L'API ne doit pas utiliser le rôle propriétaire (BYPASSRLS)"),
-  BEILE_JWT_SECRET: z.string().min(48, "Secret de signature trop court (48 caractères minimum)"),
-  BEILE_MODE_DEMO: z.enum(["true", "false"]).default("false"),
   BEILE_ORIGINES_AUTORISEES: z.string().default("http://localhost:3000"),
   NODE_ENV: z.string().optional(),
 });
@@ -31,15 +29,9 @@ if (!brut.success) {
   throw new Error(`Configuration de l'API invalide : ${brut.error.issues.map((i) => `${i.path.join(".")} : ${i.message}`).join(" ; ")}`);
 }
 const v = brut.data;
-// Le mode démonstration (connexion par profil fictif) n'est admis qu'avec des données fictives, jamais sur une base réelle.
-if (process.env.BEILE_DONNEES_REELLES === "true" && v.BEILE_MODE_DEMO === "true") {
-  throw new Error("BEILE_MODE_DEMO est interdit lorsque BEILE_DONNEES_REELLES=true.");
-}
 
 return {
   DATABASE_URL_API: v.DATABASE_URL_API,
-  JWT_SECRET: v.BEILE_JWT_SECRET,
-  MODE_DEMO: v.BEILE_MODE_DEMO === "true",
   ORIGINES: v.BEILE_ORIGINES_AUTORISEES.split(",").map((o) => o.trim()),
 };
 }
