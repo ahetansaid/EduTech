@@ -77,7 +77,7 @@ flowchart LR
     subgraph Public["Public, sans compte"]
         V1["Trouver un établissement<br/>autour de moi"]
         V2["Calendrier scolaire officiel<br/>Inscrire son enfant"]
-        V3["L'éducation en chiffres<br/>Vérifier un diplôme · Aide"]
+        V3["L'éducation en chiffres<br/>Centre d'aide"]
     end
 ```
 
@@ -91,7 +91,7 @@ flowchart LR
 | **Conformité** | Journal de toutes les décisions d'accès (accordées et refusées), statistiques des refus, registre des traitements |
 | **Administration** | Création d'utilisateurs aux habilitations vérifiées (rôle ↔ périmètre ↔ registre NPI), révocation de sessions, file d'assistance, publication du calendrier scolaire |
 | **Assistance** | Tout utilisateur ouvre une demande depuis son menu et suit les réponses ; l'administration la traite et la résout |
-| **Services publics** | Annuaire des 11 700 établissements (recherche, carte, « autour de moi »), calendrier scolaire officiel dynamique, démarches d'inscription (y compris sans acte de naissance), données ouvertes par département, vérification de diplôme, centre d'aide |
+| **Services publics** | Annuaire des 11 700 établissements (recherche, carte, « autour de moi »), calendrier scolaire officiel dynamique, démarches d'inscription (y compris sans acte de naissance), données ouvertes par département, centre d'aide. La vérification d'un diplôme reste servie à l'adresse du QR code imprimé (`/verifier`), sans être mise en avant, en attendant un service de résultats d'examens sur le modèle d'e-resultat |
 | **Guides** | Visite guidée animée dans chaque espace (démarre à la première visite), centre d'aide `/aide` et [guides écrits par profil](docs/guides/README.md) |
 
 ---

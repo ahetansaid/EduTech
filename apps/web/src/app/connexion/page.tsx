@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BadgeCheck, Eye, EyeOff, Fingerprint, Lock, LockKeyhole, ShieldCheck, TriangleAlert, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Fingerprint, Lock, LockKeyhole, ShieldCheck, TriangleAlert, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -131,8 +131,8 @@ function Connexion() {
         <BandeNationale className="h-[4px] lg:hidden" />
         <div className="flex items-center justify-between px-6 pt-6 lg:justify-end">
           <Link href="/" className="lg:hidden"><Logo /></Link>
-          <Link href="/verifier" className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-2">
-            <BadgeCheck size={15} aria-hidden /> Vérifier un diplôme
+          <Link href="/" className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-2">
+            <ArrowLeft size={15} aria-hidden /> Accueil
           </Link>
         </div>
 
