@@ -67,7 +67,6 @@ export function EnTetePublic({ transparent = false }: { transparent?: boolean })
               {LIENS_PUBLICS.map((l) => (
                 <Link key={l.href} href={l.href} onClick={() => setOuvert(false)} className="block rounded-xl px-4 py-3 text-[15px] font-medium text-ink hover:bg-surface-2">{l.libelle}</Link>
               ))}
-              <Link href="/verifier" onClick={() => setOuvert(false)} className="block rounded-xl px-4 py-3 text-[15px] font-medium text-ink-2 hover:bg-surface-2">Vérifier un diplôme</Link>
             </motion.nav>
           </motion.div>
         )}
@@ -85,7 +84,7 @@ export function PiedPublic() {
           <p className="max-w-xs text-[13px] leading-relaxed text-ink-muted">Plateforme nationale des parcours éducatifs et du pilotage du système éducatif.</p>
         </div>
         <ColonnePied titre="Services" liens={[["/etablissements", "Trouver un établissement"], ["/inscription-scolaire", "Inscrire son enfant"], ["/calendrier", "Calendrier scolaire"], ["/donnees", "L'éducation en chiffres"]]} />
-        <ColonnePied titre="Vérifier et s'informer" liens={[["/verifier", "Vérifier un diplôme"], ["/aide", "Centre d'aide"], ["/confidentialite", "Protection des données"]]} />
+        <ColonnePied titre="S'informer" liens={[["/aide", "Centre d'aide"], ["/confidentialite", "Protection des données"]]} />
         <ColonnePied titre="Espaces" liens={[["/connexion", "Connexion"], ["/aide/enseignant", "Guide enseignant"], ["/aide/parent", "Guide famille"], ["/aide/chef-etablissement", "Guide établissement"]]} />
       </div>
       <div className="border-t border-line/60">

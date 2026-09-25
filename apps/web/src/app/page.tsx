@@ -6,7 +6,7 @@ import { EASE, motion } from "@/components/motion";
 import { BandeNationale } from "@/components/ui/primitives";
 import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
-import { SectionCalendrier, SectionChiffres, SectionEtablissements, SectionInscription, SectionVerification } from "@/components/public/SectionsAccueil";
+import { SectionCalendrier, SectionChiffres, SectionEtablissements, SectionInscription } from "@/components/public/SectionsAccueil";
 
 /** Un espace pour chaque acteur, chacun avec son guide. */
 const ESPACES = [
@@ -112,11 +112,10 @@ export default function Accueil() {
       </main>
 
       {/* Chaque service public, présenté par un aperçu vivant de sa page */}
-      <SectionEtablissements />
       <SectionCalendrier />
+      <SectionEtablissements />
       <SectionInscription />
       <SectionChiffres />
-      <SectionVerification />
 
       {/* Un espace pour chaque acteur */}
       <section className="relative bg-navy">
