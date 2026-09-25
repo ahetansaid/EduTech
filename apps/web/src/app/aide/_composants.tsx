@@ -55,7 +55,7 @@ export function EnveloppeAide({ children }: { children: ReactNode }) {
       <footer className="border-t border-line/60">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-[12px] text-ink-muted sm:px-6">
           <span>BEILE · Centre d'aide · Ministère de l'Éducation du Bénin</span>
-          <Link href="/verifier" className="inline-flex items-center gap-1.5 hover:text-ink"><BadgeCheck size={14} aria-hidden /> Vérifier un diplôme</Link>
+          <Link href="/" className="hover:text-ink">Accueil</Link>
         </div>
       </footer>
     </div>
