@@ -23,7 +23,7 @@ Sur un serveur dédié, ils sont donc des **planchers**.
 
 | Mesure | Avant | Après |
 |---|---|---|
-| Tableau de bord d'un établissement (base distante, depuis Porto-Novo) | 7 à 28 s | ≈ 2 s, dont 4 à 5 allers-retours réseau vers us-east-2 |
+| Tableau de bord d'un établissement, poste de développement interrogeant directement la base distante | 7 à 28 s | ≈ 2 s, dont 4 à 5 allers-retours réseau vers us-east-2 |
 | Agrégat SQL « bilans » (302 élèves), exécution en base | — | 4 ms |
 | `/pilotage/territoire`, 20 requêtes simultanées | 7 945 ms | 267 ms |
 | `/pilotage/synthese`, 20 requêtes simultanées | 2 983 ms | 477 ms |
@@ -32,6 +32,20 @@ Sur un serveur dédié, ils sont donc des **planchers**.
 | CPU PostgreSQL par requête (parcours mixtes) | — | ≈ 1,5 ms, soit environ 690 req/s par cœur |
 | CPU de l'API par requête lourde (liste de 300 élèves) | — | 18 à 30 ms, soit environ 35 à 55 req/s par cœur |
 | Connexions (scrypt), débit par machine à 4 cœurs | — | ≈ 10 connexions/s |
+
+### Production (Vercel `fra1` + Neon Francfort), mesurée depuis Porto-Novo
+
+Connexion gardée ouverte, comme dans un navigateur, médiane de 8 appels :
+
+| Écran | Latence |
+|---|---|
+| Tableau de bord d'un établissement | 317 ms |
+| Liste des élèves (300) | 308 ms |
+| Espace famille (deux enfants) | 272 ms |
+
+L'aller-retour API → base ne coûte plus qu'environ 12 ms (API et base dans la même région).
+Le reste est le trajet réseau Bénin → point d'entrée Vercel (Le Cap) → Francfort : c'est lui qu'une infrastructure
+hébergée au Bénin (ou un point d'entrée ouest-africain) réduirait.
 
 ## 3. Ordres de grandeur pour le déploiement
 

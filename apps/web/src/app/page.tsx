@@ -1,11 +1,27 @@
 "use client";
 
-import { ArrowRight, BadgeCheck, LogIn } from "lucide-react";
+import { ArrowRight, BookOpenCheck, CalendarDays, ChartColumn, GraduationCap, Landmark, LogIn, School, Search, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { EASE, motion } from "@/components/motion";
-import { BandeNationale, Logo } from "@/components/ui/primitives";
-import { accueilPour, useSessionServeur } from "@/lib/session";
+import { BandeNationale } from "@/components/ui/primitives";
+import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
+
+/** Services ouverts à tous, sans compte. */
+const SERVICES = [
+  { href: "/etablissements", icone: School, titre: "Trouver un établissement", texte: "Écoles, collèges, lycées et centres de formation, autour de vous." },
+  { href: "/inscription-scolaire", icone: UserPlus, titre: "Inscrire son enfant", texte: "Les étapes et les pièces, même sans acte de naissance." },
+  { href: "/calendrier", icone: CalendarDays, titre: "Calendrier scolaire", texte: "Rentrée, congés et examens nationaux de l'année." },
+  { href: "/donnees", icone: ChartColumn, titre: "L'éducation en chiffres", texte: "Indicateurs par département, sources à l'appui." },
+];
+
+/** Un espace pour chaque acteur, chacun avec son guide. */
+const ESPACES = [
+  { icone: Users, titre: "Familles et élèves", texte: "Notes, absences et diplômes, en direct.", guide: "/aide/parent" },
+  { icone: GraduationCap, titre: "Enseignants", texte: "L'appel et les notes, même sans réseau.", guide: "/aide/enseignant" },
+  { icone: BookOpenCheck, titre: "Établissements", texte: "Inscriptions, suivi et examens.", guide: "/aide/chef-etablissement" },
+  { icone: Landmark, titre: "Pilotage", texte: "Décider sur des chiffres fiables.", guide: "/aide/administration-centrale" },
+];
 
 /**
  * Pilules diagonales qui découpent une même photographie. Chaque pilule est un tracé déjà incliné
@@ -39,25 +55,19 @@ const PASTILLES = [
   { c: "bg-blue", t: "h-2.5 w-2.5", p: "left-[14%] bottom-[10%]", d: 2.2 },
 ];
 
-/** Accueil public : un message, deux actions, une image. */
+/** Accueil public : message, services ouverts à tous, espaces par acteur. */
 export default function Accueil() {
   useThemeEspace(false);
-  const { data: session } = useSessionServeur();
-  const monEspace = session ? accueilPour(session.profil.habilitations.map((h) => h.role)) : null;
+  const monEspace = useMonEspace();
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-bg">
       <BandeNationale className="relative z-20 h-[4px]" />
       <div className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-blue-soft/70 blur-3xl" aria-hidden />
 
-      <header className="relative mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-5 pt-5 sm:px-8">
-        <Link href="/" aria-label="Accueil BEILE"><Logo compact className="sm:hidden" /><Logo className="hidden sm:flex" /></Link>
-        <Link href={monEspace ?? "/connexion"} className="inline-flex h-10 items-center gap-2 rounded-full bg-navy px-4 text-[13.5px] font-semibold text-white shadow-sm transition hover:bg-navy-deep">
-          <LogIn size={16} aria-hidden /> {monEspace ? "Mon espace" : "Connexion"}
-        </Link>
-      </header>
+      <EnTetePublic transparent />
 
-      <main className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[1.3fr_0.9fr] lg:gap-6 lg:py-6">
+      <main className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 py-10 sm:px-8 lg:min-h-[calc(100vh-15rem)] lg:grid-cols-[1.3fr_0.9fr] lg:gap-6 lg:py-6">
         <div className="max-w-2xl">
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6, ease: EASE }} className="text-[12px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
             République du Bénin<span className="hidden sm:inline"> · Éducation nationale</span>
@@ -69,11 +79,11 @@ export default function Accueil() {
             Élèves, familles, enseignants, établissements et administration : un seul registre, un espace pour chacun.
           </motion.p>
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.6, ease: EASE }} className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Link href={monEspace ?? "/connexion"} className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-navy px-7 text-[15px] font-semibold text-white shadow-pop transition hover:-translate-y-0.5 hover:bg-navy-deep">
-              {monEspace ? "Ouvrir mon espace" : "Se connecter"} <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" aria-hidden />
+            <Link href="/etablissements" className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-navy px-7 text-[15px] font-semibold text-white shadow-pop transition hover:-translate-y-0.5 hover:bg-navy-deep">
+              <Search size={17} aria-hidden /> Trouver un établissement
             </Link>
-            <Link href="/verifier" className="inline-flex h-12 items-center justify-center gap-2 rounded-full px-7 text-[15px] font-semibold text-ink ring-1 ring-inset ring-line transition hover:bg-surface">
-              <BadgeCheck size={17} className="text-teal" aria-hidden /> Vérifier un diplôme
+            <Link href={monEspace ?? "/connexion"} className="inline-flex h-12 items-center justify-center gap-2 rounded-full px-7 text-[15px] font-semibold text-ink ring-1 ring-inset ring-line transition hover:bg-surface">
+              <LogIn size={17} className="text-accent-ink" aria-hidden /> {monEspace ? "Ouvrir mon espace" : "Se connecter"}
             </Link>
           </motion.div>
         </div>
@@ -108,10 +118,54 @@ export default function Accueil() {
         </div>
       </main>
 
-      <footer className="relative mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-5 pb-5 text-[12px] text-ink-muted sm:px-8">
-        <span>Accès réservé aux personnes habilitées · Chaque accès est journalisé</span>
-        <span>© République du Bénin</span>
-      </footer>
+      {/* Services ouverts à tous */}
+      <section className="relative mx-auto w-full max-w-6xl px-5 py-16 sm:px-8">
+        <Titre surtitre="Services en ligne" titre="Sans compte, pour tous" />
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {SERVICES.map((sv, i) => (
+            <motion.div key={sv.href} initial={{ y: 18 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-40px" }} transition={{ delay: i * 0.07, duration: 0.5, ease: EASE }}>
+              <Link href={sv.href} className="group flex h-full flex-col rounded-2xl border border-line/70 bg-surface p-5 shadow-float transition hover:-translate-y-1 hover:shadow-pop">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-soft text-accent-ink transition group-hover:bg-navy group-hover:text-white"><sv.icone size={20} aria-hidden /></span>
+                <p className="mt-4 font-display text-[16px] font-bold text-ink">{sv.titre}</p>
+                <p className="mt-1 text-[13.5px] leading-relaxed text-ink-2">{sv.texte}</p>
+                <span className="mt-auto flex justify-end pt-3"><ArrowRight size={17} className="shrink-0 text-ink-muted transition group-hover:translate-x-1 group-hover:text-accent-ink" aria-hidden /></span>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* Un espace pour chaque acteur */}
+      <section className="relative bg-navy">
+        <div className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-8">
+          <Titre surtitre="Espaces connectés" titre="Un espace pour chacun" clair />
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {ESPACES.map((e, i) => (
+              <motion.div key={e.titre} initial={{ y: 18 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-40px" }} transition={{ delay: i * 0.07, duration: 0.5, ease: EASE }}
+                className="rounded-2xl bg-white/[0.06] p-5 ring-1 ring-inset ring-white/10">
+                <e.icone size={22} className="text-flag-yellow" aria-hidden />
+                <p className="mt-4 font-display text-[16px] font-bold text-white">{e.titre}</p>
+                <p className="mt-1 text-[13.5px] text-white/70">{e.texte}</p>
+                <Link href={e.guide} className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-white hover:underline">Voir le guide <ArrowRight size={14} aria-hidden /></Link>
+              </motion.div>
+            ))}
+          </div>
+          <Link href={monEspace ?? "/connexion"} className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-white px-6 text-[15px] font-semibold text-navy transition hover:-translate-y-0.5">
+            <LogIn size={17} aria-hidden /> {monEspace ? "Ouvrir mon espace" : "Accéder à mon espace"}
+          </Link>
+        </div>
+      </section>
+
+      <PiedPublic />
     </div>
+  );
+}
+
+function Titre({ surtitre, titre, clair = false }: { surtitre: string; titre: string; clair?: boolean }) {
+  return (
+    <motion.div initial={{ y: 12 }} whileInView={{ y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, ease: EASE }}>
+      <p className={clair ? "text-[12px] font-semibold uppercase tracking-[0.16em] text-white/60" : "text-[12px] font-semibold uppercase tracking-[0.16em] text-accent-ink"}>{surtitre}</p>
+      <h2 className={clair ? "mt-2 font-display text-[28px] font-extrabold tracking-tight text-white sm:text-[34px]" : "mt-2 font-display text-[28px] font-extrabold tracking-tight text-ink sm:text-[34px]"}>{titre}</h2>
+    </motion.div>
   );
 }

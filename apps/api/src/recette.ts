@@ -114,6 +114,19 @@ verifier("Relance hors périmètre", (await departement!.appel("POST", "/platefo
 verifier("Vérification publique d'un diplôme", (await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
 verifier("Identifiant de diplôme mal formé", (await anonyme.appel("GET", "/certificats/abc'--/verification")).statut, 400);
 
+titre("Services publics (sans compte)");
+const annuaire = await anonyme.appel("GET", "/public/etablissements?niveau=secondaire&departement=borgou");
+verifier("Annuaire : recherche par niveau et département", annuaire.statut, 200, `${annuaire.json.total} établissement(s)`);
+const proches = await anonyme.appel("GET", "/public/etablissements?lat=9.35&lng=2.61");
+const distances = liste(proches.json.etablissements).map((e) => Number(e.distanceKm));
+verifier("Annuaire : autour de moi, du plus proche au plus éloigné", distances.length > 1 && distances.every((d, i) => i === 0 || d >= distances[i - 1]!), true);
+verifier("Annuaire : fiche d'un établissement", (await anonyme.appel("GET", `/public/etablissements/${PILOTE}`)).statut, 200);
+verifier("Annuaire : établissement inconnu", (await anonyme.appel("GET", "/public/etablissements/ETB-INCONNU")).statut, 404);
+verifier("Annuaire : niveau invalide", (await anonyme.appel("GET", "/public/etablissements?niveau=nimporte")).statut, 422);
+verifier("Annuaire : coordonnées hors du Bénin", (await anonyme.appel("GET", "/public/etablissements?lat=48.85&lng=2.35")).statut, 422);
+const chiffres = await anonyme.appel("GET", "/public/chiffres");
+verifier("L'éducation en chiffres : indicateurs agrégés", chiffres.statut === 200 && liste(chiffres.json.indicateurs).length === 4, true);
+
 titre("Administration des utilisateurs et assistance (refus : aucune écriture)");
 const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
 const moiAdmin = comptes.find((x) => x.identifiant === "admin.beile")?.id as string | undefined;

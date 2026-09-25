@@ -22,7 +22,7 @@ et le front en `next start` (sortie `standalone`). Même recette, même CI.
 
 | Élément | Valeur |
 |---|---|
-| Projet | à recréer en **eu-central-1 (Francfort)** pour la latence depuis le Bénin (actuel : us-east-2) |
+| Projet | `beile-fra`, **eu-central-1 (Francfort)**, PostgreSQL 18 + PostGIS 3.6 (l'ancien projet `beile`, us-east-2, est conservé comme repli) |
 | Rôle propriétaire (`neondb_owner`) | **migrations uniquement** — possède `BYPASSRLS` |
 | Rôle de l'API (`beile_api`) | membre de `beile_app` : lecture et ajout seuls sur le registre, l'audit et les décisions ; projections en lecture/écriture ; compartiment sensible fermé |
 
@@ -51,7 +51,7 @@ npm run verifier -w @beile/db     # contrôle : ajout seul, droits, RLS, avec t�
 | `BEILE_ORIGINES_AUTORISEES` | URL(s) du **front** (ex. `https://beile.vercel.app`) — contrôle d'origine des écritures |
 | `BEILE_DB_POOL` | facultatif, 10 par défaut |
 
-4. Région : `cle1` (au plus près de Neon us-east-2) ; `fra1` après migration de Neon à Francfort.
+4. Région : `fra1` (Francfort), au plus près de la base Neon. Front et API dans la même région.
 
 ### Front : projet `beile` (existant `edu-tech-api`)
 1. **Root Directory** : `apps/web` ; Framework : Next.js.
@@ -86,7 +86,7 @@ npm run charge -w @beile/api -- --utilisateurs 200 --duree 30
 
 ## 6. Avant d'ouvrir à des utilisateurs réels
 
-- Recréer le projet Neon en eu-central-1 et **changer le mot de passe** de `neondb_owner` (il a circulé en clair).
+- Supprimer l'ancien projet Neon `beile` (us-east-2) une fois la bascule validée : c'est lui dont le mot de passe `neondb_owner` a circulé en clair. Le projet `beile-fra` a des identifiants neufs, jamais affichés.
 - Fédérer l'authentification à l'identité nationale (OIDC) ; les comptes locaux restent pour l'administration.
 - Limitation de débit partagée (Redis) au lieu de la mémoire de chaque instance.
 - Politiques RLS de besoin d'en connaître sur le compartiment `sensible`.

@@ -311,7 +311,9 @@ function Projecteur({ guide, etapes, index, sens, identifiant, profilLien }: { g
   const visible = !!boiteAffichee && trou.l > 0 && trou.h > 0;
 
   const place = placerBulle({ trou: visible ? trou : null, bulle: tailleBulle, vl, vh, mobile });
-  const ressort = reduit ? { duration: 0 } : { type: "spring" as const, stiffness: 300, damping: 32, mass: 0.9 };
+  // Géométrie du projecteur : courbe sans dépassement (un ressort oscille au-delà de la cible et donnerait
+  // des largeurs/hauteurs négatives, invalides en SVG, lorsque la découpe rétrécit fortement).
+  const ressort = reduit ? { duration: 0 } : { duration: 0.45, ease: EASE };
 
   const pret = centree || (!!el && visible);
   const progression = ((index + 1) / etapes.length) * 100;
