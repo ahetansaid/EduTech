@@ -1,21 +1,12 @@
 "use client";
 
-import { ArrowRight, BookOpenCheck, CalendarDays, ChartColumn, GraduationCap, Landmark, LogIn, School, Search, UserPlus, Users } from "lucide-react";
+import { ArrowRight, BookOpenCheck, GraduationCap, Landmark, LogIn, Search, Users } from "lucide-react";
 import Link from "next/link";
 import { EASE, motion } from "@/components/motion";
 import { BandeNationale } from "@/components/ui/primitives";
 import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
-import { useCalendrier } from "@/lib/api/public";
-import { prochaine } from "@/lib/calendrier";
-
-/** Services ouverts à tous, sans compte. */
-const SERVICES = [
-  { href: "/etablissements", icone: School, titre: "Trouver un établissement", texte: "Écoles, collèges, lycées et centres de formation, autour de vous." },
-  { href: "/inscription-scolaire", icone: UserPlus, titre: "Inscrire son enfant", texte: "Les étapes et les pièces, même sans acte de naissance." },
-  { href: "/calendrier", icone: CalendarDays, titre: "Calendrier scolaire", texte: "Rentrée, congés et examens nationaux de l'année." },
-  { href: "/donnees", icone: ChartColumn, titre: "L'éducation en chiffres", texte: "Indicateurs par département, sources à l'appui." },
-];
+import { SectionCalendrier, SectionChiffres, SectionEtablissements, SectionInscription, SectionVerification } from "@/components/public/SectionsAccueil";
 
 /** Un espace pour chaque acteur, chacun avec son guide. */
 const ESPACES = [
@@ -61,11 +52,6 @@ const PASTILLES = [
 export default function Accueil() {
   useThemeEspace(false);
   const monEspace = useMonEspace();
-  // Carte « Calendrier » : la prochaine échéance réelle, publiée par l'administration.
-  const calendrier = useCalendrier();
-  const suite = calendrier.data ? prochaine(calendrier.data.evenements, calendrier.data.aujourdhui) : null;
-  const texteService = (href: string, texte: string) =>
-    href === "/calendrier" && suite ? `${suite.echeance.titre} : ${suite.enCours ? "en ce moment" : suite.dans <= 1 ? "demain" : `dans ${suite.dans} jours`}${suite.echeance.statut === "provisoire" ? " (date provisoire)" : ""}.` : texte;
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-bg">
@@ -74,7 +60,7 @@ export default function Accueil() {
 
       <EnTetePublic transparent />
 
-      <main className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 py-10 sm:px-8 lg:min-h-[calc(100vh-15rem)] lg:grid-cols-[1.3fr_0.9fr] lg:gap-6 lg:py-6">
+      <main className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[1.3fr_0.9fr] lg:gap-6 lg:py-16">
         <div className="max-w-2xl">
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6, ease: EASE }} className="text-[12px] font-semibold uppercase tracking-[0.18em] text-accent-ink">
             République du Bénin<span className="hidden sm:inline"> · Éducation nationale</span>
@@ -125,22 +111,12 @@ export default function Accueil() {
         </div>
       </main>
 
-      {/* Services ouverts à tous */}
-      <section className="relative mx-auto w-full max-w-6xl px-5 py-16 sm:px-8">
-        <Titre surtitre="Services en ligne" titre="Sans compte, pour tous" />
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {SERVICES.map((sv, i) => (
-            <motion.div key={sv.href} initial={{ y: 18 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-40px" }} transition={{ delay: i * 0.07, duration: 0.5, ease: EASE }}>
-              <Link href={sv.href} className="group flex h-full flex-col rounded-2xl border border-line/70 bg-surface p-5 shadow-float transition hover:-translate-y-1 hover:shadow-pop">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-soft text-accent-ink transition group-hover:bg-navy group-hover:text-white"><sv.icone size={20} aria-hidden /></span>
-                <p className="mt-4 font-display text-[16px] font-bold text-ink">{sv.titre}</p>
-                <p className="mt-1 text-[13.5px] leading-relaxed text-ink-2">{texteService(sv.href, sv.texte)}</p>
-                <span className="mt-auto flex justify-end pt-3"><ArrowRight size={17} className="shrink-0 text-ink-muted transition group-hover:translate-x-1 group-hover:text-accent-ink" aria-hidden /></span>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      {/* Chaque service public, présenté par un aperçu vivant de sa page */}
+      <SectionEtablissements />
+      <SectionCalendrier />
+      <SectionInscription />
+      <SectionChiffres />
+      <SectionVerification />
 
       {/* Un espace pour chaque acteur */}
       <section className="relative bg-navy">
