@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { schema } from "@beile/db";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import { base } from "./commun";
 import { notifierFaits } from "./notifications";
 
@@ -57,6 +58,17 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
   // Les notifications ne doivent jamais faire échouer l'écriture au registre.
   await notifierFaits(lignes.filter((l) => l.apprenantId).map((l) => ({ id: l.id, type: l.type, apprenantId: l.apprenantId!, donnees: l.donnees }))).catch((e) => console.error("Notifications :", e));
   return lignes.map((l) => l.id);
+}
+
+/** Identifiant de saisie côté client (file hors connexion) : clé d'idempotence des écritures rejouées. */
+export const ID_SAISIE = z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional();
+
+/** Événements déjà enregistrés pour cette saisie (rejeu après une réponse perdue) : on les renvoie sans rien réécrire. */
+export async function dejaSaisi(idSaisie: string | undefined, type: string) {
+  if (!idSaisie) return null;
+  const lignes = await base().select({ id: schema.evenements.id }).from(schema.evenements)
+    .where(and(eq(schema.evenements.type, type), sql`${schema.evenements.donnees}->>'idSaisie' = ${idSaisie}`));
+  return lignes.length ? lignes.map((l) => l.id) : null;
 }
 
 /** Classe courante d'un ensemble d'apprenants, lue dans la projection (lecture indexée). */

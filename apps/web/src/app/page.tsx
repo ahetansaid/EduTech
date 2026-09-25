@@ -1,21 +1,19 @@
 "use client";
 
-import { ArrowRight, BadgeCheck, Fingerprint, GitBranch, Lock, MapPinned, ScanLine, Sparkles } from "lucide-react";
+import { ArrowRight, BadgeCheck, Building2, ChartNoAxesCombined, Fingerprint, GitBranch, GraduationCap, Lock, LogIn, MapPinned, ScanLine, ShieldCheck, Sparkles, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Avatar } from "@/components/shell/SelecteurProfil";
+import { EASE, motion } from "@/components/motion";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
-import { ACCUEIL_PROFIL } from "@/lib/navigation";
-import { getCouches, getMonde } from "@beile/simulation/monde";
-import { useEffect } from "react";
-import { useDemo, useHydratation } from "@/lib/store";
+import { accueilPour, useSessionServeur } from "@/lib/session";
 import { useThemeEspace } from "@/lib/useSombre";
 
-const FAMILLES = [
-  { titre: "Pilotage", texte: "Cockpit national, console territoriale, requête contrôlée", ids: ["p-central", "p-departement", "p-inspecteur", "p-chercheur"] },
-  { titre: "Établissement", texte: "Gestion, inscriptions, examens, conformité", ids: ["p-directeur", "p-dpo"] },
-  { titre: "Parcours", texte: "Espaces personnels, d'abord sur téléphone", ids: ["p-enseignant", "p-parent", "p-apprenant"] },
+const ESPACES = [
+  { icone: ChartNoAxesCombined, titre: "Pilotage", texte: "Cockpit national, console départementale et d'inspection, requêtes contrôlées, planification.", publics: "Cabinet · Directions départementales · Inspection · Recherche" },
+  { icone: Building2, titre: "Établissement", texte: "Tableau de bord du jour, inscriptions ancrées au registre national, examens et diplômes vérifiables.", publics: "Chefs d'établissement" },
+  { icone: GraduationCap, titre: "Enseignement", texte: "Appel en quelques secondes, carnet de notes, corrections tracées, passeport professionnel.", publics: "Enseignants" },
+  { icone: Users, titre: "Familles et apprenants", texte: "Suivi en temps réel, notifications, passeport éducatif et preuves partageables.", publics: "Parents · Apprenants" },
+  { icone: ShieldCheck, titre: "Conformité et exploitation", texte: "Journal d'audit des accès et des refus, registre des traitements, qualité des données, comptes.", publics: "DPO · Administrateurs" },
 ];
 
 const PREUVES = [
@@ -28,18 +26,9 @@ const PREUVES = [
 ];
 
 export default function Accueil() {
-  const router = useRouter();
-  const hydrate = useHydratation();
   useThemeEspace(false);
-  // Préchauffage : le moteur est généré pendant les temps morts, l'espace choisi s'ouvre instantanément.
-  useEffect(() => {
-    const prechauffer = () => { getMonde(); getCouches(); };
-    const id = setTimeout(prechauffer, 250);
-    return () => clearTimeout(id);
-  }, []);
-  const changerProfil = useDemo((s) => s.changerProfil);
-  const profils = getMonde().profils;
-  const entrer = (id: string) => { changerProfil(id); router.push(ACCUEIL_PROFIL[id] ?? "/"); };
+  const { data: session } = useSessionServeur();
+  const monEspace = session ? accueilPour(session.profil.habilitations.map((h) => h.role)) : null;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -50,12 +39,17 @@ export default function Accueil() {
         <div className="mx-auto max-w-7xl px-5 pb-20 pt-6 sm:px-8">
           <div className="flex items-center justify-between">
             <span className="rounded-lg bg-white/95 px-3 py-2 shadow-float"><Logo /></span>
-            <Link href="/verifier" className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3.5 py-2 text-[13px] font-medium text-white ring-1 ring-white/25 backdrop-blur hover:bg-white/20">
-              <BadgeCheck size={16} aria-hidden /> Vérifier un diplôme
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/verifier" className="hidden items-center gap-2 rounded-md bg-white/10 px-3.5 py-2 text-[13px] font-medium text-white ring-1 ring-white/25 backdrop-blur hover:bg-white/20 sm:inline-flex">
+                <BadgeCheck size={16} aria-hidden /> Vérifier un diplôme
+              </Link>
+              <Link href={monEspace ?? "/connexion"} className="inline-flex items-center gap-2 rounded-md bg-white px-3.5 py-2 text-[13px] font-semibold text-navy shadow-float hover:bg-white/90">
+                <LogIn size={16} aria-hidden /> {monEspace ? "Mon espace" : "Se connecter"}
+              </Link>
+            </div>
           </div>
-          <div className="mt-16 max-w-2xl text-white sm:mt-24">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/70">République du Bénin · Proposition de système national</p>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: EASE }} className="mt-14 max-w-2xl text-white sm:mt-24">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/70">République du Bénin · Plateforme nationale</p>
             <h1 className="mt-4 text-[34px] font-extrabold leading-[1.08] sm:text-[52px]">
               Chaque parcours suivi.<br />Chaque décision éclairée.
             </h1>
@@ -64,16 +58,16 @@ export default function Accueil() {
               pour offrir à chaque acteur un service adapté et au pays une vision fiable, territoriale et en temps utile de son système éducatif.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <button onClick={() => entrer("p-central")} className="inline-flex h-12 items-center gap-2 rounded-md bg-white px-5 text-[15px] font-semibold text-navy shadow-pop transition hover:-translate-y-0.5">
-                Ouvrir le cockpit national <ArrowRight size={17} aria-hidden />
-              </button>
-              <a href="#acteurs" className="inline-flex h-12 items-center gap-2 rounded-md px-5 text-[15px] font-semibold text-white ring-1 ring-white/40 hover:bg-white/10">
-                Choisir un acteur
-              </a>
+              <Link href={monEspace ?? "/connexion"} className="inline-flex h-12 items-center gap-2 rounded-md bg-white px-5 text-[15px] font-semibold text-navy shadow-pop transition hover:-translate-y-0.5">
+                {monEspace ? "Ouvrir mon espace" : "Accéder à mon espace"} <ArrowRight size={17} aria-hidden />
+              </Link>
+              <Link href="/verifier" className="inline-flex h-12 items-center gap-2 rounded-md px-5 text-[15px] font-semibold text-white ring-1 ring-white/40 hover:bg-white/10">
+                <BadgeCheck size={17} aria-hidden /> Vérifier un diplôme
+              </Link>
             </div>
-          </div>
+          </motion.div>
           <dl className="mt-16 grid max-w-3xl grid-cols-2 gap-6 text-white sm:grid-cols-4">
-            {[["12", "départements"], ["77", "communes"], ["15", "processus simulés"], ["9", "profils d'acteurs"]].map(([v, l]) => (
+            {[["12", "départements"], ["77", "communes"], ["15", "processus couverts"], ["10", "espaces métiers"]].map(([v, l]) => (
               <div key={l}><dt className="sr-only">{l}</dt><dd><span className="block font-display text-[30px] font-bold leading-none">{v}</span><span className="mt-1 block text-[12.5px] text-white/70">{l}</span></dd></div>
             ))}
           </dl>
@@ -81,38 +75,32 @@ export default function Accueil() {
         <BandeNationale className="h-[5px]" />
       </section>
 
-      {/* Bandeau de démonstration */}
-      <div className="border-b border-line/60 bg-warning-bg px-5 py-2.5 text-center text-[13px] text-warning">
-        Prototype de démonstration : <strong>toutes les données sont fictives</strong> et générées de façon déterministe. Aucune donnée personnelle réelle n'est utilisée ni hébergée.
-      </div>
-
-      {/* Acteurs */}
-      <section id="acteurs" className="mx-auto max-w-7xl px-5 py-16 sm:px-8">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-ink-muted">Une seule architecture, des expériences différentes</p>
-        <h2 className="mt-2 text-[28px] font-bold text-ink sm:text-[32px]">Entrez par l'acteur de votre choix</h2>
-        <p className="mt-2 max-w-2xl text-ink-2">Chaque profil voit ce dont il a besoin pour sa mission, et rien de plus. Vous pourrez changer d'acteur à tout moment.</p>
-        <div className="mt-10 grid gap-6 lg:grid-cols-3">
-          {FAMILLES.map((f) => (
-            <div key={f.titre} className="rounded-xl border border-line/70 bg-surface p-5 shadow-float">
-              <p className="font-display text-[17px] font-bold text-ink">{f.titre}</p>
-              <p className="text-[13px] text-ink-muted">{f.texte}</p>
-              <div className="mt-4 space-y-1.5">
-                {f.ids.map((id) => {
-                  const p = profils.find((x) => x.id === id)!;
-                  return (
-                    <button key={id} disabled={!hydrate} onClick={() => entrer(id)} className="group flex w-full items-center gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:opacity-60">
-                      <Avatar nom={p.nomAffiche} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[14px] font-semibold text-ink">{p.nomAffiche}</span>
-                        <span className="block truncate text-[12.5px] text-ink-muted">{p.fonction}</span>
-                      </span>
-                      <ArrowRight size={16} className="text-ink-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+      {/* Espaces */}
+      <section id="espaces" className="mx-auto max-w-7xl px-5 py-14 sm:px-8 sm:py-16">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-ink-muted">Une seule plateforme, des espaces différents</p>
+        <h2 className="mt-2 text-[26px] font-bold text-ink sm:text-[32px]">Chacun voit ce dont il a besoin, et rien de plus</h2>
+        <p className="mt-2 max-w-2xl text-ink-2">L'espace s'ouvre selon vos habilitations, décidées sur le serveur. Chaque accès à une donnée personnelle est journalisé.</p>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {ESPACES.map((e, i) => (
+            <motion.div
+              key={e.titre}
+              initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-40px" }} transition={{ delay: i * 0.06, duration: 0.5, ease: EASE }}
+              whileHover={{ y: -4 }}
+              className="rounded-xl border border-line/70 bg-surface p-5 shadow-float transition-shadow hover:shadow-pop"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-soft text-accent-ink"><e.icone size={19} aria-hidden /></span>
+              <p className="mt-4 font-display text-[17px] font-bold text-ink">{e.titre}</p>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-2">{e.texte}</p>
+              <p className="mt-3 text-[12px] font-medium text-ink-muted">{e.publics}</p>
+            </motion.div>
           ))}
+          <Link href={monEspace ?? "/connexion"} className="group flex flex-col justify-between rounded-xl bg-navy p-5 text-white shadow-float transition hover:bg-navy-deep">
+            <LogIn size={22} aria-hidden />
+            <div>
+              <p className="mt-6 font-display text-[18px] font-bold">{monEspace ? "Reprendre où vous en étiez" : "Se connecter"}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-[14px] text-white/80">Identifiant remis par votre administration <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" aria-hidden /></p>
+            </div>
+          </Link>
         </div>
       </section>
 
@@ -121,10 +109,10 @@ export default function Accueil() {
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1fr_1.6fr]">
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-ink-muted">Des mécanismes, pas des maquettes</p>
-            <h2 className="mt-2 text-[28px] font-bold text-ink">Ce que la démonstration prouve sous vos yeux</h2>
+            <h2 className="mt-2 text-[26px] font-bold text-ink sm:text-[28px]">Ce que garantit la plateforme</h2>
             <p className="mt-3 text-ink-2">
-              Le prototype n'affiche pas des écrans figés : un registre d'événements, un moteur d'autorisation et une couche sémantique
-              calculent chaque chiffre et chaque décision. Le même contrat d'interface sera servi par l'API de production.
+              Un registre d'événements en ajout seul, un moteur d'autorisation et une couche sémantique calculent chaque chiffre
+              et chaque décision, côté serveur. Rien n'est effacé : une erreur se corrige par un événement tracé.
             </p>
             <div className="relative mt-8 aspect-[4/3] overflow-hidden rounded-xl">
               <Image src="/images/classe-primaire.jpg" alt="" fill sizes="(min-width: 1024px) 40vw, 100vw" className="object-cover" />
@@ -146,7 +134,7 @@ export default function Accueil() {
       <footer>
         <BandeNationale className="h-[5px]" />
         <div className="mx-auto flex max-w-7xl flex-wrap justify-between gap-2 px-5 py-6 text-[12.5px] text-ink-muted sm:px-8">
-          <span>BEILE — Bénin Education Intelligence & Learning Ecosystem · Prototype</span>
+          <span>BEILE — Bénin Education Intelligence & Learning Ecosystem</span>
           <span>Photographies : Tosin Olowoleni, Şeyhmus Kino (Pexels)</span>
         </div>
       </footer>

@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, type Variables } from "./commun";
 import { parcours } from "./parcours";
-import { classesCourantes, inscrireAuRegistre } from "./ecriture";
+import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { auth } from "./auth";
 import { perimetrePilotage, pilotage } from "./pilotage";
 import { etablissement } from "./etablissement";
 import { enseignant } from "./enseignant";
 import { plateforme } from "./plateforme";
+import { complementsPilotage } from "./complements-pilotage";
+import { complementsEtablissement } from "./complements-etablissement";
+import { complementsEnseignant } from "./complements-enseignant";
+import { complementsFamille } from "./complements-famille";
+import { complementsGouvernance } from "./complements-gouvernance";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -43,6 +48,8 @@ app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return c.json({ erreur: err.message }, err.status);
+  // Doublon de saisie détecté par l'index d'idempotence (deux rejeux simultanés) : déjà enregistré.
+  if ((err as { code?: string; cause?: { code?: string } }).code === "23505" || (err as { cause?: { code?: string } }).cause?.code === "23505") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
   // Paramètre d'URL ou de requête invalide (validation zod) : erreur du client, jamais un 500.
   if (err instanceof z.ZodError) return c.json({ erreur: "Paramètre invalide", champs: err.issues.map((i) => i.path.join(".") || "valeur") }, 422);
   console.error(err);
@@ -154,6 +161,7 @@ app.post("/evenements/absences", authentifie, async (c) => {
     classeId: z.string().regex(/^CLS-[A-Za-z0-9-]+$/),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     apprenantIds: z.array(z.string().regex(/^APP-\d{6}$/)).min(1).max(80),
+    idSaisie: ID_SAISIE,
   }).strict());
   const [enseignant] = profil.npi ? await base().select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : [];
   const [relation] = enseignant ? await base().select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignant.id), eq(schema.enseignements.classeId, saisie.classeId))).limit(1) : [];
@@ -166,9 +174,11 @@ app.post("/evenements/absences", authentifie, async (c) => {
   const horsClasse = saisie.apprenantIds.filter((id) => courantes.get(id) !== saisie.classeId);
   if (horsClasse.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${horsClasse.join(", ")}` });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
+  const deja = await dejaSaisi(saisie.idSaisie, "ABSENCE");
+  if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   const enregistres = await inscrireAuRegistre(saisie.apprenantIds.map((apprenantId) => ({
     type: "ABSENCE", auteurId: enseignant.id, etablissementId: classe!.etablissementId, apprenantId,
-    donnees: { apprenantId, classeId: saisie.classeId, date: saisie.date, justifiee: false, anneeScolaire: classe!.anneeScolaire },
+    donnees: { apprenantId, classeId: saisie.classeId, date: saisie.date, justifiee: false, anneeScolaire: classe!.anneeScolaire, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
   })));
   await journaliser(profil, "Saisie d'absences", `${saisie.classeId} (${enregistres.length})`, "evaluation", true, null);
   return c.json({ enregistres }, 201);
@@ -209,3 +219,8 @@ app.route("/", pilotage);
 app.route("/", etablissement);
 app.route("/", enseignant);
 app.route("/", plateforme);
+app.route("/", complementsPilotage);
+app.route("/", complementsEtablissement);
+app.route("/", complementsEnseignant);
+app.route("/", complementsFamille);
+app.route("/", complementsGouvernance);

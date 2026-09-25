@@ -121,15 +121,30 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   }
   const profil = { ...ligne.profil, habilitations: ligne.profil.habilitations as Profil["habilitations"] };
   const compte = { id: ligne.compte.id, identifiant: ligne.compte.identifiant, doitChangerMotDePasse: ligne.compte.doitChangerMotDePasse, empreinteSession: empreinte };
-  if (cacheSessions.size > 50_000) cacheSessions.clear();
+  if (cacheSessions.size > 50_000) for (const [k, v] of cacheSessions) if (v.expire <= Date.now()) cacheSessions.delete(k);
   cacheSessions.set(empreinte, { expire: Date.now() + CACHE_SESSIONS_MS, profil, compte });
   c.set("profil", profil);
   c.set("compte", compte);
   await next();
 };
 
-/** Journal d'audit : toute décision d'accès, accordée ou refusée, est inscrite (table en ajout seul). */
+/**
+ * Journal d'audit. Les refus sont toujours tracés. Une CONSULTATION accordée identique (même profil, action,
+ * ressource, finalité) n'est tracée qu'une fois par fenêtre de 10 min et par instance : les écrans rafraîchis
+ * automatiquement (tableaux de bord « du jour ») ne multiplient pas les lignes — sans quoi 15 000 directions
+ * produiraient des dizaines de millions d'entrées par jour sans information supplémentaire.
+ */
+const FENETRE_CONSULTATION_MS = 10 * 60_000;
+const dernieresConsultations = new Map<string, number>();
 export async function journaliser(profil: Pick<Profil, "id" | "nomAffiche">, action: string, ressource: string, finalite: Finalite, autorise: boolean, critereManquant: string | null) {
+  if (autorise && action.startsWith("Consultation")) {
+    const cle = `${profil.id}|${action}|${ressource}|${finalite}`;
+    const maintenant = Date.now();
+    const derniere = dernieresConsultations.get(cle);
+    if (derniere && maintenant - derniere < FENETRE_CONSULTATION_MS) return;
+    dernieresConsultations.set(cle, maintenant);
+    if (dernieresConsultations.size > 100_000) for (const [k, t] of dernieresConsultations) if (maintenant - t > FENETRE_CONSULTATION_MS) dernieresConsultations.delete(k);
+  }
   await base().insert(schema.journal).values({ id: `AUD-${randomUUID()}`, profilId: profil.id, profilNom: profil.nomAffiche, action, ressource: ressource.slice(0, 200), finalite, autorise, critereManquant });
 }
 

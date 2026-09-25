@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, refuser, type Variables } from "./commun";
-import { classesCourantes, effectifClasse, inscrireAuRegistre, type NouveauFait } from "./ecriture";
+import { classesCourantes, dejaSaisi, effectifClasse, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
 
 /**
@@ -82,6 +82,7 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
     matiere: z.enum(MATIERES),
     trimestre: z.number().int().min(1).max(3),
     notes: z.array(z.object({ apprenantId: ID_APPRENANT, note: z.number().min(0).max(20).refine((n) => Number.isInteger(n * 4), "au quart de point") })).min(1).max(80),
+    idSaisie: ID_SAISIE,
   }).strict());
   const enseignant = await enseignantDe(profil);
   const [relation] = enseignant ? await base().select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, enseignant.id), eq(schema.enseignements.classeId, saisie.classeId), eq(schema.enseignements.matiere, saisie.matiere))).limit(1) : [];
@@ -93,9 +94,11 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
   const hors = saisie.notes.filter((n) => courantes.get(n.apprenantId) !== saisie.classeId).map((n) => n.apprenantId);
   if (hors.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${hors.join(", ")}` });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
+  const deja = await dejaSaisi(saisie.idSaisie, "EVALUATION");
+  if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   const enregistres = await inscrireAuRegistre(saisie.notes.map((n) => ({
     type: "EVALUATION", auteurId: enseignant!.id, etablissementId: classe!.etablissementId, apprenantId: n.apprenantId,
-    donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire },
+    donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
   })));
   await journaliser(profil, "Saisie de notes", `${saisie.classeId} · ${saisie.matiere} (${enregistres.length})`, "evaluation", true, null);
   return c.json({ enregistres }, 201);

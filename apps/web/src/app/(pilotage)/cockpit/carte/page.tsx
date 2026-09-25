@@ -1,44 +1,50 @@
 "use client";
 
-import type { ResultatIndicateur } from "@beile/contracts";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronRight, Clock, Droplet, GitMerge, GraduationCap, Map as IconeCarte,
-  Route, School, TrendingUp, Users, Wifi, X, Zap, type LucideIcon,
+  ArrowDown, ArrowUp, ArrowUpDown, BellRing, Check, ChevronRight, Clock, Droplet, GitMerge, GraduationCap, Map as IconeCarte,
+  School, TrendingUp, UserX, Users, Wifi, X, Zap, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
-import { CarteBenin, COULEUR_ALERTE, type PointCarte } from "@/components/map/CarteBenin";
-import { TuileIndicateur } from "@/components/ui/donnees";
-import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
+import { Courbes } from "@/components/charts/Graphiques";
+import { AnimatePresence, Cascade, Compteur, EASE, Element, motion } from "@/components/motion";
+import { CarteBenin, COULEUR_ALERTE, LegendeSequentielle, type PointCarte } from "@/components/map/CarteBenin";
+import { notifier } from "@/components/ui/Notifications";
+import { BadgeConfiance, TuileIndicateur } from "@/components/ui/donnees";
+import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { nomCommune, useCouches } from "@/lib/donnees";
-import { compact, dateLongue, entier, nombre, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE, type EtablissementGenere } from "@beile/simulation/macro";
-import { DATE_SIMULEE } from "@beile/simulation/micro";
-import { calculer, priorites, type NiveauAlerte } from "@beile/simulation/semantique";
-import { COMMUNES, communeById, DEPARTEMENTS, departementById } from "@beile/simulation/territoire";
-import { useProfil } from "@/lib/store";
+import { compact, entier, nombre, pourcent } from "@/lib/format";
+import { ErreurApi } from "@/lib/http";
+import {
+  useCouche, useFicheCommune, useIndicateurPilotage, usePrioritesPilotage, useRelanceMutation,
+  type CouchePilotage, type EtablissementCommune, type FicheCommune, type NiveauAlerte, type Priorite,
+} from "@/lib/api/pilotage";
+import { COMMUNES, communeById, DEPARTEMENTS } from "@beile/simulation/territoire";
+import {
+  ALERTE, BandeauRefus, EtatEchec, Feuille, LegendeAlertes, libellePerimetre, NIVEAUX_ALERTE, niveauDuScore, nomCommune, nomDepartement,
+  PastilleNiveau, pluriel, SqueletteLignes, SqueletteTuiles, useHabilitationPilotage,
+} from "../../_commun";
 
 /**
  * « Où agir ? » (processus P3) — descente Bénin → département → commune → établissements.
- * Chaque couleur de la carte est explicable : le niveau d'alerte résulte du nombre de facteurs
- * dépassant leur seuil (couche sémantique, `priorites`).
+ * Niveaux d'alerte, couches et fiche commune viennent de l'API, sous le périmètre de l'habilitation ;
+ * une commune hors périmètre est refusée PAR LE SERVEUR (403 journalisé), pas masquée par l'interface.
  */
 
-const NIVEAUX_ALERTE: { niveau: NiveauAlerte; libelle: string; symbole: string }[] = [
-  { niveau: "critique", libelle: "Critique", symbole: "◆" },
-  { niveau: "attention", libelle: "Attention", symbole: "▲" },
-  { niveau: "surveillance", libelle: "Surveillance", symbole: "◐" },
-  { niveau: "favorable", libelle: "Situation favorable", symbole: "●" },
+type Couche = "priorites" | CouchePilotage;
+const COUCHES: { valeur: Couche; libelle: string }[] = [
+  { valeur: "priorites", libelle: "Priorités" },
+  { valeur: "maths", libelle: "Maths ≥ 15" },
+  { valeur: "ratio", libelle: "Élèves / ens." },
+  { valeur: "occupation", libelle: "Occupation" },
+  { valeur: "absenteisme", libelle: "Absentéisme" },
+  { valeur: "abandon", libelle: "Abandon" },
 ];
-const ALERTE = Object.fromEntries(NIVEAUX_ALERTE.map((n) => [n.niveau, n])) as Record<NiveauAlerte, (typeof NIVEAUX_ALERTE)[number]>;
-const niveauDuScore = (s: number): NiveauAlerte => (s >= 3 ? "critique" : s === 2 ? "attention" : s === 1 ? "surveillance" : "favorable");
-const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="space-y-4"><Squelette className="h-10 w-80" /><Squelette className="h-[480px]" /></div>}>
+    <Suspense fallback={<div className="space-y-6"><Squelette className="h-10 w-80 max-w-full" /><Squelette className="h-[480px] rounded-xl" /></div>}>
       <OuAgir />
     </Suspense>
   );
@@ -47,185 +53,197 @@ export default function Page() {
 function OuAgir() {
   const params = useSearchParams();
   const router = useRouter();
-  const couches = useCouches();
-  const profil = useProfil();
-
-  // Périmètre de l'habilitation : la direction départementale ne voit que son département.
-  const perimetre = profil.habilitations.find((h) => h.role === "administration_centrale" || h.role === "direction_departementale")?.perimetre;
-  const depRestreint = perimetre?.niveau === "departement" ? perimetre.departementId : null;
+  const hab = useHabilitationPilotage();
+  const prio = usePrioritesPilotage();
+  const [couche, setCouche] = useState<Couche>("priorites");
+  const donneesCouche = useCouche(couche === "priorites" ? null : couche);
 
   const communeDemandee = params.get("commune");
   const communeConnue = communeDemandee && communeById.has(communeDemandee) ? communeDemandee : null;
-  const horsPerimetre = !!communeConnue && !!depRestreint && communeById.get(communeConnue)!.departementId !== depRestreint;
-  const commune = horsPerimetre ? null : communeConnue;
+  const fiche = useFicheCommune(communeConnue);
+  const refus = fiche.error instanceof ErreurApi && fiche.error.refus;
+  const commune = communeConnue && !refus ? communeConnue : null;
 
-  const [depChoisi, setDepChoisi] = useState<string | null>(null);
-  const dep = depRestreint ?? (commune ? communeById.get(commune)!.departementId : depChoisi);
+  // Périmètre : la direction départementale (et l'inspecteur) reste dans son département.
+  const communesPrio = useMemo(() => prio.data?.communes ?? {}, [prio.data]);
+  const depsPerimetre = new Set(Object.keys(communesPrio).map((id) => communeById.get(id)?.departementId).filter(Boolean) as string[]);
+  const depRestreint = hab?.perimetre.niveau === "departement" ? hab.perimetre.departementId
+    : hab?.perimetre.niveau === "circonscription" && depsPerimetre.size === 1 ? [...depsPerimetre][0]! : null;
+  const depDemande = params.get("departement");
+  const dep = depRestreint ?? (commune ? communeById.get(commune)!.departementId : depDemande && DEPARTEMENTS.some((d) => d.id === depDemande) ? depDemande : null);
 
-  const prio = useMemo(() => priorites(couches), [couches]);
-  const couleurs = useMemo(() => new Map([...prio].map(([id, p]) => [id, COULEUR_ALERTE[p.niveau]])), [prio]);
-  const scores = useMemo(() => new Map([...prio].map(([id, p]) => [id, p.score])), [prio]);
+  const naviguer = (q: string | null) => router.replace(q ? `/cockpit/carte?${q}` : "/cockpit/carte", { scroll: false });
+  const allerCommune = (id: string | null) => naviguer(id ? `commune=${id}` : dep && !depRestreint ? `departement=${dep}` : null);
+  const allerDepartement = (id: string | null) => naviguer(id ? `departement=${id}` : null);
 
-  const allerCommune = (id: string | null) => router.replace(id ? `/cockpit/carte?commune=${id}` : "/cockpit/carte", { scroll: false });
-  const allerDepartement = (id: string | null) => { setDepChoisi(id); if (commune) allerCommune(null); };
+  const couleurs = useMemo(() => (couche === "priorites" ? new Map(Object.entries(communesPrio).map(([id, p]) => [id, COULEUR_ALERTE[p.niveau]])) : undefined), [couche, communesPrio]);
+  const scores = useMemo(() => new Map(Object.entries(communesPrio).map(([id, p]) => [id, p.score])), [communesPrio]);
+  const valeurs = useMemo(() => (couche !== "priorites" && donneesCouche.data ? new Map(Object.entries(donneesCouche.data.valeurs)) : scores), [couche, donneesCouche.data, scores]);
+  const bornes = couche !== "priorites" ? [...valeurs.values()].filter((v): v is number => v != null) : [];
+  const formaterCouche = couche === "ratio" ? (v: number) => nombre(v, 0) : (v: number) => pourcent(v);
+  const libelleCouche = COUCHES.find((c) => c.valeur === couche)!.libelle;
 
   const onCarte = (id: string) => {
+    if (!communesPrio[id]) return; // hors périmètre : rien à ouvrir
     if (!dep) { allerDepartement(communeById.get(id)?.departementId ?? null); return; }
     allerCommune(commune === id ? null : id);
   };
 
-  const etabs = commune ? couches.etablissementsParCommune.get(commune) ?? [] : [];
-  const points: PointCarte[] | undefined = commune
-    ? etabs.map((e) => ({ id: e.id, lng: e.lng, lat: e.lat, libelle: e.nom, mis: e.id.includes("-PILOTE-") }))
+  const points: PointCarte[] | undefined = commune && fiche.data
+    ? fiche.data.etablissements.map((e) => ({ id: e.id, lng: e.lng, lat: e.lat, libelle: e.nom, mis: e.pilote }))
     : undefined;
-
   const niveauVue = commune ? "commune" : dep ? "departement" : "national";
+
+  if (prio.isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader surtitre="Pilotage territorial · P3" titre="Où agir ?" />
+        <EtatEchec erreur={prio.error} onReessayer={() => prio.refetch()} titreRefus="Carte réservée aux habilitations de pilotage" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        surtitre={`Pilotage territorial · P3 · ${dateLongue(DATE_SIMULEE)}`}
+        surtitre={`Pilotage territorial · P3 · périmètre ${libellePerimetre(hab?.perimetre)}`}
         titre="Où agir ?"
         sousTitre="Zones prioritaires selon cinq facteurs objectivés : croissance des effectifs, occupation, encadrement, absentéisme et résultats. Descendez du pays jusqu'aux établissements."
-        actions={commune ? <Link href={`/simulation?commune=${commune}`}><Button variante="secondaire" icone={GitMerge}>Simuler une mesure</Button></Link> : undefined}
+        actions={commune ? <Link href={`/simulation?commune=${commune}`}><Button icone={GitMerge}>Simuler une mesure</Button></Link> : undefined}
       />
 
       <nav aria-label="Fil de descente" className="flex flex-wrap items-center gap-1 text-[13px]">
         <FilEtape actif={niveauVue === "national"} desactive={!!depRestreint} onClick={() => allerDepartement(null)}>Bénin</FilEtape>
-        {dep && (<><ChevronRight size={14} className="text-ink-muted" aria-hidden /><FilEtape actif={niveauVue === "departement"} onClick={() => allerDepartement(dep)}>{departementById.get(dep)?.nom}</FilEtape></>)}
+        {dep && (<><ChevronRight size={14} className="text-ink-muted" aria-hidden /><FilEtape actif={niveauVue === "departement"} onClick={() => allerDepartement(dep)}>{nomDepartement(dep)}</FilEtape></>)}
         {commune && (<><ChevronRight size={14} className="text-ink-muted" aria-hidden /><FilEtape actif>{nomCommune(commune)}</FilEtape></>)}
-        {depRestreint && <Badge ton="info" className="ml-2">Périmètre : département {departementById.get(depRestreint)?.nom}</Badge>}
+        {depRestreint && <Badge ton="info" className="ml-2">Périmètre : {libellePerimetre(hab?.perimetre)}</Badge>}
       </nav>
 
-      {horsPerimetre && (
-        <div role="status" className="rounded-lg border border-critical/30 bg-critical-bg/60 px-4 py-3 text-[13px] text-critical">
-          <span className="font-semibold">Commune hors périmètre.</span> {nomCommune(communeConnue!)} ne relève pas du département de votre habilitation : l'accès est refusé. Critère manquant : périmètre.
-        </div>
+      {refus && communeConnue && (
+        <BandeauRefus titre="Commune hors périmètre." texte={<>{nomCommune(communeConnue)} ne relève pas de votre habilitation : le serveur a refusé l'accès et journalisé la tentative (critère manquant : périmètre).</>} />
       )}
+      {fiche.error instanceof ErreurApi && fiche.error.introuvable && <BandeauRefus titre="Commune inconnue." texte="Cet identifiant ne figure pas au référentiel national." />}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-        <Card className="p-0">
-          <div className="border-b border-line/60 px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-ink">
-              {commune ? `${nomCommune(commune)} et ses établissements` : dep ? `Communes · ${departementById.get(dep)?.nom}` : "Les 77 communes"}
-            </h2>
-            <p className="text-[12.5px] text-ink-muted">
-              {niveauVue === "national" ? "Cliquez sur une zone pour descendre dans son département." : "Cliquez sur une commune pour afficher ses facteurs et ses établissements."}
-            </p>
+      <div className="grid gap-6 lg:grid-cols-5">
+        <Card className="min-w-0 overflow-hidden p-0 lg:col-span-2">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold text-ink">
+                {commune ? `${nomCommune(commune)} et ses établissements` : dep ? `Communes · ${nomDepartement(dep)}` : `Les ${COMMUNES.length} communes`}
+              </h2>
+              <p className="text-[12.5px] text-ink-muted">
+                {niveauVue === "national" ? "Cliquez sur une zone pour descendre dans son département." : "Cliquez sur une commune pour afficher ses facteurs et ses établissements."}
+              </p>
+            </div>
           </div>
-          <div className="p-5">
-            <CarteBenin
-              couleurs={couleurs}
-              valeurs={scores}
-              formater={(v) => `${ALERTE[niveauDuScore(v)].symbole} ${ALERTE[niveauDuScore(v)].libelle} · ${pluriel(v, "facteur")}`}
-              libelleValeur="Niveau"
-              focusDepartement={dep ?? undefined}
-              selection={commune}
-              onSelect={onCarte}
-              points={points}
-              hauteur={dep ? 460 : 600}
-              className="mx-auto w-full max-w-[420px]"
-              legende={<LegendeAlertes avecPoints={!!commune} />}
-            />
+          <div className="border-b border-line/60 px-5 py-3">
+            <div className="max-w-full overflow-x-auto"><div className="w-max"><Segmente label="Couche affichée" options={COUCHES} valeur={couche} onChange={setCouche} /></div></div>
+          </div>
+          <div className={cn("p-5 transition-opacity", donneesCouche.isFetching && couche !== "priorites" && "opacity-60")}>
+            {prio.isPending ? (
+              <Squelette className="mx-auto aspect-[3/5] w-full max-w-[380px] rounded-xl" />
+            ) : donneesCouche.isError && couche !== "priorites" ? (
+              <EtatEchec erreur={donneesCouche.error} onReessayer={() => donneesCouche.refetch()} className="shadow-none" />
+            ) : (
+              <CarteBenin
+                couleurs={couleurs}
+                valeurs={valeurs}
+                formater={couche === "priorites" ? (v) => `${ALERTE[niveauDuScore(v)].symbole} ${ALERTE[niveauDuScore(v)].libelle} · ${pluriel(v, "facteur")}` : formaterCouche}
+                libelleValeur={couche === "priorites" ? "Niveau" : libelleCouche}
+                focusDepartement={dep ?? undefined}
+                selection={commune}
+                onSelect={onCarte}
+                points={points}
+                hauteur={dep ? 460 : 600}
+                className="mx-auto w-full max-w-[420px]"
+                legende={couche === "priorites" ? <LegendeAlertes avecPoints={!!points} /> : bornes.length ? (
+                  <LegendeSequentielle min={Math.min(...bornes)} max={Math.max(...bornes)} libelle={`${donneesCouche.data?.definition.nom ?? libelleCouche} · hachures : hors périmètre ou masquée`} formater={formaterCouche} />
+                ) : null}
+              />
+            )}
+            {couche !== "priorites" && donneesCouche.data && (
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-muted">{donneesCouche.data.definition.definition} <BadgeConfiance confiance={donneesCouche.data.confiance} compact /></p>
+            )}
           </div>
         </Card>
 
-        <div className="min-w-0 space-y-6">
-          {commune ? (
-            <PanneauCommune communeId={commune} prio={prio.get(commune)!} />
-          ) : dep ? (
-            <PanneauDepartement depId={dep} prio={prio} onCommune={(id) => allerCommune(id)} />
-          ) : (
-            <PanneauNational prio={prio} onDepartement={(id) => allerDepartement(id)} />
-          )}
+        <div className="min-w-0 space-y-6 lg:col-span-3">
+          <AnimatePresence mode="wait">
+            <motion.div key={niveauVue + (commune ?? dep ?? "")} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3, ease: EASE }} className="min-w-0 space-y-6">
+              {commune ? (
+                fiche.isPending ? <ChargementCommune /> : fiche.isError ? <EtatEchec erreur={fiche.error} onReessayer={() => fiche.refetch()} /> : <PanneauCommune fiche={fiche.data} />
+              ) : prio.isPending ? (
+                <><SqueletteTuiles n={4} /><Card className="min-w-0"><SqueletteLignes n={8} /></Card></>
+              ) : dep ? (
+                <PanneauDepartement depId={dep} prio={communesPrio} onCommune={(id) => allerCommune(id)} />
+              ) : (
+                <PanneauNational prio={communesPrio} onDepartement={(id) => allerDepartement(id)} />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
-      {commune && <SectionEtablissements communeId={commune} etablissements={etabs} />}
+      {commune && fiche.data && <SectionEtablissements fiche={fiche.data} peutRelancer={hab?.role !== "chercheur"} />}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ Éléments de navigation */
+/* ------------------------------------------------------------------ Navigation */
 
 function FilEtape({ actif, desactive, onClick, children }: { actif?: boolean; desactive?: boolean; onClick?: () => void; children: React.ReactNode }) {
   if (actif || !onClick || desactive) {
     return <span aria-current={actif ? "page" : undefined} className={cn("rounded-sm px-2 py-1", actif ? "font-semibold text-ink" : "text-ink-muted")}>{children}</span>;
   }
-  return <button type="button" onClick={onClick} className="rounded-sm px-2 py-1 font-medium text-blue hover:bg-surface-2 hover:underline">{children}</button>;
+  return <button type="button" onClick={onClick} className="min-h-9 rounded-sm px-2 py-1 font-medium text-blue hover:bg-surface-2 hover:underline">{children}</button>;
 }
-
-function LegendeAlertes({ avecPoints }: { avecPoints: boolean }) {
-  return (
-    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[11.5px] text-ink-2">
-      {NIVEAUX_ALERTE.map((n) => (
-        <span key={n.niveau} className="inline-flex items-center gap-1.5">
-          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[4px] text-[9px] leading-none text-white" style={{ background: COULEUR_ALERTE[n.niveau] }} aria-hidden>{n.symbole}</span>
-          {n.libelle}
-        </span>
-      ))}
-      {avecPoints && (
-        <>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-ink/40" aria-hidden />Établissement</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full border-2 border-surface bg-amber" aria-hidden />Établissement pilote</span>
-        </>
-      )}
-    </div>
-  );
-}
-
-function PastilleNiveau({ niveau, className }: { niveau: NiveauAlerte; className?: string }) {
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-0.5 text-[12px] font-semibold text-white", className)} style={{ background: COULEUR_ALERTE[niveau] }}>
-      <span aria-hidden>{ALERTE[niveau].symbole}</span>{ALERTE[niveau].libelle}
-    </span>
-  );
-}
-
-type Priorites = ReturnType<typeof priorites>;
 
 /* ------------------------------------------------------------------ Niveau national */
 
-function PanneauNational({ prio, onDepartement }: { prio: Priorites; onDepartement: (id: string) => void }) {
-  const compte = (n: NiveauAlerte) => [...prio.values()].filter((p) => p.niveau === n).length;
+function PanneauNational({ prio, onDepartement }: { prio: Record<string, Priorite>; onDepartement: (id: string) => void }) {
+  const valeursPrio = Object.values(prio);
+  const compte = (n: NiveauAlerte) => valeursPrio.filter((p) => p.niveau === n).length;
   const parDep = DEPARTEMENTS.map((d) => {
-    const ids = COMMUNES.filter((c) => c.departementId === d.id).map((c) => c.id);
-    const graves = ids.filter((id) => ["critique", "attention"].includes(prio.get(id)!.niveau)).length;
-    const critiques = ids.filter((id) => prio.get(id)!.niveau === "critique").length;
+    const ids = COMMUNES.filter((c) => c.departementId === d.id && prio[c.id]).map((c) => c.id);
+    const graves = ids.filter((id) => ["critique", "attention"].includes(prio[id]!.niveau)).length;
+    const critiques = ids.filter((id) => prio[id]!.niveau === "critique").length;
     return { ...d, total: ids.length, graves, critiques };
-  }).sort((a, b) => b.critiques - a.critiques || b.graves - a.graves || a.nom.localeCompare(b.nom, "fr"));
+  }).filter((d) => d.total > 0).sort((a, b) => b.critiques - a.critiques || b.graves - a.graves || a.nom.localeCompare(b.nom, "fr"));
   const maxGraves = Math.max(1, ...parDep.map((d) => d.graves));
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <Cascade className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {NIVEAUX_ALERTE.map((n) => (
-          <div key={n.niveau} className="rounded-lg border border-line/70 bg-surface px-4 py-3.5 shadow-float">
-            <span className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
-              <span style={{ color: COULEUR_ALERTE[n.niveau] }} aria-hidden>{n.symbole}</span>{n.niveau === "favorable" ? "Favorable" : n.libelle}
-            </span>
-            <span className="mt-2 block font-display text-[26px] font-bold leading-none text-ink tabular">{compte(n.niveau)}</span>
-            <span className="mt-1 block text-[12px] text-ink-muted">communes</span>
-          </div>
+          <Element key={n.niveau}>
+            <div className="rounded-lg border border-line/70 bg-surface px-4 py-3.5 shadow-float">
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{n.court}</span>
+                <span className="text-[15px] leading-none" style={{ color: COULEUR_ALERTE[n.niveau] }} aria-hidden>{n.symbole}</span>
+              </span>
+              <span className="mt-2 block font-display text-2xl font-semibold leading-none text-ink"><Compteur valeur={compte(n.niveau)} format={entier} /></span>
+              <span className="mt-1 block text-xs text-ink-muted">communes</span>
+            </div>
+          </Element>
         ))}
-      </div>
-      <Card>
+      </Cascade>
+      <Card className="min-w-0">
         <CardHeader icon={IconeCarte} title="Départements à examiner en priorité" subtitle="Communes en « Attention » ou « Critique », par département" />
-        <ul className="space-y-1">
-          {parDep.map((d) => (
-            <li key={d.id}>
-              <button type="button" onClick={() => onDepartement(d.id)} className="grid w-full grid-cols-[minmax(6.5rem,9rem)_1fr_auto] items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-surface-2">
+        <ul className="space-y-0.5">
+          {parDep.map((d, i) => (
+            <motion.li key={d.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 12) * 0.035, duration: 0.3, ease: EASE }}>
+              <button type="button" onClick={() => onDepartement(d.id)} className="grid min-h-11 w-full grid-cols-[minmax(6.5rem,9rem)_1fr_auto] items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-surface-2">
                 <span className="truncate text-[13px] font-medium text-ink">{d.nom}</span>
                 <span className="relative h-2.5 rounded-full bg-surface-2" aria-hidden>
-                  <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(d.graves / maxGraves) * 100}%`, background: "var(--alert-attention)" }} />
-                  <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(d.critiques / maxGraves) * 100}%`, background: "var(--alert-critique)" }} />
+                  <motion.span className="absolute inset-y-0 left-0 rounded-full" style={{ background: "var(--alert-attention)" }} initial={{ width: 0 }} animate={{ width: `${(d.graves / maxGraves) * 100}%` }} transition={{ duration: 0.8, ease: EASE, delay: i * 0.03 }} />
+                  <motion.span className="absolute inset-y-0 left-0 rounded-full" style={{ background: "var(--alert-critique)" }} initial={{ width: 0 }} animate={{ width: `${(d.critiques / maxGraves) * 100}%` }} transition={{ duration: 0.8, ease: EASE, delay: 0.1 + i * 0.03 }} />
                 </span>
                 <span className="text-right text-[12px] text-ink-2 tabular">
                   <span className="font-semibold text-ink">{d.graves}</span> / {d.total}
                   {d.critiques > 0 && <span className="ml-1.5 text-critical">({d.critiques} ◆)</span>}
                 </span>
               </button>
-            </li>
+            </motion.li>
           ))}
         </ul>
         <p className="mt-3 text-[11.5px] leading-snug text-ink-muted">Lecture : communes en attention ou en situation critique sur le total du département ; ◆ = critiques. Un niveau résulte du nombre de facteurs dépassant leur seuil, jamais d'un score opaque.</p>
@@ -236,39 +254,50 @@ function PanneauNational({ prio, onDepartement }: { prio: Priorites; onDeparteme
 
 /* ------------------------------------------------------------------ Niveau département */
 
-function PanneauDepartement({ depId, prio, onCommune }: { depId: string; prio: Priorites; onCommune: (id: string) => void }) {
-  const couches = useCouches();
-  const r = useMemo(() => ({
-    effectif: calculer(couches, { indicateur: "effectif_apprenants", filtres: { departementId: depId }, ventilation: [] }),
-    occupation: calculer(couches, { indicateur: "taux_occupation", filtres: { departementId: depId }, ventilation: [] }),
-    ratio: calculer(couches, { indicateur: "ratio_apprenants_enseignant", filtres: { departementId: depId }, ventilation: [] }),
-  }), [couches, depId]);
-  const communes = COMMUNES.filter((c) => c.departementId === depId)
-    .map((c) => ({ ...c, p: prio.get(c.id)! }))
+function PanneauDepartement({ depId, prio, onCommune }: { depId: string; prio: Record<string, Priorite>; onCommune: (id: string) => void }) {
+  const effectif = useIndicateurPilotage({ indicateur: "effectif_apprenants", filtres: { departementId: depId }, ventilation: [] });
+  const occupation = useIndicateurPilotage({ indicateur: "taux_occupation", filtres: { departementId: depId }, ventilation: [] });
+  const ratio = useIndicateurPilotage({ indicateur: "ratio_apprenants_enseignant", filtres: { departementId: depId }, ventilation: [] });
+  const absenteisme = useIndicateurPilotage({ indicateur: "taux_absenteisme", filtres: { departementId: depId }, ventilation: [] });
+  const communes = COMMUNES.filter((c) => c.departementId === depId && prio[c.id])
+    .map((c) => ({ ...c, p: prio[c.id]! }))
     .sort((a, b) => b.p.score - a.p.score || a.nom.localeCompare(b.nom, "fr"));
+  const indicateurs = [effectif, occupation, ratio, absenteisme];
+  const enEchec = indicateurs.find((q) => q.isError);
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={compact(r.effectif.valeur ?? 0)} confiance={r.effectif.confiance} />
-        <TuileIndicateur libelle="Occupation" icone={School} accent="ambre" valeur={nombre(r.occupation.valeur, 1)} unite="%" confiance={r.occupation.confiance} />
-        <TuileIndicateur libelle="Élèves / enseignant" icone={GraduationCap} accent="sarcelle" valeur={nombre(r.ratio.valeur, 1)} confiance={r.ratio.confiance} />
-      </div>
-      <Card>
-        <CardHeader icon={IconeCarte} title={`${communes.length} communes · ${departementById.get(depId)?.nom}`} subtitle="Classées par nombre de facteurs dépassant leur seuil" />
-        <ul className="divide-y divide-line/60">
-          {communes.map((c) => (
-            <li key={c.id}>
-              <button type="button" onClick={() => onCommune(c.id)} className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-surface-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-medium text-ink">{c.nom}</span>
-                  <span className="block text-[12px] leading-snug text-ink-muted">{c.p.facteurs.filter((f) => f.grave).map((f) => f.libelle.split(" (")[0]).join(" · ") || "Aucun facteur au-dessus du seuil"}</span>
-                </span>
-                <PastilleNiveau niveau={c.p.niveau} className="shrink-0" />
-              </button>
-            </li>
-          ))}
-        </ul>
+      {enEchec ? (
+        <EtatEchec erreur={enEchec.error} onReessayer={() => indicateurs.forEach((q) => q.refetch())} />
+      ) : indicateurs.some((q) => !q.data) ? (
+        <SqueletteTuiles n={4} />
+      ) : (
+        <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={effectif.data!.valeur ?? 0} format={compact} />} confiance={effectif.data!.confiance} /></Element>
+          <Element><TuileIndicateur libelle="Occupation" icone={School} accent={(occupation.data!.valeur ?? 0) > 112 ? "critique" : "ambre"} valeur={nombre(occupation.data!.valeur, 1)} unite="%" confiance={occupation.data!.confiance} /></Element>
+          <Element><TuileIndicateur libelle="Élèves / enseignant" icone={GraduationCap} accent="sarcelle" valeur={nombre(ratio.data!.valeur, 1)} confiance={ratio.data!.confiance} /></Element>
+          <Element><TuileIndicateur libelle="Absentéisme" icone={UserX} accent="ambre" valeur={nombre(absenteisme.data!.valeur, 1)} unite="%" confiance={absenteisme.data!.confiance} /></Element>
+        </Cascade>
+      )}
+      <Card className="min-w-0">
+        <CardHeader icon={IconeCarte} title={`${pluriel(communes.length, "commune")} · ${nomDepartement(depId)}`} subtitle="Classées par nombre de facteurs dépassant leur seuil" />
+        {communes.length ? (
+          <ul className="divide-y divide-line/60">
+            {communes.map((c, i) => (
+              <motion.li key={c.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 12) * 0.035, duration: 0.3, ease: EASE }}>
+                <button type="button" onClick={() => onCommune(c.id)} className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-surface-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-ink">{c.nom}</span>
+                    <span className="block text-xs leading-snug text-ink-muted">{c.p.facteurs.filter((f) => f.grave).map((f) => f.libelle.split(" (")[0]).join(" · ") || "Aucun facteur au-dessus du seuil"}</span>
+                  </span>
+                  <PastilleNiveau niveau={c.p.niveau} className="shrink-0" />
+                </button>
+              </motion.li>
+            ))}
+          </ul>
+        ) : (
+          <EtatVide icone={IconeCarte} titre="Aucune commune accessible" texte="Ce département est hors de votre périmètre." />
+        )}
       </Card>
     </>
   );
@@ -276,170 +305,261 @@ function PanneauDepartement({ depId, prio, onCommune }: { depId: string; prio: P
 
 /* ------------------------------------------------------------------ Niveau commune */
 
-function PanneauCommune({ communeId, prio }: { communeId: string; prio: Priorites extends Map<string, infer V> ? V : never }) {
-  const couches = useCouches();
-  const stats = couches.communes.get(communeId)!;
-  const a = stats.annees[ANNEE_COURANTE];
-  const r = useMemo(() => {
-    const req = (indicateur: "effectif_apprenants" | "taux_occupation" | "ratio_apprenants_enseignant"): ResultatIndicateur =>
-      calculer(couches, { indicateur, filtres: { communeId }, ventilation: [] });
-    return { effectif: req("effectif_apprenants"), occupation: req("taux_occupation"), ratio: req("ratio_apprenants_enseignant") };
-  }, [couches, communeId]);
-  const evolutionPop = (stats.projection2030 / a.populationScolarisable - 1) * 100;
-  const c = communeById.get(communeId)!;
-
+function ChargementCommune() {
   return (
     <>
-      <Card className="animate-fade-in">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{departementById.get(c.departementId)?.nom} · milieu {c.milieu}</p>
-            <p className="font-display text-[22px] font-bold text-ink">{c.nom}</p>
-          </div>
-          <PastilleNiveau niveau={prio.niveau} className="mt-1" />
-        </div>
-        <p className="mt-4 text-[12px] font-semibold text-ink-2">Pourquoi ce niveau ? {pluriel(prio.score, "facteur")} au-dessus du seuil</p>
-        <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-          {prio.facteurs.map((f) => (
-            <li key={f.libelle} className={cn("flex items-start gap-2 rounded-md px-3 py-2 text-[12.5px]", f.grave ? "bg-critical-bg" : "bg-surface-2")}>
-              <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white", f.grave ? "bg-critical" : "bg-success")} aria-hidden>
-                {f.grave ? <X size={11} /> : <Check size={11} />}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-ink-2">{f.libelle}</span>
-                <span className={cn("font-semibold tabular", f.grave ? "text-critical" : "text-ink")}>{f.valeur}</span>
-                <span className="sr-only">{f.grave ? " — au-dessus du seuil d'alerte" : " — sous le seuil d'alerte"}</span>
-                {f.grave && <span className="ml-1.5 text-[11px] font-medium text-critical">seuil dépassé</span>}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-        <TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={entier(r.effectif.valeur)} confiance={r.effectif.confiance} />
-        <TuileIndicateur libelle="Capacité d'accueil" icone={School} accent="neutre" valeur={entier(a.capacite)} indice={<span>places déclarées, {ANNEE_COURANTE}</span>} />
-        <TuileIndicateur libelle="Occupation" icone={School} accent={(r.occupation.valeur ?? 0) > 112 ? "critique" : "ambre"} valeur={nombre(r.occupation.valeur, 1)} unite="%" confiance={r.occupation.confiance} />
-        <TuileIndicateur libelle="Élèves / enseignant" icone={GraduationCap} accent="sarcelle" valeur={nombre(r.ratio.valeur, 1)} indice={<span>{entier(a.enseignants)} enseignants</span>} confiance={r.ratio.confiance} />
-        <TuileIndicateur libelle="Distance moyenne" icone={Route} accent="neutre" valeur={nombre(stats.distanceMoyenneKm, 1)} unite="km" indice={<span>domicile → établissement (estimation)</span>} />
-        <TuileIndicateur libelle="Population scolarisable 2030" icone={TrendingUp} accent="ambre" valeur={compact(stats.projection2030)} indice={<span>{evolutionPop >= 0 ? "+" : ""}{nombre(evolutionPop, 1)} % par rapport à aujourd'hui (projection)</span>} />
-      </div>
+      <Card className="min-w-0 space-y-3"><Squelette className="h-3 w-40" /><Squelette className="h-7 w-56" /><div className="grid gap-2 sm:grid-cols-2">{Array.from({ length: 4 }, (_, i) => <Squelette key={i} className="h-14" />)}</div></Card>
+      <SqueletteTuiles n={4} />
     </>
   );
 }
 
-/* ------------------------------------------------------------------ Tableau des établissements */
+function PanneauCommune({ fiche }: { fiche: FicheCommune }) {
+  const { commune: c, indicateurs: ind, priorite } = fiche;
+  return (
+    <>
+      <Card className="min-w-0">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{c.departement ?? nomDepartement(c.departementId)} · milieu {c.milieu}</p>
+            <p className="font-display text-[22px] font-bold text-ink">{c.nom}</p>
+          </div>
+          {priorite && <PastilleNiveau niveau={priorite.niveau} className="mt-1" />}
+        </div>
+        {priorite && (
+          <>
+            <p className="mt-4 text-[12px] font-semibold text-ink-2">Pourquoi ce niveau ? {pluriel(priorite.score, "facteur")} au-dessus du seuil</p>
+            <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+              {priorite.facteurs.map((f, i) => (
+                <motion.li key={f.libelle} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05, duration: 0.3, ease: EASE }}
+                  className={cn("flex items-start gap-2 rounded-md px-3 py-2 text-[12.5px]", f.grave ? "bg-critical-bg" : "bg-surface-2")}>
+                  <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white", f.grave ? "bg-critical" : "bg-success")} aria-hidden>
+                    {f.grave ? <X size={11} /> : <Check size={11} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-ink-2">{f.libelle}</span>
+                    <span className={cn("font-semibold tabular", f.grave ? "text-critical" : "text-ink")}>{f.valeur}</span>
+                    <span className="sr-only">{f.grave ? " — au-dessus du seuil d'alerte" : " — sous le seuil d'alerte"}</span>
+                    {f.grave && <span className="ml-1.5 text-[11px] font-medium text-critical">seuil dépassé</span>}
+                  </span>
+                </motion.li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Card>
+
+      <Cascade className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={ind.effectif} format={entier} />} tendance={fiche.effectifs.map((e) => e.effectif)} /></Element>
+        <Element><TuileIndicateur libelle="Capacité d'accueil" icone={School} accent="neutre" valeur={entier(ind.capacite)} indice={<span>places déclarées</span>} /></Element>
+        <Element><TuileIndicateur libelle="Occupation" icone={School} accent={ind.occupation > 112 ? "critique" : "ambre"} valeur={nombre(ind.occupation, 1)} unite="%" indice={<span>seuil d'alerte : 112 %</span>} /></Element>
+        <Element><TuileIndicateur libelle="Élèves / enseignant" icone={GraduationCap} accent="sarcelle" valeur={nombre(ind.ratio, 1)} indice={<span>{entier(ind.enseignants)} enseignants, dont {pourcent((ind.enseignantsQualifies / Math.max(1, ind.enseignants)) * 100, 0)} qualifiés</span>} /></Element>
+        <Element><TuileIndicateur libelle="Absentéisme" icone={UserX} accent="ambre" valeur={nombre(ind.absenteisme, 1)} unite="%" indice={<span>abandon : {pourcent(ind.abandon)}</span>} /></Element>
+        <Element><TuileIndicateur libelle="Population scolarisable" icone={TrendingUp} accent="neutre" valeur={compact(ind.populationScolarisable)} indice={<span>couverture des remontées : {pourcent(ind.couverture, 0)}</span>} /></Element>
+      </Cascade>
+
+      <Card className="min-w-0">
+        <CardHeader icon={TrendingUp} title="Effectifs et capacité d'accueil" subtitle="Quand la courbe des apprenants passe au-dessus de celle des places, la commune sature." />
+        <Courbes
+          formater={(v) => compact(v)}
+          hauteur={200}
+          series={[
+            { nom: "Apprenants", points: fiche.effectifs.map((e) => ({ x: e.annee.replace("-20", "-"), y: e.effectif })) },
+            { nom: "Places", points: fiche.effectifs.map((e) => ({ x: e.annee.replace("-20", "-"), y: e.capacite })) },
+          ]}
+        />
+      </Card>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ Établissements de la commune */
 
 type CleTri = "nom" | "effectif" | "capacite" | "occupation" | "enseignants" | "ratio" | "transmis";
-const COLONNES: { cle: CleTri; libelle: string; numerique?: boolean }[] = [
+const COLONNES: { cle: CleTri; libelle: string; numerique?: boolean; secondaire?: boolean }[] = [
   { cle: "nom", libelle: "Établissement" },
   { cle: "effectif", libelle: "Effectif", numerique: true },
-  { cle: "capacite", libelle: "Capacité", numerique: true },
+  { cle: "capacite", libelle: "Capacité", numerique: true, secondaire: true },
   { cle: "occupation", libelle: "Occupation", numerique: true },
-  { cle: "enseignants", libelle: "Enseignants", numerique: true },
+  { cle: "enseignants", libelle: "Enseignants", numerique: true, secondaire: true },
   { cle: "ratio", libelle: "Élèves / ens.", numerique: true },
 ];
 const PAGE = 20;
+const occupationDe = (e: EtablissementCommune) => (e.effectif / Math.max(1, e.capacite)) * 100;
+const STATUT: Record<string, string> = { public: "Public", prive: "Privé", confessionnel: "Confessionnel", communautaire: "Communautaire" };
 
-function SectionEtablissements({ communeId, etablissements }: { communeId: string; etablissements: EtablissementGenere[] }) {
+function SectionEtablissements({ fiche, peutRelancer }: { fiche: FicheCommune; peutRelancer: boolean }) {
+  const etablissements = fiche.etablissements;
   const [tri, setTri] = useState<{ cle: CleTri; sens: 1 | -1 }>({ cle: "occupation", sens: -1 });
   const [limite, setLimite] = useState(PAGE);
-  const valeur = (e: EtablissementGenere, cle: CleTri): number | string => {
+  const [confirmer, setConfirmer] = useState(false);
+  const [relances, setRelances] = useState<Set<string>>(new Set());
+  const relance = useRelanceMutation();
+
+  const valeur = (e: EtablissementCommune, cle: CleTri): number | string => {
     switch (cle) {
       case "nom": return e.nom;
-      case "occupation": return e.effectif / Math.max(1, e.capacite);
+      case "occupation": return occupationDe(e);
       case "ratio": return e.effectif / Math.max(1, e.enseignants);
       case "transmis": return e.transmis ? 1 : 0;
       default: return e[cle];
     }
   };
-  const lignes = useMemo(() => [...etablissements].sort((a, b) => {
+  const lignes = [...etablissements].sort((a, b) => {
     const va = valeur(a, tri.cle), vb = valeur(b, tri.cle);
     return (typeof va === "string" ? va.localeCompare(vb as string, "fr") : va - (vb as number)) * tri.sens;
-  }), [etablissements, tri]);
+  });
+  const enAttente = etablissements.filter((e) => !e.transmis && !relances.has(e.id));
   const nonTransmis = etablissements.filter((e) => !e.transmis).length;
-  const satures = etablissements.filter((e) => e.effectif / e.capacite > 1.1).length;
+  const satures = etablissements.filter((e) => occupationDe(e) > 110).length;
   const trier = (cle: CleTri) => setTri((t) => (t.cle === cle ? { cle, sens: t.sens === 1 ? -1 : 1 } : { cle, sens: cle === "nom" ? 1 : -1 }));
+
+  const lancer = () => {
+    const ids = enAttente.map((e) => e.id).slice(0, 200);
+    relance.mutate(ids, {
+      onSuccess: (r) => {
+        setRelances((s) => new Set([...s, ...ids]));
+        setConfirmer(false);
+        notifier({ ton: "succes", titre: `${pluriel(r.relances, "relance envoyée", "relances envoyées")}`, texte: r.dejaOuvertes ? `${pluriel(r.dejaOuvertes, "établissement avait", "établissements avaient")} déjà une relance en cours.` : "Chaque direction d'établissement la voit dans ses demandes." });
+      },
+    });
+  };
 
   if (!etablissements.length) return <Card><EtatVide icone={School} titre="Aucun établissement référencé" texte="Cette commune n'a pas encore d'établissement au référentiel national." /></Card>;
 
   return (
-    <Card className="p-0">
+    <Card className="min-w-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-ink">{pluriel(etablissements.length, "établissement")} · {nomCommune(communeId)}</h2>
-          <p className="text-[12.5px] text-ink-muted">Référentiel national des établissements, année {ANNEE_COURANTE}. Cliquez sur un en-tête pour trier.</p>
+          <h2 className="text-[15px] font-semibold text-ink">{pluriel(etablissements.length, "établissement")} · {fiche.commune.nom}</h2>
+          <p className="text-[12.5px] text-ink-muted">Référentiel national des établissements. Cliquez sur un en-tête pour trier.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge ton={satures ? "critique" : "succes"}>{satures} au-delà de 110 % d'occupation</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge ton={satures ? "critique" : "succes"}>{satures} au-delà de 110 %</Badge>
           <Badge ton={nonTransmis ? "avertissement" : "succes"} icone={nonTransmis ? Clock : Check}>{nonTransmis} sans transmission</Badge>
+          {peutRelancer && enAttente.length > 0 && (
+            <Button taille="sm" variante="secondaire" icone={BellRing} onClick={() => setConfirmer(true)}>Relancer ({enAttente.length})</Button>
+          )}
         </div>
       </div>
-      <div className="relative overflow-x-auto">
-        <table className="w-full min-w-[860px] text-[13px]">
-          <caption className="sr-only">Établissements de {nomCommune(communeId)}, triés par {COLONNES.find((c) => c.cle === tri.cle)?.libelle ?? "transmission"}</caption>
-          <thead className="bg-surface-2 text-left text-[11.5px] uppercase tracking-wide text-ink-muted">
+
+      {/* Mobile : cartes */}
+      <ul className="grid gap-3 p-4 sm:grid-cols-2 md:hidden">
+        {lignes.slice(0, limite).map((e) => <CarteEtablissement key={e.id} e={e} relance={relances.has(e.id)} />)}
+      </ul>
+
+      {/* À partir de md : tableau */}
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full text-sm tabular-nums">
+          <caption className="sr-only">Établissements de {fiche.commune.nom}, triés par {COLONNES.find((c) => c.cle === tri.cle)?.libelle ?? "transmission"}</caption>
+          <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
             <tr>
-              {COLONNES.map((c) => <EnteteTri key={c.cle} libelle={c.libelle} cle={c.cle} tri={tri} onTri={trier} numerique={c.numerique} />)}
-              <th scope="col" className="px-3 py-2 font-semibold">Infrastructures</th>
+              {COLONNES.map((c) => <EnteteTri key={c.cle} libelle={c.libelle} cle={c.cle} tri={tri} onTri={trier} numerique={c.numerique} className={c.secondaire ? "hidden lg:table-cell" : undefined} />)}
+              <th scope="col" className="px-5 py-3 font-semibold">Infrastructures</th>
               <EnteteTri libelle="Transmission" cle="transmis" tri={tri} onTri={trier} />
             </tr>
           </thead>
           <tbody>
-            {lignes.slice(0, limite).map((e, i) => {
-              const occ = (e.effectif / Math.max(1, e.capacite)) * 100;
-              const pilote = e.id.includes("-PILOTE-");
-              return (
-                <tr key={e.id} className={cn("animate-row border-t border-line/60", pilote && "bg-blue-soft/50")} style={{ animationDelay: `${Math.min(i, 20) * 18}ms` }}>
-                  <td className="min-w-[13rem] px-3 py-2.5">
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-medium text-ink">{e.nom}</span>
-                      {pilote && <Badge ton="marque">Pilote</Badge>}
-                    </span>
-                    <span className="block text-[11.5px] text-ink-muted">{e.cycle === "primaire" ? "Primaire" : "Secondaire"} · {e.statut === "public" ? "Public" : e.statut === "prive" ? "Privé" : "Confessionnel"} · <span className="font-mono">{e.id}</span></span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular">{entier(e.effectif)}</td>
-                  <td className="px-3 py-2.5 text-right tabular">{entier(e.capacite)}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="flex items-center justify-end gap-2">
-                      <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-surface-2 sm:block" aria-hidden>
-                        <span className={cn("block h-full rounded-full", occ > 110 ? "bg-critical" : occ > 100 ? "bg-warning" : "bg-success")} style={{ width: `${Math.min(100, occ / 1.5)}%` }} />
+            <AnimatePresence initial={false}>
+              {lignes.slice(0, limite).map((e, i) => {
+                const occ = occupationDe(e);
+                return (
+                  <motion.tr key={e.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(i, 12) * 0.035, duration: 0.3 }}
+                    className={cn("border-t border-line/60", e.pilote && "bg-blue-soft/50")}>
+                    <td className="min-w-[13rem] px-5 py-3">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium text-ink">{e.nom}</span>
+                        {e.pilote && <Badge ton="marque">Pilote</Badge>}
                       </span>
-                      <span className={cn("tabular", occ > 110 ? "font-semibold text-critical" : "text-ink")}>{pourcent(occ, 0)}</span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular">{entier(e.enseignants)}</td>
-                  <td className="px-3 py-2.5 text-right tabular">{nombre(e.effectif / Math.max(1, e.enseignants), 0)}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="flex gap-1">
-                      <Infra present={e.infrastructures.eau} icone={Droplet} libelle="Eau" />
-                      <Infra present={e.infrastructures.electricite} icone={Zap} libelle="Électricité" />
-                      <Infra present={e.infrastructures.internet} icone={Wifi} libelle="Internet" />
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5">{e.transmis ? <Badge ton="succes" icone={Check}>Transmis</Badge> : <Badge ton="avertissement" icone={Clock}>En attente</Badge>}</td>
-                </tr>
-              );
-            })}
+                      <span className="block text-xs text-ink-muted">{e.cycle === "primaire" ? "Primaire" : "Secondaire"} · {STATUT[e.statut] ?? e.statut} · <span className="font-mono">{e.id}</span></span>
+                    </td>
+                    <td className="px-5 py-3 text-right">{entier(e.effectif)}</td>
+                    <td className="hidden px-5 py-3 text-right lg:table-cell">{entier(e.capacite)}</td>
+                    <td className="px-5 py-3">
+                      <span className="flex items-center justify-end gap-2">
+                        <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-surface-2 xl:block" aria-hidden>
+                          <span className={cn("block h-full rounded-full", occ > 110 ? "bg-critical" : occ > 100 ? "bg-warning" : "bg-success")} style={{ width: `${Math.min(100, occ / 1.5)}%` }} />
+                        </span>
+                        <span className={occ > 110 ? "font-semibold text-critical" : "text-ink"}>{pourcent(occ, 0)}</span>
+                      </span>
+                    </td>
+                    <td className="hidden px-5 py-3 text-right lg:table-cell">{entier(e.enseignants)}</td>
+                    <td className="px-5 py-3 text-right">{nombre(e.effectif / Math.max(1, e.enseignants), 0)}</td>
+                    <td className="px-5 py-3"><Infras e={e} /></td>
+                    <td className="px-5 py-3"><StatutTransmission transmis={e.transmis} relance={relances.has(e.id)} /></td>
+                  </motion.tr>
+                );
+              })}
+            </AnimatePresence>
           </tbody>
         </table>
       </div>
       {lignes.length > PAGE && (
         <div className="border-t border-line/60 px-5 py-3">
-          <button type="button" onClick={() => setLimite((l) => (l >= lignes.length ? PAGE : lignes.length))} className="text-[13px] font-medium text-blue hover:underline">
+          <button type="button" onClick={() => setLimite((l) => (l >= lignes.length ? PAGE : lignes.length))} className="min-h-10 text-[13px] font-medium text-blue hover:underline">
             {limite >= lignes.length ? "Réduire la liste" : `Afficher les ${lignes.length} établissements`}
           </button>
         </div>
       )}
+
+      <Feuille
+        ouvert={confirmer}
+        onFermer={() => setConfirmer(false)}
+        icone={BellRing}
+        titre={`Relancer ${pluriel(enAttente.length, "établissement")} ?`}
+        description={`Une demande « Transmettre la remontée » (échéance 7 jours) sera ouverte pour chaque établissement de ${fiche.commune.nom} qui n'a pas transmis. L'action est journalisée.`}
+        pied={
+          <>
+            <Button variante="secondaire" onClick={() => setConfirmer(false)}>Annuler</Button>
+            <Button icone={BellRing} chargement={relance.isPending} onClick={lancer}>Envoyer les relances</Button>
+          </>
+        }
+      >
+        <ul className="divide-y divide-line/60 text-sm">
+          {enAttente.slice(0, 12).map((e) => (
+            <li key={e.id} className="flex items-center justify-between gap-3 py-2"><span className="truncate text-ink">{e.nom}</span><span className="shrink-0 font-mono text-xs text-ink-muted">{e.id}</span></li>
+          ))}
+          {enAttente.length > 12 && <li className="py-2 text-xs text-ink-muted">… et {enAttente.length - 12} autres</li>}
+        </ul>
+      </Feuille>
     </Card>
   );
 }
 
-function EnteteTri({ libelle, cle, tri, onTri, numerique }: { libelle: string; cle: CleTri; tri: { cle: CleTri; sens: 1 | -1 }; onTri: (c: CleTri) => void; numerique?: boolean }) {
+function CarteEtablissement({ e, relance }: { e: EtablissementCommune; relance: boolean }) {
+  const occ = occupationDe(e);
+  return (
+    <li className={cn("rounded-lg border border-line/70 bg-surface p-3.5", e.pilote && "bg-blue-soft/40")}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium text-ink">{e.nom}</p>
+          <p className="text-xs text-ink-muted">{e.cycle === "primaire" ? "Primaire" : "Secondaire"} · {STATUT[e.statut] ?? e.statut}</p>
+        </div>
+        {e.pilote && <Badge ton="marque">Pilote</Badge>}
+      </div>
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-md bg-surface-2/70 py-1.5"><dt className="text-ink-muted">Effectif</dt><dd className="font-semibold text-ink tabular">{entier(e.effectif)}</dd></div>
+        <div className="rounded-md bg-surface-2/70 py-1.5"><dt className="text-ink-muted">Occupation</dt><dd className={cn("font-semibold tabular", occ > 110 ? "text-critical" : "text-ink")}>{pourcent(occ, 0)}</dd></div>
+        <div className="rounded-md bg-surface-2/70 py-1.5"><dt className="text-ink-muted">Élèves/ens.</dt><dd className="font-semibold text-ink tabular">{nombre(e.effectif / Math.max(1, e.enseignants), 0)}</dd></div>
+      </dl>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Infras e={e} />
+        <StatutTransmission transmis={e.transmis} relance={relance} />
+      </div>
+    </li>
+  );
+}
+
+function StatutTransmission({ transmis, relance }: { transmis: boolean; relance: boolean }) {
+  if (transmis) return <Badge ton="succes" icone={Check}>Transmis</Badge>;
+  return relance ? <Badge ton="info" icone={BellRing}>Relancé</Badge> : <Badge ton="avertissement" icone={Clock}>En attente</Badge>;
+}
+
+function EnteteTri({ libelle, cle, tri, onTri, numerique, className }: { libelle: string; cle: CleTri; tri: { cle: CleTri; sens: 1 | -1 }; onTri: (c: CleTri) => void; numerique?: boolean; className?: string }) {
   const actif = tri.cle === cle;
   const Icone = actif ? (tri.sens === 1 ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
-    <th scope="col" aria-sort={actif ? (tri.sens === 1 ? "ascending" : "descending") : "none"} className={cn("px-3 py-2 font-semibold", numerique && "text-right")}>
+    <th scope="col" aria-sort={actif ? (tri.sens === 1 ? "ascending" : "descending") : "none"} className={cn("px-5 py-3 font-semibold", numerique && "text-right", className)}>
       <button type="button" onClick={() => onTri(cle)} className={cn("inline-flex items-center gap-1 rounded-sm uppercase hover:text-ink", actif && "text-ink")}>
         {libelle}<Icone size={12} aria-hidden />
       </button>
@@ -447,16 +567,22 @@ function EnteteTri({ libelle, cle, tri, onTri, numerique }: { libelle: string; c
   );
 }
 
+function Infras({ e }: { e: EtablissementCommune }) {
+  return (
+    <span className="flex gap-1">
+      <Infra present={e.infrastructures.eau} icone={Droplet} libelle="Eau" />
+      <Infra present={e.infrastructures.electricite} icone={Zap} libelle="Électricité" />
+      <Infra present={e.infrastructures.internet} icone={Wifi} libelle="Internet" />
+    </span>
+  );
+}
+
 function Infra({ present, icone: Icone, libelle }: { present: boolean; icone: LucideIcon; libelle: string }) {
   return (
-    <span
-      title={`${libelle} : ${present ? "disponible" : "absent"}`}
-      className={cn("relative inline-flex h-6 w-6 items-center justify-center rounded-full", present ? "bg-success-bg text-success" : "bg-surface-2 text-ink-muted")}
-    >
+    <span title={`${libelle} : ${present ? "disponible" : "absent"}`} className={cn("relative inline-flex h-6 w-6 items-center justify-center rounded-full", present ? "bg-success-bg text-success" : "bg-surface-2 text-ink-muted")}>
       <Icone size={12} aria-hidden />
       {!present && <span className="absolute h-px w-4 rotate-45 bg-current" aria-hidden />}
       <span className="sr-only">{libelle} : {present ? "disponible" : "absent"}</span>
     </span>
   );
 }
-

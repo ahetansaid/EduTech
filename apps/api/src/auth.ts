@@ -3,7 +3,7 @@ import { schema } from "@beile/db";
 import { empreinteJeton, genererMotDePasse, hacherMotDePasse, motDePasseConforme, nouveauJeton, verifierMotDePasse } from "@beile/db/securite";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
-import { deleteCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { adresseIp, authentifie, base, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
@@ -57,6 +57,22 @@ auth.post("/auth/connexion", limiteDebit(60, 60_000), async (c) => {
   await journaliser(profil, "Connexion", identifiant, "gestion", true, null);
   poserCookies(c, jeton);
   return c.json({ profil, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse } });
+});
+
+/**
+ * État de session sans erreur : pour les pages publiques (accueil, connexion) qui veulent seulement savoir si
+ * l'utilisateur est déjà connecté. Répond toujours 200 — { session: null } si absente, expirée ou révoquée.
+ */
+auth.get("/auth/etat", async (c) => {
+  if (!getCookie(c, COOKIE_SESSION)) return c.json({ session: null });
+  try {
+    await authentifie(c, async () => {});
+  } catch (e) {
+    if (e instanceof HTTPException && e.status === 401) return c.json({ session: null });
+    throw e;
+  }
+  const compte = c.get("compte");
+  return c.json({ session: { profil: c.get("profil"), compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse } } });
 });
 
 auth.get("/auth/session", authentifie, (c) => c.json({ profil: c.get("profil"), compte: { identifiant: c.get("compte").identifiant, doitChangerMotDePasse: c.get("compte").doitChangerMotDePasse } }));

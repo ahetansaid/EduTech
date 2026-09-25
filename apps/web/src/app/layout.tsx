@@ -3,15 +3,15 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/montserrat";
 import "@fontsource-variable/jetbrains-mono";
 import { headers } from "next/headers";
-import { MotionProvider } from "@/components/motion";
 import { ThemeScript } from "@/components/shell/ThemeScript";
 import "./globals.css";
+import { Providers } from "./providers";
 
 /* Polices auto-hébergées (Fontsource) : aucun appel à un service tiers, build indépendant du réseau. */
 
 export const metadata: Metadata = {
   title: { default: "BEILE — Intelligence et parcours éducatifs", template: "%s · BEILE" },
-  description: "Système national interopérable de parcours et d'intelligence éducatifs du Bénin — prototype de démonstration sur données fictives.",
+  description: "Système national interopérable de parcours et d'intelligence éducatifs du Bénin.",
   robots: { index: false, follow: false },
   applicationName: "BEILE",
 };
@@ -30,7 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <ThemeScript nonce={nonce} />
       </head>
-      <body className="min-h-full"><MotionProvider>{children}</MotionProvider></body>
+      <body className="min-h-full"><Providers>{children}</Providers></body>
     </html>
   );
 }

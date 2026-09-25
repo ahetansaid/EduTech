@@ -32,8 +32,10 @@ jobs:
         run: npm run typecheck
       - name: Lint de l'interface
         run: npm run lint --workspace=@beile/web
-      - name: Build de production (mode simulation)
+      - name: Build de production du front
         run: npm run build --workspace=@beile/web
+      - name: Build de la fonction API (Vercel Build Output)
+        run: npm run build:vercel --workspace=@beile/api
       - name: Audit des dépendances (échec sur vulnérabilité élevée ou critique)
         run: npm audit --audit-level=high
       - name: Cohérence du moteur de simulation

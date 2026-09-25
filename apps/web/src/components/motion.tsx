@@ -18,7 +18,7 @@ export function MotionProvider({ children }: { children: ReactNode }) {
 /** Entrée de page : fondu, légère montée et netteté progressive. */
 export function EntreePage({ children }: { children: ReactNode }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 10, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.42, ease: EASE }}>
+    <motion.div initial={{ opacity: 0, y: 10, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none", transform: "none" } }} transition={{ duration: 0.42, ease: EASE }}>
       {children}
     </motion.div>
   );

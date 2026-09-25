@@ -69,3 +69,7 @@ CREATE INDEX IF NOT EXISTS evenements_absences_date_idx ON ledger.evenements ((d
 
 -- Projection des notes effectives (CQRS) : lecture, ajout, correction par l'API.
 GRANT SELECT, INSERT, UPDATE ON core.notes TO beile_app;
+
+-- Idempotence des saisies (file hors connexion) : rejouer une saisie déjà reçue ne crée jamais de doublon.
+CREATE UNIQUE INDEX IF NOT EXISTS evenements_id_saisie_idx ON ledger.evenements ((donnees->>'idSaisie'), type, apprenant_id)
+  WHERE donnees ? 'idSaisie';

@@ -5,12 +5,19 @@ import { NextResponse, type NextRequest } from "next/server";
  * aucun script non émis par l'application ne peut s'exécuter (protection XSS),
  * la page ne peut pas être encadrée (clickjacking), aucune ressource tierce n'est chargée.
  */
+/** Pages publiques : tout le reste exige une session (contrôle d'ergonomie ; l'API reste seule juge de l'accès). */
+const PUBLIQUES = [/^\/$/, /^\/connexion/, /^\/verifier/];
+
 export function proxy(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  if (!PUBLIQUES.some((r) => r.test(pathname)) && !request.cookies.has("beile_session")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/connexion";
+    url.search = `?retour=${encodeURIComponent(pathname + search)}`;
+    return NextResponse.redirect(url);
+  }
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const dev = process.env.NODE_ENV === "development";
-  // Seule origine externe autorisée : l'API BEILE configurée (aucun autre service tiers).
-  const urlApi = process.env.NEXT_PUBLIC_BEILE_API ?? "";
-  const api = /^https?:\/\//.test(urlApi) ? new URL(urlApi).origin : ""; // API relative (même origine) : rien à ajouter
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
@@ -19,7 +26,7 @@ export function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    `connect-src 'self'${api ? ` ${api}` : ""}${dev ? " ws:" : ""}`,
+    `connect-src 'self'${dev ? " ws:" : ""}`, // l'API est servie sous la même origine (réécriture)
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

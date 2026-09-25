@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
+    "build:vercel": "node scripts/build-vercel.mjs",
     "recette": "tsx src/recette.ts",
     "recette:ecritures": "tsx src/recette.ts --ecritures",
     "charge": "tsx src/charge.ts"
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "esbuild": "^0.28.2",
     "tsx": "^4.20.0",
     "typescript": "^5"
   },

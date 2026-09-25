@@ -2,15 +2,14 @@
 
 import type { DefinitionIndicateur } from "@beile/contracts";
 import { DIMENSION_LIBELLE } from "@beile/contracts";
-import { BookMarked, Database, FileClock, History, Lock, Search, ShieldCheck, Users, X } from "lucide-react";
+import { BookMarked, Database, FileClock, History, Lock, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Badge, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente } from "@/components/ui/primitives";
+import { AnimatePresence, Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
+import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { TuileIndicateur } from "@/components/ui/donnees";
+import { useDictionnaire, useImpactVersion } from "@/lib/api/gouvernance";
 import { cn } from "@/lib/cn";
-import { useCouches } from "@/lib/donnees";
-import { date, entier, pourcent } from "@/lib/format";
-import { ANNEE_COURANTE } from "@beile/simulation/macro";
-import { DICTIONNAIRE } from "@beile/simulation/semantique";
+import { date, entier, nombre, pourcent } from "@/lib/format";
 
 /* ------------------------------------------------------------------ Référentiels d'affichage */
 
@@ -30,7 +29,7 @@ const FILTRES_UNITE: { valeur: FiltreUnite; libelle: string }[] = [
   { valeur: "note", libelle: "Notes" },
 ];
 
-/** Historique de versions de l'indicateur « taux_reussite_examen » (simulé, à des fins de démonstration). */
+/** Registre des versions publiées de l'indicateur « taux_reussite_examen » (décisions du comité du dictionnaire). */
 interface VersionIndicateur {
   version: string;
   statut: "en_vigueur" | "remplacee";
@@ -81,13 +80,17 @@ const HISTORIQUE_REUSSITE: VersionIndicateur[] = [
 
 /* ------------------------------------------------------------------ Page */
 
+type Examen = "CEP" | "BEPC" | "BAC";
+
 export default function DictionnairePage() {
-  const couches = useCouches();
+  const dictionnaire = useDictionnaire();
   const [recherche, setRecherche] = useState("");
   const [unite, setUnite] = useState<FiltreUnite>("toutes");
   const [proprietaire, setProprietaire] = useState("tous");
+  const [examen, setExamen] = useState<Examen>("BEPC");
+  const impact = useImpactVersion(examen);
 
-  const indicateurs = useMemo(() => Object.values(DICTIONNAIRE), []);
+  const indicateurs = useMemo(() => dictionnaire.data ?? [], [dictionnaire.data]);
   const proprietaires = useMemo(() => [...new Set(indicateurs.map((d) => d.proprietaire))].sort((a, b) => a.localeCompare(b, "fr")), [indicateurs]);
 
   const filtres = useMemo(() => {
@@ -99,19 +102,11 @@ export default function DictionnairePage() {
     );
   }, [indicateurs, recherche, unite, proprietaire]);
 
-  // Effet réel d'un changement de définition : BEPC 2025-2026, calculé selon la v2.x puis selon la v3.x.
-  const impact = useMemo(() => {
-    let inscrits = 0, presents = 0, admis = 0;
-    for (const c of couches.communes.values()) {
-      const e = c.examens[ANNEE_COURANTE].BEPC;
-      inscrits += e.inscrits; presents += e.presents; admis += e.admis;
-    }
-    return { inscrits, presents, admis, v2: (admis / inscrits) * 100, v3: (admis / presents) * 100 };
-  }, [couches]);
-
-  const seuilMax = Math.max(...indicateurs.map((d) => d.effectifMinimalPublication));
+  const seuilMax = indicateurs.length ? Math.max(...indicateurs.map((d) => d.effectifMinimalPublication)) : 0;
+  const pret = !!dictionnaire.data;
 
   return (
+    <EntreePage>
     <div className="space-y-6">
       <PageHeader
         surtitre="Données · P1 · P13"
@@ -119,12 +114,12 @@ export default function DictionnairePage() {
         sousTitre="La définition officielle de chaque indicateur : ce qu'il mesure, comment il se calcule, d'où viennent les données et qui en répond. Tous les écrans et Ask Education calculent à partir de ces définitions."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <TuileIndicateur libelle="Indicateurs publiés" icone={Database} accent="bleu" valeur={entier(indicateurs.length)} indice="Aucun autre indicateur n'est calculable" />
-        <TuileIndicateur libelle="Directions propriétaires" icone={Users} accent="sarcelle" valeur={entier(proprietaires.length)} indice="Chaque indicateur a un responsable" />
-        <TuileIndicateur libelle="Versions en vigueur" icone={FileClock} accent="ambre" valeur={entier(indicateurs.length)} indice="Une seule version active par indicateur" />
-        <TuileIndicateur libelle="Seuil de publication" icone={Lock} accent="neutre" valeur={`1 à ${seuilMax}`} unite="apprenants" indice="En dessous : cellule masquée" />
-      </div>
+      <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Element><TuileIndicateur libelle="Indicateurs publiés" icone={Database} accent="bleu" valeur={pret ? <Compteur valeur={indicateurs.length} format={entier} /> : <Squelette className="h-7 w-12" />} indice="Aucun autre indicateur n'est calculable" /></Element>
+        <Element><TuileIndicateur libelle="Directions propriétaires" icone={Users} accent="sarcelle" valeur={pret ? <Compteur valeur={proprietaires.length} format={entier} /> : <Squelette className="h-7 w-12" />} indice="Chaque indicateur a un responsable" /></Element>
+        <Element><TuileIndicateur libelle="Versions en vigueur" icone={FileClock} accent="ambre" valeur={pret ? <Compteur valeur={indicateurs.length} format={entier} /> : <Squelette className="h-7 w-12" />} indice="Une seule version active par indicateur" /></Element>
+        <Element><TuileIndicateur libelle="Seuil de publication" icone={Lock} accent="neutre" valeur={pret ? `1 à ${seuilMax}` : <Squelette className="h-7 w-20" />} unite={pret ? "apprenants" : undefined} indice="En dessous : cellule masquée" /></Element>
+      </Cascade>
 
       <Card className="border-blue/25 bg-blue-soft/50">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -178,15 +173,23 @@ export default function DictionnairePage() {
           </div>
         </div>
         <p className="px-5 pt-3 text-[12.5px] text-ink-muted" aria-live="polite">
-          {filtres.length} indicateur{filtres.length > 1 ? "s" : ""} sur {indicateurs.length}
+          {pret ? `${filtres.length} indicateur${filtres.length > 1 ? "s" : ""} sur ${indicateurs.length}` : "Chargement du dictionnaire…"}
         </p>
-        {filtres.length ? (
+        {dictionnaire.isPending ? (
+          <ul className="grid grid-cols-1 gap-4 p-5 xl:grid-cols-2" aria-label="Chargement">
+            {[0, 1, 2, 3].map((i) => <li key={i}><Squelette className="h-72 w-full rounded-lg" /></li>)}
+          </ul>
+        ) : dictionnaire.isError ? (
+          <EtatVide icone={RefreshCw} titre="Dictionnaire indisponible" texte={dictionnaire.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => dictionnaire.refetch()}>Réessayer</Button>} />
+        ) : filtres.length ? (
           <ul className="grid grid-cols-1 gap-4 p-5 xl:grid-cols-2">
-            {filtres.map((d, i) => (
-              <li key={d.code} className="animate-row" style={{ animationDelay: `${i * 30}ms` }}>
-                <FicheIndicateur d={d} />
-              </li>
-            ))}
+            <AnimatePresence initial={false} mode="popLayout">
+              {filtres.map((d, i) => (
+                <motion.li key={d.code} layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.35, ease: EASE, delay: Math.min(i, 12) * 0.035 }} className="min-w-0">
+                  <FicheIndicateur d={d} />
+                </motion.li>
+              ))}
+            </AnimatePresence>
           </ul>
         ) : (
           <EtatVide
@@ -203,7 +206,7 @@ export default function DictionnairePage() {
           icon={History}
           title={<>Historique des versions · <span className="font-mono text-[14px]">taux_reussite_examen</span></>}
           subtitle="Chaque version reste consultable : un chiffre publié en 2023 se recalcule avec la définition de 2023."
-          action={<Badge ton="avertissement">Historique simulé</Badge>}
+          action={<Badge ton="marque" icone={BookMarked}>Registre des versions</Badge>}
         />
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <ol className="relative space-y-4 border-l-2 border-line/70 pl-5">
@@ -227,27 +230,40 @@ export default function DictionnairePage() {
             ))}
           </ol>
 
-          <div className="rounded-lg border border-line/70 bg-surface-2/50 p-4">
-            <Etiquette>Pourquoi versionner ?</Etiquette>
-            <p className="mt-2 text-[13.5px] text-ink-2">Réussite au BEPC {ANNEE_COURANTE}, même données, deux définitions (calcul réel du moteur) :</p>
-            <dl className="mt-3 space-y-2">
-              <div className="flex items-baseline justify-between gap-3 rounded-md bg-surface px-3 py-2">
-                <dt className="text-[13px] text-ink-2">Selon la v2.x <span className="block text-[11.5px] text-ink-muted">admis ÷ inscrits</span></dt>
-                <dd className="font-display text-[20px] font-bold tabular text-ink">{pourcent(impact.v2)}</dd>
+          <div className="min-w-0 rounded-lg border border-line/70 bg-surface-2/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Etiquette>Pourquoi versionner ?</Etiquette>
+              <Segmente label="Examen" options={[{ valeur: "CEP", libelle: "CEP" }, { valeur: "BEPC", libelle: "BEPC" }, { valeur: "BAC", libelle: "Bac" }]} valeur={examen} onChange={setExamen} />
+            </div>
+            {impact.isPending ? (
+              <div className="mt-3 space-y-2"><Squelette className="h-4 w-3/4" /><Squelette className="h-14 w-full" /><Squelette className="h-14 w-full" /></div>
+            ) : impact.isError ? (
+              <EtatVide icone={RefreshCw} titre="Calcul indisponible" texte={impact.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => impact.refetch()}>Réessayer</Button>} />
+            ) : (
+              <div className={cn("transition-opacity", impact.isPlaceholderData && "opacity-60")}>
+                <p className="mt-2 text-[13.5px] text-ink-2">Réussite au {impact.data.examen === "BAC" ? "baccalauréat" : impact.data.examen} {impact.data.annee}, mêmes données nationales, deux définitions (calcul du serveur) :</p>
+                <dl className="mt-3 space-y-2">
+                  <div className="flex items-baseline justify-between gap-3 rounded-md bg-surface px-3 py-2">
+                    <dt className="text-[13px] text-ink-2">Selon la v2.x <span className="block text-[11.5px] text-ink-muted">admis ÷ inscrits</span></dt>
+                    <dd className="font-display text-[20px] font-bold tabular text-ink">{impact.data.selonV2 != null ? <Compteur valeur={impact.data.selonV2} format={(v) => pourcent(v)} /> : "—"}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 rounded-md bg-surface px-3 py-2 ring-1 ring-success/30">
+                    <dt className="text-[13px] text-ink-2">Selon la v3.1 (en vigueur) <span className="block text-[11.5px] text-ink-muted">admis ÷ présents</span></dt>
+                    <dd className="font-display text-[20px] font-bold tabular text-ink">{impact.data.selonV3 != null ? <Compteur valeur={impact.data.selonV3} format={(v) => pourcent(v)} /> : "—"}</dd>
+                  </div>
+                </dl>
+                <p className="mt-3 text-[12.5px] text-ink-muted">
+                  {entier(impact.data.admis)} admis, {entier(impact.data.presents)} présents, {entier(impact.data.inscrits)} inscrits
+                  {impact.data.selonV2 != null && impact.data.selonV3 != null && <> : écart de {nombre(impact.data.selonV3 - impact.data.selonV2, 1)} point{Math.abs(impact.data.selonV3 - impact.data.selonV2) >= 2 ? "s" : ""}</>}.
+                  Sans version, ces deux chiffres circuleraient sous le même nom. Avec le dictionnaire, chacun porte sa définition.
+                </p>
               </div>
-              <div className="flex items-baseline justify-between gap-3 rounded-md bg-surface px-3 py-2 ring-1 ring-success/30">
-                <dt className="text-[13px] text-ink-2">Selon la v3.1 (en vigueur) <span className="block text-[11.5px] text-ink-muted">admis ÷ présents</span></dt>
-                <dd className="font-display text-[20px] font-bold tabular text-ink">{pourcent(impact.v3)}</dd>
-              </div>
-            </dl>
-            <p className="mt-3 text-[12.5px] text-ink-muted">
-              {entier(impact.admis)} admis, {entier(impact.presents)} présents, {entier(impact.inscrits)} inscrits. Sans version,
-              ces deux chiffres circuleraient sous le même nom. Avec le dictionnaire, chacun porte sa définition.
-            </p>
+            )}
           </div>
         </div>
       </Card>
     </div>
+    </EntreePage>
   );
 }
 
