@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { authentifie, base, corps, journaliser, limiteDebit, type Variables } from "./commun";
 import { parcours } from "./parcours";
+import { auth } from "./auth";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -15,10 +16,9 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
-import { sign } from "hono/jwt";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
-import { chargerCouches, contexteApprenant, enEvenement, profilParId } from "./donnees";
+import { chargerCouches, contexteApprenant, enEvenement } from "./donnees";
 import { lireEnv } from "./env";
 
 /**
@@ -30,7 +30,7 @@ import { lireEnv } from "./env";
 export const app = new Hono<{ Variables: Variables }>().basePath("/api/v1");
 
 app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site", xFrameOptions: "DENY" }));
-app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "Authorization"], maxAge: 600 }));
+app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "X-CSRF-Token"], credentials: true, maxAge: 600 }));
 app.use("*", bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) }));
 app.use("*", limiteDebit(240, 60_000));
 
@@ -41,17 +41,9 @@ app.onError((err, c) => {
 });
 app.notFound((c) => c.json({ erreur: "Ressource introuvable" }, 404));
 
-/* ================================================================== Authentification */
+/* ================================================================== Authentification (sessions) */
 
-app.post("/auth/demo", limiteDebit(30, 60_000), async (c) => {
-    if (!lireEnv().MODE_DEMO) throw new HTTPException(404, { message: "Ressource introuvable" });
-    const { profilId } = await corps(c, z.object({ profilId: z.string().regex(/^p-[a-z]+$/) }).strict());
-    const profil = await profilParId(base(), profilId);
-    if (!profil) throw new HTTPException(404, { message: "Profil de démonstration inconnu" });
-    const expire = Math.floor(Date.now() / 1000) + 2 * 3600;
-    const jeton = await sign({ sub: profil.id, exp: expire, iat: Math.floor(Date.now() / 1000) }, lireEnv().JWT_SECRET, "HS256");
-    return c.json({ jeton, expire, profil });
-});
+app.route("/", auth);
 
 app.get("/moi", authentifie, (c) => c.json(c.get("profil")));
 

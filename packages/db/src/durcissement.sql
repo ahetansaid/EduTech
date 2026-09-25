@@ -57,3 +57,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA analytics, gouvernance, registre_simule TO 
 -- Compartiment sensible : RLS forcée et aucune politique = aucune ligne accessible tant que les
 -- politiques de besoin d'en connaître ne sont pas définies.
 GRANT SELECT, INSERT ON sensible.cas TO beile_app;
+
+-- Comptes et sessions : l'API gère ses sessions et notifications ; aucune suppression physique des comptes.
+GRANT SELECT, INSERT, UPDATE ON core.comptes, core.sessions, core.notifications TO beile_app;
+GRANT DELETE ON core.sessions TO beile_app;

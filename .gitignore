@@ -13,3 +13,6 @@ next-env.d.ts
 .DS_Store
 *.log
 .kilo/
+
+# Identifiants de comptes générés localement (jamais commités)
+*.local.md

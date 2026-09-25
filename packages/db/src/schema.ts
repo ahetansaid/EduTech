@@ -324,3 +324,45 @@ export const elementsDonnees = gouvernance.table("elements_donnees", {
   frequence: text("frequence").notNull(),
   version: text("version").notNull(),
 });
+
+/* ------------------------------------------------------------------ Comptes, sessions, notifications */
+
+/**
+ * Comptes de connexion. Une personne peut détenir un compte rattaché à un profil d'habilitations.
+ * Mot de passe : scrypt (sel unique), jamais stocké en clair. Verrouillage après échecs répétés.
+ */
+export const comptes = core.table("comptes", {
+  id: text("id").primaryKey(),
+  identifiant: text("identifiant").notNull().unique(),
+  motDePasseHash: text("mot_de_passe_hash").notNull(),
+  profilId: text("profil_id").notNull().references(() => profils.id),
+  actif: boolean("actif").notNull().default(true),
+  doitChangerMotDePasse: boolean("doit_changer_mot_de_passe").notNull().default(false),
+  echecsConsecutifs: integer("echecs_consecutifs").notNull().default(0),
+  verrouilleJusquA: timestamp("verrouille_jusqu_a", { withTimezone: true }),
+  derniereConnexion: timestamp("derniere_connexion", { withTimezone: true }),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("comptes_profil_idx").on(t.profilId)]);
+
+/** Sessions : seule l'empreinte SHA-256 du jeton est conservée ; le jeton ne vit que dans un cookie HttpOnly. */
+export const sessions = core.table("sessions", {
+  empreinte: text("empreinte").primaryKey(),
+  compteId: text("compte_id").notNull().references(() => comptes.id),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  expireLe: timestamp("expire_le", { withTimezone: true }).notNull(),
+  derniereActivite: timestamp("derniere_activite", { withTimezone: true }).notNull().defaultNow(),
+  adresseIp: text("adresse_ip"),
+  agent: text("agent"),
+  revoquee: boolean("revoquee").notNull().default(false),
+}, (t) => [index("sessions_compte_idx").on(t.compteId)]);
+
+/** Notifications nées des faits du registre (absence, note, inscription…), destinées à une personne. */
+export const notifications = core.table("notifications", {
+  id: text("id").primaryKey(),
+  destinataireNpi: text("destinataire_npi").notNull(),
+  titre: text("titre").notNull(),
+  texte: text("texte").notNull(),
+  evenementId: text("evenement_id"),
+  lue: boolean("lue").notNull().default(false),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("notifications_destinataire_idx").on(t.destinataireNpi, t.creeLe)]);
