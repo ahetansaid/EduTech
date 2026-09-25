@@ -429,3 +429,22 @@ export const ticketsMessages = core.table("tickets_messages", {
   contenu: text("contenu").notNull(),
   creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("tickets_messages_ticket_idx").on(t.ticketId, t.creeLe)]);
+
+/* ------------------------------------------------------------------ Calendrier scolaire */
+
+/**
+ * Calendrier de l'année scolaire, géré par l'administration. Chaque échéance porte un statut :
+ * « officiel » (fixé par arrêté) ou « provisoire » (affiché comme tel au public, jamais comme une date officielle).
+ */
+export const calendrier = core.table("calendrier", {
+  id: text("id").primaryKey(),
+  annee: text("annee").notNull(),
+  titre: text("titre").notNull(),
+  categorie: text("categorie", { enum: ["rentree", "trimestre", "conges", "ferie", "examen", "evaluation", "fin", "autre"] }).notNull(),
+  debut: date("debut").notNull(),
+  fin: date("fin").notNull(),
+  statut: text("statut", { enum: ["officiel", "provisoire"] }).notNull().default("provisoire"),
+  note: text("note"),
+  majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
+  majPar: text("maj_par"),
+}, (t) => [index("calendrier_annee_idx").on(t.annee, t.debut)]);

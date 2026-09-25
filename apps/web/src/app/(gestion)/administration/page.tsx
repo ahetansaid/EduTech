@@ -11,14 +11,16 @@ import { ErreurApi } from "@/lib/http";
 import { Comptes } from "./Comptes";
 import { NouvelUtilisateur } from "./NouvelUtilisateur";
 import { FILTRES_DEFAUT, Support } from "./Support";
+import { CalendrierAdmin } from "./CalendrierAdmin";
 
-type Onglet = "comptes" | "nouveau" | "support";
-const ONGLETS: Onglet[] = ["comptes", "nouveau", "support"];
+type Onglet = "comptes" | "nouveau" | "support" | "calendrier";
+const ONGLETS: Onglet[] = ["comptes", "nouveau", "support", "calendrier"];
 
 const SOUS_TITRE: Record<Onglet, string> = {
   comptes: "Qui peut se connecter, depuis quand, avec quels droits. Chaque opération est inscrite au journal d'audit.",
   nouveau: "Créer un utilisateur : identité vérifiée au registre, habilitations cohérentes, mot de passe temporaire affiché une seule fois.",
   support: "Demandes d'assistance des utilisateurs : répondre, prendre en charge, résoudre.",
+  calendrier: "Rentrée, congés et examens : publiez les dates officielles ; le calendrier public se met à jour aussitôt.",
 };
 
 export default function AdministrationPage() {
@@ -74,6 +76,7 @@ function Administration() {
               { valeur: "comptes", libelle: comptes.data ? `Comptes · ${comptes.data.length}` : "Comptes" },
               { valeur: "nouveau", libelle: "Nouvel utilisateur" },
               { valeur: "support", libelle: aTraiter ? `Support · ${aTraiter}` : "Support" },
+              { valeur: "calendrier", libelle: "Calendrier" },
             ]}
           />
         </div>
@@ -82,6 +85,7 @@ function Administration() {
           <motion.div key={onglet} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.24, ease: EASE }} className="min-w-0">
             {onglet === "comptes" && <Comptes comptes={comptes} />}
             {onglet === "nouveau" && <NouvelUtilisateur versComptes={() => changer("comptes")} />}
+            {onglet === "calendrier" && <CalendrierAdmin />}
             {onglet === "support" && <Support />}
           </motion.div>
         </AnimatePresence>

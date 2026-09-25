@@ -127,6 +127,12 @@ verifier("Annuaire : coordonnées hors du Bénin", (await anonyme.appel("GET", "
 const chiffres = await anonyme.appel("GET", "/public/chiffres");
 verifier("L'éducation en chiffres : indicateurs agrégés", chiffres.statut === 200 && liste(chiffres.json.indicateurs).length === 4, true);
 
+const cal = await anonyme.appel("GET", "/public/calendrier");
+verifier("Calendrier public : année en cours et échéances", cal.statut === 200 && liste(cal.json.evenements).length > 0, true, String(cal.json.annee ?? ""));
+verifier("Calendrier : enseignant → ajout d'une échéance", (await enseignant!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai", categorie: "autre", debut: "2026-10-01", fin: "2026-10-01", statut: "provisoire" })).statut, 403);
+verifier("Calendrier : fin avant le début", (await admin!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai incohérent", categorie: "conges", debut: "2026-12-20", fin: "2026-12-10", statut: "provisoire" })).statut, 422);
+verifier("Calendrier : date hors de l'année scolaire", (await admin!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai hors année", categorie: "conges", debut: "2029-01-10", fin: "2029-01-12", statut: "provisoire" })).statut, 422);
+
 titre("Administration des utilisateurs et assistance (refus : aucune écriture)");
 const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
 const moiAdmin = comptes.find((x) => x.identifiant === "admin.beile")?.id as string | undefined;
@@ -197,6 +203,16 @@ if (ECRITURES) {
   const fil = await parent!.appel("GET", `/assistance/tickets/${idTicket}`);
   verifier("Parent : réponse reçue, demande passée « en cours »", liste(fil.json.messages).length === 1 && (fil.json.ticket as { statut?: string } | undefined)?.statut === "en_cours", true);
   verifier("Administrateur : demande résolue", (await admin!.appel("POST", `/admin/tickets/${idTicket}/statut`, { statut: "resolu" })).statut, 200);
+
+  titre("Calendrier : publication par l'administration");
+  const echeance = { annee: "2026-2027", titre: "Journée pédagogique (recette)", categorie: "autre", debut: "2026-11-12", fin: "2026-11-12", statut: "provisoire" };
+  const ajout = await admin!.appel("POST", "/admin/calendrier", echeance);
+  verifier("Administrateur : ajout d'une échéance", ajout.statut, 201);
+  const idCal = String(ajout.json.id ?? "");
+  verifier("Public : l'échéance apparaît", liste((await anonyme.appel("GET", "/public/calendrier?annee=2026-2027")).json.evenements).some((e) => e.id === idCal), true);
+  verifier("Administrateur : passage en « officiel »", (await admin!.appel("POST", `/admin/calendrier/${idCal}`, { ...echeance, statut: "officiel" })).statut, 200);
+  verifier("Public : statut officiel visible", liste((await anonyme.appel("GET", "/public/calendrier?annee=2026-2027")).json.evenements).find((e) => e.id === idCal)?.statut === "officiel", true);
+  verifier("Administrateur : suppression", (await admin!.appel("POST", `/admin/calendrier/${idCal}/supprimer`)).statut, 200);
 }
 
 titre("Fin de session");

@@ -58,3 +58,16 @@ export const NIVEAUX_PUBLICS: { valeur: NiveauPublic; libelle: string }[] = [
   { valeur: "alphabetisation", libelle: "Alphabétisation" },
 ];
 export const STATUTS: Record<StatutEtablissement, string> = { public: "Public", prive: "Privé", confessionnel: "Confessionnel", communautaire: "Communautaire" };
+
+export type CategorieEcheance = "rentree" | "trimestre" | "conges" | "ferie" | "examen" | "evaluation" | "fin" | "autre";
+export interface Echeance { id: string; annee: string; titre: string; categorie: CategorieEcheance; debut: string; fin: string; statut: "officiel" | "provisoire"; note: string | null; majLe: string }
+export interface CalendrierPublic { aujourdhui: string; annees: string[]; annee: string | null; evenements: Echeance[] }
+
+export function useCalendrier(annee?: string) {
+  return useQuery({
+    queryKey: ["public", "calendrier", annee ?? "courante"],
+    queryFn: () => lire<CalendrierPublic>(`/public/calendrier${annee ? `?annee=${encodeURIComponent(annee)}` : ""}`),
+    placeholderData: keepPreviousData,
+    staleTime: 120_000,
+  });
+}

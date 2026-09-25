@@ -8,6 +8,8 @@ Plateforme nationale interopérable de parcours et d'intelligence éducatifs
 
 *Chaque parcours suivi. Chaque décision éclairée.*
 
+**En ligne : [edu-tech-api-rho.vercel.app](https://edu-tech-api-rho.vercel.app)** · API : [beile-api.vercel.app/api/v1/sante](https://beile-api.vercel.app/api/v1/sante) · hébergement Vercel `fra1` + Neon Francfort
+
 ![Next.js](https://img.shields.io/badge/Next.js-16-000?logo=nextdotjs) ![Hono](https://img.shields.io/badge/API-Hono%20·%20Node.js%2022-E36002?logo=hono) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18%20·%20PostGIS-336791?logo=postgresql&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![CI](https://img.shields.io/badge/CI-recette%20de%20bout%20en%20bout-2ea44f?logo=githubactions&logoColor=white)
 
 </div>
@@ -65,14 +67,18 @@ flowchart LR
     subgraph Gestion["Gestion : barre latérale, back-office"]
         E["Chef d'établissement<br/>Tableau du jour · Inscriptions · Examens"]
         P["DPO<br/>Journal d'audit · Traitements"]
-        A["Administrateur<br/>Comptes · État du service"]
+        A["Administrateur<br/>Comptes · Habilitations · Support · Calendrier"]
     end
     subgraph Personnel["Espaces personnels : conçus pour le téléphone"]
         T["Enseignant<br/>Appel · Notes · Carrière"]
         F["Famille<br/>Suivi · Notifications · Justifications"]
         L["Apprenant<br/>Passeport éducatif · Preuves"]
     end
-    V["Public, sans compte<br/>Vérification d'un diplôme"]
+    subgraph Public["Public, sans compte"]
+        V1["Trouver un établissement<br/>autour de moi"]
+        V2["Calendrier scolaire officiel<br/>Inscrire son enfant"]
+        V3["L'éducation en chiffres<br/>Vérifier un diplôme · Aide"]
+    end
 ```
 
 | Espace | Ce que l'utilisateur fait réellement |
@@ -83,7 +89,10 @@ flowchart LR
 | **Enseignant** | Appel en quelques secondes, **y compris hors connexion**, saisie et correction motivée des notes, formation continue |
 | **Famille / Apprenant** | Notes, absences, justification, notifications, passeport éducatif continu malgré les transferts, diplômes à QR code |
 | **Conformité** | Journal de toutes les décisions d'accès (accordées et refusées), statistiques des refus, registre des traitements |
-| **Vérification publique** | Un tiers vérifie un diplôme sans compte ; une altération du document est détectée |
+| **Administration** | Création d'utilisateurs aux habilitations vérifiées (rôle ↔ périmètre ↔ registre NPI), révocation de sessions, file d'assistance, publication du calendrier scolaire |
+| **Assistance** | Tout utilisateur ouvre une demande depuis son menu et suit les réponses ; l'administration la traite et la résout |
+| **Services publics** | Annuaire des 11 700 établissements (recherche, carte, « autour de moi »), calendrier scolaire officiel dynamique, démarches d'inscription (y compris sans acte de naissance), données ouvertes par département, vérification de diplôme, centre d'aide |
+| **Guides** | Visite guidée animée dans chaque espace (démarre à la première visite), centre d'aide `/aide` et [guides écrits par profil](docs/guides/README.md) |
 
 ---
 
@@ -105,7 +114,7 @@ flowchart TB
 
     subgraph Back["Back : Node.js 22 + Hono (apps/api)"]
         MW["Chaîne de sécurité<br/>en-têtes · corps ≤ 16 Ko · débit IP et utilisateur<br/>session · CSRF · contrôle d'origine"]
-        RT["Routes métier<br/>auth · pilotage · établissement · enseignant<br/>parcours · plateforme · gouvernance"]
+        RT["Routes métier<br/>auth · pilotage · établissement · enseignant · parcours<br/>plateforme · administration · assistance · public"]
         EN["Moteurs<br/>ABAC · couche sémantique · Ask<br/>projections · notifications · workflow"]
     end
 
@@ -300,6 +309,7 @@ Choix d'architecture **mesurés**, pas estimés (voir [docs/DIMENSIONNEMENT.md](
 | Cockpit national, 20 requêtes simultanées | 3,0 s | **0,48 s** |
 | 40 requêtes concurrentes de 4 profils différents (même base) | 3,9 s | **0,72 s** |
 | Agrégat SQL « bilans » de 300 élèves, en base | — | **4 ms** |
+| Écrans en production depuis Porto-Novo (tableau d'établissement, élèves, famille) | — | **≈ 300 ms** |
 | Équivalence des résultats avec le moteur de référence | — | **0 écart** sur 293 élèves |
 
 ---
@@ -317,11 +327,11 @@ flowchart LR
     Q --> R
     subgraph R["Recette de bout en bout"]
         R1[PostGIS jetable] --> R2[Migrations et durcissement] --> R3[Peuplement] --> R4[Rôle restreint et comptes]
-        R4 --> R5[Vérification : ajout seul, droits, RLS, témoins] --> R6["Recette : 82 cas, écritures multi-utilisateurs"] --> R7["Charge : 100 utilisateurs"]
+        R4 --> R5[Vérification : ajout seul, droits, RLS, témoins] --> R6["Recette : 116 cas, écritures multi-utilisateurs"] --> R7["Charge : 100 utilisateurs"]
     end
 ```
 
-- **Recette** : 82 cas avec de vrais comptes, dont les refus attendus (hors périmètre, sans relation, CSRF manquant, origine étrangère).
+- **Recette** : 116 cas avec de vrais comptes, dont les refus attendus (hors périmètre, sans relation, CSRF manquant, origine étrangère, habilitation incohérente, demande d'assistance d'un tiers), les services publics et le calendrier.
 - **Contrôle visuel** : chaque profil, chaque page, dans un vrai navigateur à 360 px et à 1440 px. Résultat : 68 vérifications conformes sur 68, sans débordement, sans erreur console et sans écran d'erreur.
 - Branches : `feature/*` → `dev` → `staging` → `main`, uniquement par pull request.
 
@@ -333,7 +343,7 @@ flowchart LR
 flowchart LR
     subgraph MVP["MVP du challenge"]
         V1["Vercel : front<br/>Next.js"] -->|réécriture| V2["Vercel : API<br/>fonction Node.js"]
-        V2 --> N[("Neon<br/>PostgreSQL + PostGIS")]
+        V2 --> N[("Neon Francfort<br/>PostgreSQL 18 + PostGIS")]
     end
     subgraph Cible["Cible : serveurs de l'État"]
         W["WAF + répartiteur"] --> K["Nœuds applicatifs<br/>mêmes images"]
@@ -362,7 +372,10 @@ npm run peupler -w @beile/db
 npm run role-api -w @beile/db       # écrit DATABASE_URL_API dans .env
 npm run comptes -w @beile/db        # mots de passe générés dans COMPTES.local.md (ignoré par Git)
 npm run projections -w @beile/db
+npm run calendrier -w @beile/db     # calendrier scolaire officiel (arrêté du 28 juillet 2026)
 npm run verifier -w @beile/db
+# ou, tout en une fois sur une base existante (IRRÉVERSIBLE, l'hôte doit être recopié) :
+# npm run reinitialiser -w @beile/db <hôte de la base>
 
 # Services
 npm run dev:api                     # API : http://localhost:4000/api/v1/sante
@@ -371,6 +384,7 @@ npm run dev                         # Front : http://localhost:3000 (BEILE_API_I
 # Contrôles
 npm run typecheck && npm run lint
 npm run recette -w @beile/api       # lecture et refus : sans risque sur une base partagée
+npm run guides:docs -w @beile/web   # régénère docs/guides depuis le centre d'aide
 ```
 
 Une base jetable complète s'obtient avec un conteneur `postgis/postgis:18-3.6` : voir [docs/DIMENSIONNEMENT.md §4](docs/DIMENSIONNEMENT.md).

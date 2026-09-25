@@ -480,3 +480,51 @@ administration.post("/admin/tickets/:id/assignation", authentifie, async (c) => 
   await journaliser(c.get("profil"), assigner ? "Prise en charge d'une demande" : "Libération d'une demande", id, "gestion", true, null);
   return c.json({ ok: true });
 });
+
+/* ================================================================== Calendrier scolaire */
+
+const ANNEE_SCOLAIRE = z.string().regex(/^(\d{4})-(\d{4})$/).refine((a) => Number(a.slice(5)) === Number(a.slice(0, 4)) + 1, "année scolaire attendue : AAAA-AAAA+1");
+const DATE_ISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date attendue : AAAA-MM-JJ").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "date invalide");
+const ECHEANCE = z.object({
+  annee: ANNEE_SCOLAIRE,
+  titre: z.string().trim().min(3).max(90),
+  categorie: z.enum(["rentree", "trimestre", "conges", "ferie", "examen", "evaluation", "fin", "autre"]),
+  debut: DATE_ISO,
+  fin: DATE_ISO,
+  statut: z.enum(["officiel", "provisoire"]),
+  note: z.string().trim().max(200).nullable().optional(),
+}).strict().refine((e) => e.fin >= e.debut, { message: "la fin précède le début", path: ["fin"] })
+  .refine((e) => e.debut >= `${e.annee.slice(0, 4)}-08-01` && e.fin <= `${e.annee.slice(5)}-09-30`, { message: "les dates doivent appartenir à l'année scolaire (d'août à la fin des grandes vacances)", path: ["debut"] });
+
+administration.get("/admin/calendrier", authentifie, async (c) => {
+  await exigerAdmin(c, "Consultation du calendrier", "core.calendrier");
+  return c.json(await base().select().from(schema.calendrier).orderBy(desc(schema.calendrier.annee), asc(schema.calendrier.debut)));
+});
+
+administration.post("/admin/calendrier", authentifie, async (c) => {
+  await exigerAdmin(c, "Ajout d'une échéance au calendrier", "core.calendrier");
+  const e = await corps(c, ECHEANCE);
+  const id = `CAL-${randomBytes(6).toString("hex")}`;
+  await base().insert(schema.calendrier).values({ id, ...e, note: e.note ?? null, majPar: c.get("profil").nomAffiche });
+  await journaliser(c.get("profil"), "Ajout d'une échéance au calendrier", `${id} · ${e.titre} · ${e.debut} · ${e.statut}`, "gestion", true, null);
+  return c.json({ id }, 201);
+});
+
+administration.post("/admin/calendrier/:id", authentifie, async (c) => {
+  await exigerAdmin(c, "Modification du calendrier", c.req.param("id"));
+  const id = z.string().regex(/^CAL-[A-Za-z0-9-]{2,24}$/).parse(c.req.param("id"));
+  const e = await corps(c, ECHEANCE);
+  const [maj] = await base().update(schema.calendrier).set({ ...e, note: e.note ?? null, majLe: new Date(), majPar: c.get("profil").nomAffiche }).where(eq(schema.calendrier.id, id)).returning({ id: schema.calendrier.id });
+  if (!maj) throw new HTTPException(404, { message: "Échéance introuvable" });
+  await journaliser(c.get("profil"), "Modification du calendrier", `${id} · ${e.titre} · ${e.debut} → ${e.fin} · ${e.statut}`, "gestion", true, null);
+  return c.json({ ok: true });
+});
+
+administration.post("/admin/calendrier/:id/supprimer", authentifie, async (c) => {
+  await exigerAdmin(c, "Suppression d'une échéance", c.req.param("id"));
+  const id = z.string().regex(/^CAL-[A-Za-z0-9-]{2,24}$/).parse(c.req.param("id"));
+  const [sup] = await base().delete(schema.calendrier).where(eq(schema.calendrier.id, id)).returning({ titre: schema.calendrier.titre });
+  if (!sup) throw new HTTPException(404, { message: "Échéance introuvable" });
+  await journaliser(c.get("profil"), "Suppression d'une échéance", `${id} · ${sup.titre}`, "gestion", true, null);
+  return c.json({ ok: true });
+});

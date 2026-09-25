@@ -34,6 +34,7 @@ npm run peupler -w @beile/db      # référentiels et jeu initial (refusé si la
 npm run role-api -w @beile/db     # crée beile_api, écrit DATABASE_URL_API dans .env
 npm run comptes -w @beile/db      # comptes nominatifs, mots de passe générés dans COMPTES.local.md (ignoré par Git)
 npm run projections -w @beile/db  # reconstruit core.scolarites et core.notes depuis le registre (idempotent)
+npm run calendrier -w @beile/db   # calendrier scolaire officiel (idempotent ; l'administration le tient ensuite à jour)
 npm run verifier -w @beile/db     # contrôle : ajout seul, droits, RLS, avec témoins (tout est annulé)
 ```
 

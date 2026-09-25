@@ -6,6 +6,8 @@ import { EASE, motion } from "@/components/motion";
 import { BandeNationale } from "@/components/ui/primitives";
 import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
+import { useCalendrier } from "@/lib/api/public";
+import { prochaine } from "@/lib/calendrier";
 
 /** Services ouverts à tous, sans compte. */
 const SERVICES = [
@@ -59,6 +61,11 @@ const PASTILLES = [
 export default function Accueil() {
   useThemeEspace(false);
   const monEspace = useMonEspace();
+  // Carte « Calendrier » : la prochaine échéance réelle, publiée par l'administration.
+  const calendrier = useCalendrier();
+  const suite = calendrier.data ? prochaine(calendrier.data.evenements, calendrier.data.aujourdhui) : null;
+  const texteService = (href: string, texte: string) =>
+    href === "/calendrier" && suite ? `${suite.echeance.titre} : ${suite.enCours ? "en ce moment" : suite.dans <= 1 ? "demain" : `dans ${suite.dans} jours`}${suite.echeance.statut === "provisoire" ? " (date provisoire)" : ""}.` : texte;
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-bg">
@@ -127,7 +134,7 @@ export default function Accueil() {
               <Link href={sv.href} className="group flex h-full flex-col rounded-2xl border border-line/70 bg-surface p-5 shadow-float transition hover:-translate-y-1 hover:shadow-pop">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-soft text-accent-ink transition group-hover:bg-navy group-hover:text-white"><sv.icone size={20} aria-hidden /></span>
                 <p className="mt-4 font-display text-[16px] font-bold text-ink">{sv.titre}</p>
-                <p className="mt-1 text-[13.5px] leading-relaxed text-ink-2">{sv.texte}</p>
+                <p className="mt-1 text-[13.5px] leading-relaxed text-ink-2">{texteService(sv.href, sv.texte)}</p>
                 <span className="mt-auto flex justify-end pt-3"><ArrowRight size={17} className="shrink-0 text-ink-muted transition group-hover:translate-x-1 group-hover:text-accent-ink" aria-hidden /></span>
               </Link>
             </motion.div>

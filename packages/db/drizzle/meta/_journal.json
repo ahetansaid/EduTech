@@ -36,6 +36,13 @@
       "when": 1790345735962,
       "tag": "0004_support",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790361641237,
+      "tag": "0005_calendrier",
+      "breakpoints": true
     }
   ]
 }

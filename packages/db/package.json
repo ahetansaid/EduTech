@@ -20,7 +20,8 @@
     "role-api": "tsx src/creer_role_api.ts",
     "comptes": "tsx src/creer_comptes.ts",
     "projections": "tsx src/projections.ts",
-    "reinitialiser": "tsx src/reinitialiser.ts"
+    "reinitialiser": "tsx src/reinitialiser.ts",
+    "calendrier": "tsx src/calendrier.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",

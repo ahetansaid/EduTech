@@ -83,6 +83,7 @@ jobs:
         run: |
           npm run comptes --workspace=@beile/db
           npm run projections --workspace=@beile/db
+          npm run calendrier --workspace=@beile/db
       - name: Vérification de la base (ajout seul, droits, RLS, témoins)
         run: npm run verifier --workspace=@beile/db
       - name: Démarrer l'API

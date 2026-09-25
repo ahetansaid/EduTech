@@ -94,3 +94,8 @@ ALTER TABLE core.tickets ADD CONSTRAINT tickets_valeurs_chk CHECK (
 );
 ALTER TABLE core.tickets_messages DROP CONSTRAINT IF EXISTS tickets_messages_contenu_chk;
 ALTER TABLE core.tickets_messages ADD CONSTRAINT tickets_messages_contenu_chk CHECK (char_length(contenu) BETWEEN 1 AND 4000);
+
+-- Calendrier scolaire : donnée de configuration gérée par l'administration (suppression permise, journalisée).
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.calendrier TO beile_app;
+ALTER TABLE core.calendrier DROP CONSTRAINT IF EXISTS calendrier_dates_coherentes;
+ALTER TABLE core.calendrier ADD CONSTRAINT calendrier_dates_coherentes CHECK (fin >= debut);

@@ -124,3 +124,23 @@ publique.get("/public/chiffres", async (c) => {
     };
   }));
 });
+
+/**
+ * Calendrier scolaire public. Sans paramètre : l'année en cours (celle qui contient aujourd'hui),
+ * sinon la prochaine, sinon la plus récente. Les dates provisoires sont signalées comme telles.
+ */
+publique.get("/public/calendrier", async (c) => {
+  const annee = z.string().regex(/^\d{4}-\d{4}$/).optional().parse(c.req.query("annee"));
+  const toutes = await base().select().from(schema.calendrier).orderBy(schema.calendrier.debut);
+  const annees = [...new Set(toutes.map((e) => e.annee))].sort();
+  const auj = new Date().toISOString().slice(0, 10);
+  const bornes = (a: string) => { const l = toutes.filter((e) => e.annee === a); return { debut: l[0]?.debut ?? "", fin: l.reduce((m, e) => (e.fin > m ? e.fin : m), "") }; };
+  const choisie = annee && annees.includes(annee) ? annee
+    : annees.find((a) => { const b = bornes(a); return b.debut <= auj && auj <= b.fin; })
+      ?? annees.find((a) => bornes(a).debut > auj) ?? annees[annees.length - 1] ?? null;
+  c.header("Cache-Control", "public, max-age=120, s-maxage=300");
+  return c.json({
+    aujourdhui: auj, annees, annee: choisie,
+    evenements: toutes.filter((e) => e.annee === choisie).map(({ majPar: _m, ...e }) => e),
+  });
+});
