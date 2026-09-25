@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { NAVIGATION, navigationPour } from "@/lib/navigation";
 import { accueilPour, useProfil } from "@/lib/session";
+import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
 import { GardeSession } from "./GardeSession";
@@ -72,6 +73,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
   // Garde d'espace (cosmétique) : l'entrée de navigation la plus spécifique fixe les rôles admis.
   const entree = [...NAVIGATION].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
   const autorise = !entree || entree.roles.some((r) => rolesProfil.includes(r));
+  useTitre(courant?.libelle ?? entree?.libelle ?? "Mon espace");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

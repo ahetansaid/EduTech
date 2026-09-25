@@ -10,6 +10,7 @@ import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useThemeEspace } from "@/lib/useSombre";
 import { accueilPour, useProfil } from "@/lib/session";
+import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
 import { GardeSession } from "./GardeSession";
@@ -40,6 +41,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
   const profil = useProfil();
   const a = ACCENTS[espace];
   const autorise = profil.habilitations.some((h) => roles.includes(h.role));
+  useTitre([...onglets].sort((x, y) => y.href.length - x.href.length).find((o) => pathname === o.href || pathname.startsWith(`${o.href}/`))?.libelle ?? a.nom);
   const actif = (href: string) => (href === onglets[0]?.href ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
 
   return (

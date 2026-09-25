@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
+
+export const metadata: Metadata = { title: "Vérifier un diplôme", description: "Service public de vérification des diplômes délivrés au Bénin." };
 
 /** Service public de vérification : aucune connexion, aucune donnée au-delà du strict nécessaire. */
 export default function Layout({ children }: { children: React.ReactNode }) {
