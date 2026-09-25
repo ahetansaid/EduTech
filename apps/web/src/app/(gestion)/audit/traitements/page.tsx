@@ -149,7 +149,7 @@ export default function TraitementsPage() {
         actions={<Link href="/audit" className="inline-flex h-8 items-center gap-2 rounded-md bg-surface px-3 text-[13px] font-medium text-ink ring-1 ring-inset ring-line transition-all hover:bg-surface-2 active:scale-[0.97]"><ScrollText size={14} aria-hidden />Journal d'audit</Link>}
       />
 
-      <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Cascade data-guide="traitements-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Element><TuileIndicateur libelle="Traitements déclarés" icone={ClipboardCheck} accent="bleu" valeur={entier(TRAITEMENTS.length)} indice="tous avec une finalité unique" /></Element>
         <Element><TuileIndicateur libelle="Hautement sensibles" icone={ShieldCheck} accent="critique" valeur={entier(hautementSensibles)} indice="niveau 4 : identité, certification" /></Element>
         <Element><TuileIndicateur libelle="Avis de l'APDP" icone={Gavel} accent="sarcelle" valeur={`${avisFavorables}/${TRAITEMENTS.length}`} indice="avis favorables obtenus" /></Element>
@@ -171,7 +171,7 @@ export default function TraitementsPage() {
         </ul>
       </section>
 
-      <Card className="p-0">
+      <Card data-guide="traitements-liste" className="p-0">
         <div className="flex flex-col gap-3 border-b border-line/60 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <label htmlFor="recherche-traitements" className="text-[12px] font-semibold text-ink-2">Rechercher un traitement</label>

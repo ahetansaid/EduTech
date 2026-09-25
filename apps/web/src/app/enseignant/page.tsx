@@ -35,7 +35,7 @@ export default function EspaceEnseignant() {
         <BandeauFile />
         {error && <DonneesAnciennes relancer={() => refetch()} enCours={isRefetching} />}
 
-        <Cascade className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Cascade data-guide="ens-indicateurs" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Element><Tuile libelle="Classes" valeur={classes.length} icone={CalendarCheck} indication={`${enseignant.matieres.join(", ")}`} /></Element>
           <Element><Tuile libelle="Élèves" valeur={effectif} icone={Users} indication="effectif scolarisé" /></Element>
           <Element><Tuile libelle="Absents" valeur={absents} icone={UserX} alerte={absents > 0} indication={effectif ? `aujourd'hui · ${nombre((absents / effectif) * 100, 1)} %` : "aujourd'hui"} /></Element>
@@ -45,7 +45,7 @@ export default function EspaceEnseignant() {
         {classes.length === 0 ? (
           <Card><EtatVide icone={CalendarCheck} titre="Aucune classe attribuée" texte="Aucune relation pédagogique n'est enregistrée à votre nom pour cette année. Rapprochez-vous de votre chef d'établissement." /></Card>
         ) : (
-          <section aria-labelledby="titre-classes">
+          <section data-guide="ens-classes" aria-labelledby="titre-classes">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <h2 id="titre-classes" className="text-[17px] font-semibold text-ink">Mes classes</h2>
               {trimestre && <Etiquette>Trimestre {trimestre}</Etiquette>}
@@ -84,7 +84,7 @@ function CarteClasse({ classe: c }: { classe: ClasseEnseignant }) {
   const tauxPresence = c.effectif ? presents / c.effectif : 1;
   const remplissage = c.capacite ? Math.min(1, c.effectif / c.capacite) : 0;
   return (
-    <Card className="flex h-full min-w-0 flex-col p-4 transition-shadow duration-200 hover:shadow-pop sm:p-5">
+    <Card data-guide="ens-carte-classe" className="flex h-full min-w-0 flex-col p-4 transition-shadow duration-200 hover:shadow-pop sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <Link href={`/enseignant/classe/${c.id}`} className="group min-w-0">
           <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
@@ -121,10 +121,10 @@ function CarteClasse({ classe: c }: { classe: ClasseEnseignant }) {
       </div>
 
       <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
-        <Link href={`/enseignant/classe/${c.id}?onglet=appel`} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg text-[14px] font-semibold text-white shadow-sm transition active:scale-[0.97]" style={{ background: "var(--acc)" }}>
+        <Link data-guide="ens-appel" href={`/enseignant/classe/${c.id}?onglet=appel`} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg text-[14px] font-semibold text-white shadow-sm transition active:scale-[0.97]" style={{ background: "var(--acc)" }}>
           <ClipboardCheck size={18} aria-hidden /> Appel
         </Link>
-        <Link href={`/enseignant/classe/${c.id}?onglet=notes`} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-surface text-[14px] font-semibold text-ink ring-1 ring-inset ring-line transition hover:bg-surface-2 active:scale-[0.97]">
+        <Link data-guide="ens-notes" href={`/enseignant/classe/${c.id}?onglet=notes`} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-surface text-[14px] font-semibold text-ink ring-1 ring-inset ring-line transition hover:bg-surface-2 active:scale-[0.97]">
           <PenLine size={18} aria-hidden /> Notes
         </Link>
       </div>

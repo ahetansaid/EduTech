@@ -36,7 +36,7 @@ export default function PageCarriere() {
 
         {obligatoire && <AlerteObligatoire formation={obligatoire} />}
 
-        <Cascade className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Cascade data-guide="carriere-indicateurs" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Element><Tuile libelle="Grade" icone={IdCard} valeur={e.grade} indication={`Identifiant ${e.id}`} /></Element>
           <Element><Tuile libelle="Ancienneté" icone={CalendarDays} nombreValeur={anciennete(e.dateRecrutement)} suffixe=" ans" indication={`Recruté le ${date(e.dateRecrutement)}`} /></Element>
           <Element><Tuile libelle="Charge" icone={Layers} nombreValeur={data.charge.classes} suffixe={` classe${data.charge.classes > 1 ? "s" : ""}`} indication={`${data.charge.enseignements} enseignement${data.charge.enseignements > 1 ? "s" : ""} · ${e.matieres.join(", ")}`} /></Element>
@@ -98,7 +98,7 @@ function Catalogue({ data }: { data: Carriere }) {
   const [confirmer, setConfirmer] = useState<Carriere["catalogue"][number] | null>(null);
   const catalogue = [...data.catalogue].sort((a, b) => Number(b.obligatoire) - Number(a.obligatoire));
   return (
-    <Card className="min-w-0">
+    <Card data-guide="carriere-catalogue" className="min-w-0">
       <CardHeader icon={BookOpen} title="Catalogue de formation continue" subtitle="Formations ouvertes à l'inscription pour l'année en cours" />
       {catalogue.length === 0 ? (
         <EtatVide icone={BookOpen} titre="Aucune formation ouverte" texte="Le catalogue de l'année n'est pas encore publié." />
@@ -157,7 +157,7 @@ function Catalogue({ data }: { data: Carriere }) {
 function Affectations({ data }: { data: Carriere }) {
   const liste = [...data.affectations].sort((a, b) => b.valideDu.localeCompare(a.valideDu));
   return (
-    <Card className="min-w-0">
+    <Card data-guide="carriere-affectations" className="min-w-0">
       <CardHeader icon={Briefcase} title="Affectations" subtitle="Postes successifs, datés au registre" />
       {liste.length === 0 ? (
         <EtatVide icone={Briefcase} titre="Aucune affectation enregistrée" />
@@ -193,7 +193,7 @@ function Parcours({ data }: { data: Carriere }) {
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="carriere-parcours" className="min-w-0">
       <CardHeader icon={GraduationCap} title="Parcours professionnel" subtitle="Chaque jalon est un événement horodaté du registre" />
       <ol className="relative ml-4 border-l border-line pl-6">
         {jalons.map((j, i) => (

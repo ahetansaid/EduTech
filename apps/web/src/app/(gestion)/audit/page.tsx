@@ -79,12 +79,12 @@ export default function AuditPage() {
           actions={
             <>
               <EnDirect misAJour={journal.dataUpdatedAt} actif={journal.isFetching} />
-              <Button variante="secondaire" taille="sm" icone={Download} onClick={exporter} disabled={!lignes.length}>Exporter (CSV)</Button>
+              <Button data-guide="audit-exporter" variante="secondaire" taille="sm" icone={Download} onClick={exporter} disabled={!lignes.length}>Exporter (CSV)</Button>
             </>
           }
         />
 
-        <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Cascade data-guide="audit-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Element>
             <TuileIndicateur libelle="Décisions journalisées" icone={ScrollText} accent="bleu" valeur={t ? <Compteur valeur={t.total} format={entier} /> : <Squelette className="h-7 w-24" />} indice={t ? `${entier(t.jour)} sur les dernières 24 h` : "…"} />
           </Element>
@@ -100,7 +100,7 @@ export default function AuditPage() {
         </Cascade>
 
         <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
-          <Card className="min-w-0 lg:col-span-2">
+          <Card data-guide="audit-activite" className="min-w-0 lg:col-span-2">
             <CardHeader icon={Radio} title="Décisions des dernières 24 heures" subtitle="Par heure : accès accordés et refusés. Chaque barre est lue dans le journal, pas estimée." />
             {stats.isPending ? <Squelette className="h-44 w-full" /> : stats.isError ? (
               <EtatVide icone={RefreshCw} titre="Statistiques indisponibles" texte={stats.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => stats.refetch()}>Réessayer</Button>} />
@@ -109,7 +109,7 @@ export default function AuditPage() {
           <PreuveTracabilite />
         </div>
 
-        <Card className="min-w-0 p-3">
+        <Card data-guide="audit-filtres" className="min-w-0 p-3">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
             <label className="relative block min-w-0">
               <span className="sr-only">Rechercher dans le journal</span>
@@ -146,7 +146,7 @@ export default function AuditPage() {
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="min-w-0 overflow-hidden p-0 lg:col-span-2">
+          <Card data-guide="audit-journal" className="min-w-0 overflow-hidden p-0 lg:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 px-5 py-3">
               <h2 className="text-[15px] font-semibold text-ink">Journal détaillé</h2>
               <p className="text-xs text-ink-muted" aria-live="polite">
@@ -333,7 +333,7 @@ function PreuveTracabilite() {
     },
   });
   return (
-    <Card className="min-w-0">
+    <Card data-guide="audit-preuve" className="min-w-0">
       <CardHeader icon={Fingerprint} title="Vérifier la traçabilité" subtitle="Le refus est journalisé au même titre que l'accord." />
       <p className="text-sm text-ink-2">
         Chaque demande est jugée sur quatre critères : <strong className="text-ink">rôle</strong>, <strong className="text-ink">périmètre</strong>, <strong className="text-ink">relation</strong> et <strong className="text-ink">finalité</strong>.

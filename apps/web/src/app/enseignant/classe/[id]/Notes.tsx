@@ -72,7 +72,7 @@ export function Notes({ carnet }: { carnet: Carnet }) {
 
   return (
     <div className="space-y-5">
-      <Card className="overflow-hidden p-0">
+      <Card data-guide="notes-saisie" className="overflow-hidden p-0">
         <div className="space-y-3 border-b border-line/60 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -194,7 +194,7 @@ function Evaluations({ carnet, matiere }: { carnet: Carnet; matiere?: Matiere })
   const affiches = tout ? groupes : groupes.slice(0, 5);
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="notes-evaluations" className="min-w-0">
       <CardHeader icon={History} title={`Évaluations enregistrées${matiere ? ` · ${matiere}` : ""}`} subtitle="Touchez une note pour la corriger. Une note n'est jamais effacée : la correction s'ajoute au registre avec son motif." />
 
       {enAttente.length > 0 && (

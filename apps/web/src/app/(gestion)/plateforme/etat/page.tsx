@@ -140,7 +140,7 @@ export default function EtatPage() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="min-w-0 lg:col-span-2">
+          <Card data-guide="etat-securite" className="min-w-0 lg:col-span-2">
             <CardHeader icon={ShieldAlert} title="Sécurité · 24 heures" subtitle="Lu dans le journal d'audit : chaque décision d'accès et chaque connexion y est inscrite." />
             {d ? <Securite d={d} /> : <Squelette className="h-32 w-full" />}
           </Card>
@@ -154,7 +154,7 @@ export default function EtatPage() {
           </Card>
         </div>
 
-        <Card className="min-w-0 overflow-hidden p-0">
+        <Card data-guide="etat-continuite" className="min-w-0 overflow-hidden p-0">
           <div className="border-b border-line/60 px-5 py-4">
             <h2 className="text-[15px] font-semibold text-ink">Objectifs de continuité par niveau de criticité</h2>
             <p className="text-xs text-ink-muted">
@@ -219,7 +219,7 @@ export default function EtatPage() {
 
 function Mesures({ d }: { d: EtatService }) {
   return (
-    <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <Cascade data-guide="etat-mesures" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Element>
         <TuileIndicateur libelle="Latence de la base" icone={Timer} accent={d.base.latenceMs > SEUIL_LATENCE_MS ? "ambre" : "sarcelle"} valeur={<Compteur valeur={d.base.latenceMs} format={(v) => nombre(v, 1)} duree={0.6} />} unite="ms" indice="aller-retour mesuré à l'instant" />
       </Element>

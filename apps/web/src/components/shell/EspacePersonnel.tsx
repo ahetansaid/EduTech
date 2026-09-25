@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
+import { BoutonGuide, VisiteGuidee } from "@/components/guide/VisiteGuidee";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
@@ -56,7 +57,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--acc)" }}>{a.nom}</p>
             <p className="truncate text-[13px] text-ink-muted">{profil.nomAffiche}</p>
           </div>
-          <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Sections de l'espace">
+          <nav data-guide="onglets" className="ml-6 hidden items-center gap-1 md:flex" aria-label="Sections de l'espace">
             {onglets.map((o) => (
               <Link
                 key={o.href}
@@ -71,8 +72,9 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
           </nav>
           <div className="flex-1" />
           <EtatReseau />
+          <BoutonGuide libelle={false} />
           <Cloche />
-          <div className="w-auto"><MenuUtilisateur compact vers="bas" /></div>
+          <div className="w-auto" data-guide="compte"><MenuUtilisateur compact vers="bas" /></div>
         </div>
       </header>
 
@@ -87,7 +89,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
       </main>
 
       {/* Onglets en bas d'écran (téléphone) */}
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
+      <nav data-guide="onglets" className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
         {onglets.map((o) => (
           <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
             {actif(o.href) && <IndicateurActif id={`onglet-mobile-${espace}`} className="absolute inset-0 rounded-md" style={{ background: "var(--acc-doux)" }} />}
@@ -97,6 +99,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
         ))}
       </nav>
       <BandeNationale className="hidden md:grid" />
+      <VisiteGuidee />
     </div>
   );
 }

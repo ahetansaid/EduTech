@@ -106,7 +106,7 @@ export default function QualitePage() {
           <Card><EtatVide icone={RefreshCw} titre="Qualité des données indisponible" texte={qualite.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => qualite.refetch()}>Réessayer</Button>} /></Card>
         ) : (
           <>
-            <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Cascade data-guide="qualite-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Element><TuileIndicateur libelle="Complétude" icone={School} accent="bleu" valeur={<Compteur valeur={national.completude} format={(v) => nombre(v, 1)} />} unite="%" indice={`${entier(national.transmis)} établissements sur ${entier(national.attendus)}`} /></Element>
               <Element><TuileIndicateur libelle="N'ont pas transmis" icone={TriangleAlert} accent="critique" valeur={<Compteur valeur={national.attendus - national.transmis} format={entier} />} indice={`${entier(q!.relancesOuvertes)} relance${q!.relancesOuvertes > 1 ? "s" : ""} en cours`} /></Element>
               <Element><TuileIndicateur libelle="Fraîcheur moyenne" icone={Clock} accent="ambre" valeur={national.fraicheurJours != null ? nombre(national.fraicheurJours, 1) : "—"} unite="jours" indice="depuis la dernière transmission" /></Element>
@@ -266,7 +266,7 @@ function SuiviRelances() {
   for (const r of lignes) compte[etatRelance(r, maintenant)] += 1;
 
   return (
-    <Card className="min-w-0 overflow-hidden p-0">
+    <Card data-guide="qualite-relances" className="min-w-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Hourglass size={16} className="text-ink-muted" aria-hidden />Suivi des relances</h2>

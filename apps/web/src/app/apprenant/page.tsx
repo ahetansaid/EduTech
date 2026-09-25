@@ -45,7 +45,7 @@ function Contenu({ d }: { d: Dossier }) {
 
   return (
     <>
-      <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE }}
+      <motion.div data-guide="apprenant-passeport" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE }}
         className="relative overflow-hidden rounded-2xl text-white shadow-pop" style={{ background: "linear-gradient(135deg, var(--acc), #0a3764)" }}>
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" aria-hidden />
         <div className="relative p-5 sm:p-6">
@@ -63,7 +63,7 @@ function Contenu({ d }: { d: Dossier }) {
         </div>
       </motion.div>
 
-      <Cascade className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <Cascade data-guide="apprenant-indicateurs" className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Element>
           <TuileIndicateur libelle={s.courant ? `Moyenne T${s.courant}` : "Moyenne"} icone={Sigma} accent="bleu" valeur={s.moyenne != null ? <Compteur valeur={s.moyenne} format={(n) => nombre(n, 2)} /> : "—"} unite={s.moyenne != null ? "/20" : undefined}
             variation={s.evolution != null ? { texte: `${s.evolution >= 0 ? "+" : ""}${nombre(s.evolution, 2)} depuis le T${s.precedent}`, favorable: s.evolution >= 0 } : undefined} />
@@ -74,7 +74,7 @@ function Contenu({ d }: { d: Dossier }) {
       </Cascade>
 
       {annuelles.length > 0 ? (
-        <Card className="min-w-0">
+        <Card data-guide="apprenant-points-forts" className="min-w-0">
           <CardHeader icon={Sparkles} title="Mes points forts" subtitle={`Moyennes de l'année ${s.annee}, de la plus haute à la plus basse`} />
           <ul className="space-y-3">
             {annuelles.map((m, i) => (
@@ -111,7 +111,7 @@ function Contenu({ d }: { d: Dossier }) {
         </Link>
       )}
 
-      <Card className="min-w-0">
+      <Card data-guide="apprenant-frise" className="min-w-0">
         <CardHeader icon={Route} title="Ma frise" subtitle="Du plus récent au plus ancien · chaque étape indique sa source" />
         {jalons.length ? <Frise jalons={jalons} /> : <EtatVide icone={Route} titre="Parcours vide" texte="Votre parcours se construira au fil de votre scolarité." />}
       </Card>

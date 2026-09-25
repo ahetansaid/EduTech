@@ -61,7 +61,7 @@ export function Appel({ carnet }: { carnet: Carnet }) {
   return (
     <div className="space-y-4">
       {/* Compteur collant */}
-      <div className="rounded-xl border border-line/70 bg-surface p-3 shadow-float sm:p-4">
+      <div data-guide="appel-compteur" className="rounded-xl border border-line/70 bg-surface p-3 shadow-float sm:p-4">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12px] text-ink-muted">Appel du {dateLongue(carnet.date)}</p>
@@ -94,7 +94,7 @@ export function Appel({ carnet }: { carnet: Carnet }) {
       {visibles.length === 0 ? (
         <p className="rounded-lg bg-surface-2/60 px-4 py-6 text-center text-[14px] text-ink-muted">Aucun élève ne correspond à « {recherche} ».</p>
       ) : (
-        <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3" aria-label="Liste d'appel">
+        <ul data-guide="appel-liste" className="grid gap-2 md:grid-cols-2 xl:grid-cols-3" aria-label="Liste d'appel">
           {visibles.map((e, i) => {
             const s = statut(e.id, e.absentAujourdhui);
             const verrouille = s === "enregistre" || s === "attente";
@@ -144,6 +144,7 @@ export function Appel({ carnet }: { carnet: Carnet }) {
           <span><Chiffre valeur={totalAbsents} className="text-critical" /> <span className="text-ink-2">absents</span></span>
         </div>
         <motion.button
+          data-guide="appel-valider"
           type="button"
           whileTap={{ scale: 0.97 }}
           disabled={!absents.size || mutation.isPending}

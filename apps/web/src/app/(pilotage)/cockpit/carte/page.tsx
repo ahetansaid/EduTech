@@ -109,10 +109,10 @@ function OuAgir() {
         surtitre={`Pilotage territorial · P3 · périmètre ${libellePerimetre(hab?.perimetre)}`}
         titre="Où agir ?"
         sousTitre="Zones prioritaires selon cinq facteurs objectivés : croissance des effectifs, occupation, encadrement, absentéisme et résultats. Descendez du pays jusqu'aux établissements."
-        actions={commune ? <Link href={`/simulation?commune=${commune}`}><Button icone={GitMerge}>Simuler une mesure</Button></Link> : undefined}
+        actions={commune ? <Link href={`/simulation?commune=${commune}`}><Button data-guide="carte-simuler" icone={GitMerge}>Simuler une mesure</Button></Link> : undefined}
       />
 
-      <nav aria-label="Fil de descente" className="flex flex-wrap items-center gap-1 text-[13px]">
+      <nav data-guide="carte-fil" aria-label="Fil de descente" className="flex flex-wrap items-center gap-1 text-[13px]">
         <FilEtape actif={niveauVue === "national"} desactive={!!depRestreint} onClick={() => allerDepartement(null)}>Bénin</FilEtape>
         {dep && (<><ChevronRight size={14} className="text-ink-muted" aria-hidden /><FilEtape actif={niveauVue === "departement"} onClick={() => allerDepartement(dep)}>{nomDepartement(dep)}</FilEtape></>)}
         {commune && (<><ChevronRight size={14} className="text-ink-muted" aria-hidden /><FilEtape actif>{nomCommune(commune)}</FilEtape></>)}
@@ -125,7 +125,7 @@ function OuAgir() {
       {fiche.error instanceof ErreurApi && fiche.error.introuvable && <BandeauRefus titre="Commune inconnue." texte="Cet identifiant ne figure pas au référentiel national." />}
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="min-w-0 overflow-hidden p-0 lg:col-span-2">
+        <Card data-guide="carte-carte" className="min-w-0 overflow-hidden p-0 lg:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
             <div className="min-w-0">
               <h2 className="text-[15px] font-semibold text-ink">
@@ -167,7 +167,7 @@ function OuAgir() {
           </div>
         </Card>
 
-        <div className="min-w-0 space-y-6 lg:col-span-3">
+        <div data-guide="carte-panneau" className="min-w-0 space-y-6 lg:col-span-3">
           <AnimatePresence mode="wait">
             <motion.div key={niveauVue + (commune ?? dep ?? "")} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3, ease: EASE }} className="min-w-0 space-y-6">
               {commune ? (

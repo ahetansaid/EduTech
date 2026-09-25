@@ -1,9 +1,10 @@
 "use client";
 
-import { BadgeCheck, ChevronRight, Command, Menu, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, X } from "lucide-react";
+import { BadgeCheck, BookOpen, ChevronRight, Command, Menu, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { BoutonGuide, VisiteGuidee } from "@/components/guide/VisiteGuidee";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { AnimatePresence, IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
@@ -84,7 +85,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
   }, []);
 
   const navigation = (rail: boolean) => (
-    <nav className={cn("flex-1 overflow-y-auto py-2", rail ? "space-y-3 px-2" : "space-y-5 px-3")} aria-label="Navigation principale">
+    <nav data-guide="navigation" className={cn("flex-1 overflow-y-auto py-2", rail ? "space-y-3 px-2" : "space-y-5 px-3")} aria-label="Navigation principale">
       {groupes.map((g) => (
         <div key={g}>
           {rail ? <div className="mx-auto mb-2 h-px w-8 bg-line/70" aria-hidden /> : <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{g}</p>}
@@ -124,11 +125,16 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
       </div>
       {navigation(rail)}
       <div className={cn("space-y-1 border-t border-line/60", rail ? "p-2" : "p-3")}>
-        <MenuUtilisateur compact={rail} />
+        <div data-guide="compte"><MenuUtilisateur compact={rail} /></div>
         {!rail && (
-          <Link href="/verifier" className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] text-ink-muted hover:bg-surface-2 hover:text-ink">
-            <BadgeCheck size={14} aria-hidden /> Vérification publique d'un diplôme
-          </Link>
+          <>
+            <Link href="/aide" className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] text-ink-muted hover:bg-surface-2 hover:text-ink">
+              <BookOpen size={14} aria-hidden /> Centre d'aide
+            </Link>
+            <Link href="/verifier" className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] text-ink-muted hover:bg-surface-2 hover:text-ink">
+              <BadgeCheck size={14} aria-hidden /> Vérification publique d'un diplôme
+            </Link>
+          </>
         )}
         {repliable && (
           <button onClick={basculerRail} className={cn("flex w-full items-center gap-2 rounded-xl py-2 text-[12.5px] text-ink-muted hover:bg-surface-2 hover:text-ink", rail ? "justify-center" : "px-3")} aria-label={rail ? "Déplier la navigation" : "Replier la navigation"} title={rail ? "Déplier la navigation" : undefined}>
@@ -156,7 +162,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
 
       <div className={cn("flex min-h-screen min-w-0 flex-col transition-[padding] duration-200", replie ? "lg:pl-[6rem]" : "lg:pl-[17.5rem]")}>
         <header className="sticky top-2 z-20 mx-2 mt-2 flex h-14 items-center gap-2 rounded-2xl border border-line/70 bg-surface/75 px-2.5 shadow-float backdrop-blur-xl sm:top-3 sm:mx-3 sm:mt-3 sm:h-16 sm:px-4">
-          <button onClick={() => setMobile(true)} className="flex h-9 w-9 items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 lg:hidden" aria-label="Ouvrir le menu"><Menu size={19} /></button>
+          <button onClick={() => setMobile(true)} data-guide="navigation" className="flex h-9 w-9 items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 lg:hidden" aria-label="Ouvrir le menu"><Menu size={19} /></button>
           <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.5 text-sm sm:flex">
             <span className="text-ink-muted">{profil.fonction.split("·")[0]?.trim()}</span>
             <ChevronRight size={15} className="text-ink-muted" aria-hidden />
@@ -171,6 +177,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
 
           <EtatReseau />
           <div className="flex items-center gap-0.5 rounded-2xl border border-line/70 bg-surface-2/40 px-1 py-0.5">
+            <BoutonGuide />
             <Cloche />
             <button onClick={basculer} className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-muted hover:bg-surface-2" aria-label={sombre ? "Passer en thème clair" : "Passer en thème sombre"}>
               {sombre ? <Sun size={18} /> : <Moon size={18} />}
@@ -192,6 +199,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
         </footer>
       </div>
       <AnimatePresence>{palette && <PaletteCommandes key="palette" onFermer={() => setPalette(false)} />}</AnimatePresence>
+      <VisiteGuidee />
     </div>
   );
 }

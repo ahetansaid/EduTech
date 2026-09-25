@@ -114,7 +114,7 @@ export default function DictionnairePage() {
         sousTitre="La définition officielle de chaque indicateur : ce qu'il mesure, comment il se calcule, d'où viennent les données et qui en répond. Tous les écrans et Ask Education calculent à partir de ces définitions."
       />
 
-      <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Cascade data-guide="dictionnaire-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Element><TuileIndicateur libelle="Indicateurs publiés" icone={Database} accent="bleu" valeur={pret ? <Compteur valeur={indicateurs.length} format={entier} /> : <Squelette className="h-7 w-12" />} indice="Aucun autre indicateur n'est calculable" /></Element>
         <Element><TuileIndicateur libelle="Directions propriétaires" icone={Users} accent="sarcelle" valeur={pret ? <Compteur valeur={proprietaires.length} format={entier} /> : <Squelette className="h-7 w-12" />} indice="Chaque indicateur a un responsable" /></Element>
         <Element><TuileIndicateur libelle="Versions en vigueur" icone={FileClock} accent="ambre" valeur={pret ? <Compteur valeur={indicateurs.length} format={entier} /> : <Squelette className="h-7 w-12" />} indice="Une seule version active par indicateur" /></Element>
@@ -137,7 +137,7 @@ export default function DictionnairePage() {
         </div>
       </Card>
 
-      <Card className="p-0">
+      <Card data-guide="dictionnaire-recherche" className="p-0">
         <div className="flex flex-col gap-3 border-b border-line/60 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <label htmlFor="recherche-dico" className="text-[12px] font-semibold text-ink-2">Rechercher un indicateur</label>
@@ -201,7 +201,7 @@ export default function DictionnairePage() {
         )}
       </Card>
 
-      <Card id="historique" className="scroll-mt-24">
+      <Card id="historique" data-guide="dictionnaire-historique" className="scroll-mt-24">
         <CardHeader
           icon={History}
           title={<>Historique des versions · <span className="font-mono text-[14px]">taux_reussite_examen</span></>}

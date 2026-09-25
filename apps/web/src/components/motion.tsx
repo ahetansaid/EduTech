@@ -31,8 +31,8 @@ const element: Variants = {
 };
 
 /** Cascade : les enfants `Element` apparaissent l'un après l'autre. */
-export function Cascade({ children, className }: { children: ReactNode; className?: string }) {
-  return <motion.div className={className} variants={conteneur} initial="cache" animate="visible">{children}</motion.div>;
+export function Cascade({ children, className, ...rest }: { children: ReactNode; className?: string; "data-guide"?: string }) {
+  return <motion.div className={className} variants={conteneur} initial="cache" animate="visible" {...rest}>{children}</motion.div>;
 }
 
 export function Element({ children, className }: { children: ReactNode; className?: string }) {

@@ -59,7 +59,7 @@ function Contenu({ id, x }: { id: string; x: Examens }) {
 
   return (
     <>
-      <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Cascade data-guide="examens-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Element><TuileIndicateur libelle="Candidats BEPC" icone={Users} accent="bleu" valeur={<Compteur valeur={x.candidats.length} format={entier} />} indice={x.classes.length ? `classe${x.classes.length > 1 ? "s" : ""} ${x.classes.join(", ")}` : "aucune classe de 3e"} /></Element>
         <Element><TuileIndicateur libelle="Moyenne annuelle" icone={Sigma} accent="ambre" valeur={moyenne != null ? <Compteur valeur={moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice="des candidats, toutes matières" /></Element>
         <Element><TuileIndicateur libelle="Moyenne ≥ 10" icone={GraduationCap} accent="sarcelle" valeur={<Compteur valeur={auDessus} format={entier} />} indice={x.candidats.length ? `${nombre((auDessus / x.candidats.length) * 100, 0)} % des candidats` : undefined} /></Element>
@@ -88,7 +88,7 @@ function Candidats({ x }: { x: Examens }) {
   const visibles = tout ? liste : liste.slice(0, 12);
 
   return (
-    <Card className="min-w-0 overflow-hidden p-0">
+    <Card data-guide="examens-candidats" className="min-w-0 overflow-hidden p-0">
       <div className="px-5 pt-5">
         <CardHeader icon={ClipboardList} title={`BEPC · session ${x.session}`} subtitle="Candidats inscrits automatiquement depuis les classes de 3e"
           action={x.deliberee ? <Statut ton="succes">Délibérée</Statut> : <Statut ton="info">Candidatures ouvertes</Statut>} />
@@ -159,7 +159,7 @@ function Deliberation({ id, x, diplomes }: { id: string; x: Examens; diplomes: n
   });
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="examens-deliberation" className="min-w-0">
       <CardHeader icon={Gavel} title="Délibération" subtitle="Déléguée au centre d'examen : résultats et diplômes, en une transaction" />
       {x.deliberee ? (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
@@ -219,7 +219,7 @@ function Certificats({ x }: { x: Examens }) {
   const options = [{ valeur: "tous" as const, libelle: `Tous (${x.certificats.length})` }, ...(["CEP", "BEPC", "BAC"] as const).filter((e) => presents.has(e)).map((e) => ({ valeur: e, libelle: e }))];
 
   return (
-    <Card className="min-w-0 overflow-hidden p-0">
+    <Card data-guide="examens-diplomes" className="min-w-0 overflow-hidden p-0">
       <div className="space-y-4 px-5 pt-5">
         <CardHeader className="mb-0" icon={Award} title="Diplômes délivrés" subtitle="Rattachés à l'identifiant de chaque apprenant passé par l'établissement ; contrôlables sans compte ni démarche" action={<Badge>{x.certificats.length}</Badge>} />
         <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">

@@ -398,3 +398,34 @@ export const notes = core.table("notes", {
   corrigee: boolean("corrigee").notNull().default(false),
   survenuLe: timestamp("survenu_le", { withTimezone: true }).notNull(),
 }, (t) => [index("notes_apprenant_idx").on(t.apprenantId, t.matiere, t.survenuLe), index("notes_classe_idx").on(t.classeId, t.matiere)]);
+
+/* ------------------------------------------------------------------ Assistance (support aux utilisateurs) */
+
+/**
+ * Demandes d'assistance : tout utilisateur connecté en ouvre, l'administration les traite. Aucune suppression :
+ * une demande se clôt, son fil reste consultable (traçabilité du support).
+ */
+export const tickets = core.table("tickets", {
+  id: text("id").primaryKey(),
+  auteurCompteId: text("auteur_compte_id").notNull().references(() => comptes.id),
+  categorie: text("categorie", { enum: ["connexion", "donnees", "acces", "bug", "autre"] }).notNull(),
+  priorite: text("priorite", { enum: ["basse", "normale", "haute", "critique"] }).notNull().default("normale"),
+  sujet: text("sujet").notNull(),
+  description: text("description").notNull(),
+  statut: text("statut", { enum: ["ouvert", "en_cours", "resolu", "clos"] }).notNull().default("ouvert"),
+  assigneCompteId: text("assigne_compte_id").references(() => comptes.id),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
+  resoluLe: timestamp("resolu_le", { withTimezone: true }),
+}, (t) => [index("tickets_auteur_idx").on(t.auteurCompteId, t.majLe), index("tickets_statut_idx").on(t.statut, t.majLe)]);
+
+/** Fil de discussion d'une demande : messages de l'auteur et de l'administration, en ajout seul côté API. */
+export const ticketsMessages = core.table("tickets_messages", {
+  id: text("id").primaryKey(),
+  ticketId: text("ticket_id").notNull().references(() => tickets.id),
+  auteurCompteId: text("auteur_compte_id").notNull().references(() => comptes.id),
+  auteurNom: text("auteur_nom").notNull(),
+  deLAdministration: boolean("de_l_administration").notNull().default(false),
+  contenu: text("contenu").notNull(),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("tickets_messages_ticket_idx").on(t.ticketId, t.creeLe)]);

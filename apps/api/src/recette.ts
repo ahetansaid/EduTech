@@ -114,6 +114,18 @@ verifier("Relance hors périmètre", (await departement!.appel("POST", "/platefo
 verifier("Vérification publique d'un diplôme", (await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
 verifier("Identifiant de diplôme mal formé", (await anonyme.appel("GET", "/certificats/abc'--/verification")).statut, 400);
 
+titre("Administration des utilisateurs et assistance (refus : aucune écriture)");
+const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
+const moiAdmin = comptes.find((x) => x.identifiant === "admin.beile")?.id as string | undefined;
+verifier("Enseignant → création d'un utilisateur", (await enseignant!.appel("POST", "/admin/utilisateurs", { nomAffiche: "Test Refus", fonction: "Essai", habilitations: [{ role: "chercheur", perimetre: { niveau: "national" } }] })).statut, 403);
+verifier("Habilitation incohérente (chef d'établissement sur un département)", (await admin!.appel("POST", "/admin/utilisateurs", { nomAffiche: "Test Incoherent", fonction: "Essai", habilitations: [{ role: "chef_etablissement", perimetre: { niveau: "departement", departementId: "borgou" } }] })).statut, 422);
+verifier("Établissement inexistant", (await admin!.appel("POST", "/admin/utilisateurs", { nomAffiche: "Test Inexistant", fonction: "Essai", habilitations: [{ role: "chef_etablissement", perimetre: { niveau: "etablissement", etablissementId: "ETB-INEXISTANT-01" } }] })).statut, 422);
+verifier("Enseignant sans NPI", (await admin!.appel("POST", "/admin/utilisateurs", { nomAffiche: "Test Sans Npi", fonction: "Essai", habilitations: [{ role: "enseignant", perimetre: { niveau: "etablissement", etablissementId: PILOTE } }] })).statut, 422);
+verifier("Administrateur : retrait de son propre rôle", moiAdmin ? (await admin!.appel("POST", `/admin/comptes/${moiAdmin}/profil`, { habilitations: [{ role: "dpo", perimetre: { niveau: "national" } }] })).statut : 0, 422);
+verifier("Parent → file des demandes d'assistance", (await parent!.appel("GET", "/admin/tickets")).statut, 403);
+verifier("Sans session → créer une demande", (await anonyme.appel("POST", "/assistance/tickets", { categorie: "bug", sujet: "Essai", description: "Essai sans session" })).statut, 401);
+verifier("Demande d'assistance inconnue", (await parent!.appel("GET", "/assistance/tickets/AST-ABCDEFGH")).statut, 404);
+
 titre("Concurrence : 40 lectures simultanées de profils différents");
 const debut = Date.now();
 const lots = await Promise.all(Array.from({ length: 40 }, (_, i) => [
@@ -151,6 +163,27 @@ if (ECRITURES) {
   verifier("Inscription par NPI (201, ou 409 si déjà inscrite)", (await directrice!.appel("POST", "/inscriptions", { classeId: "CLS-PAR-6eA-S", npi: sidonie?.npi ?? "0000000000" })).statut, [201, 409]);
   verifier("Proposition d'accompagnement (circuit de validation)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/accompagnement`, { apprenantIds: ["APP-000001"], objet: "Soutien en mathématiques" })).statut, 201);
   verifier("Inscription à une formation (201, ou 409 si déjà inscrit)", (await enseignant!.appel("POST", "/moi/formations", { code: "EVAL-FORM-MATHS" })).statut, [201, 409]);
+
+  titre("Administration : création d'un compte, première connexion, assistance");
+  const suffixe = Math.random().toString(36).slice(2, 7).replace(/\d/g, "x");
+  const cree = await admin!.appel("POST", "/admin/utilisateurs", { nomAffiche: `Recette Chercheur ${suffixe}`, fonction: "Chercheur associé · recette", habilitations: [{ role: "chercheur", perimetre: { niveau: "national" } }] });
+  verifier("Administrateur : création d'un utilisateur", cree.statut, 201, String((cree.json.compte as { identifiant?: string } | undefined)?.identifiant ?? ""));
+  const nouveau = new Session();
+  const identifiantNouveau = (cree.json.compte as { identifiant?: string } | undefined)?.identifiant ?? "";
+  verifier("Nouvel utilisateur : connexion avec le mot de passe temporaire", (await nouveau.connexion(identifiantNouveau, String(cree.json.motDePasseTemporaire ?? ""))).statut, 200);
+  verifier("Nouvel utilisateur : changement de mot de passe exigé", ((await nouveau.appel("GET", "/auth/session")).json.compte as { doitChangerMotDePasse?: boolean } | undefined)?.doitChangerMotDePasse === true, true);
+  verifier("Identifiant déjà attribué", (await admin!.appel("POST", "/admin/utilisateurs", { nomAffiche: "Doublon", fonction: "Essai", identifiant: identifiantNouveau, habilitations: [{ role: "chercheur", perimetre: { niveau: "national" } }] })).statut, 409);
+
+  const ticket = await parent!.appel("POST", "/assistance/tickets", { categorie: "donnees", sujet: "Note manquante en SVT", description: "La note du dernier devoir de SVT n'apparaît pas pour Aïcha." });
+  const idTicket = String(ticket.json.id ?? "");
+  verifier("Parent : demande d'assistance créée", ticket.statut, 201, idTicket);
+  verifier("Autre utilisateur : demande d'un tiers invisible", (await enseignant!.appel("GET", `/assistance/tickets/${idTicket}`)).statut, 404);
+  const file = await admin!.appel("GET", "/admin/tickets?statut=actifs");
+  verifier("Administrateur : la demande arrive dans la file", liste(file.json.tickets).some((t) => t.id === idTicket), true);
+  verifier("Administrateur : réponse", (await admin!.appel("POST", `/assistance/tickets/${idTicket}/messages`, { contenu: "Merci, l'enseignant a été prévenu ; la note sera saisie aujourd'hui." })).statut, 201);
+  const fil = await parent!.appel("GET", `/assistance/tickets/${idTicket}`);
+  verifier("Parent : réponse reçue, demande passée « en cours »", liste(fil.json.messages).length === 1 && (fil.json.ticket as { statut?: string } | undefined)?.statut === "en_cours", true);
+  verifier("Administrateur : demande résolue", (await admin!.appel("POST", `/admin/tickets/${idTicket}/statut`, { statut: "resolu" })).statut, 200);
 }
 
 titre("Fin de session");

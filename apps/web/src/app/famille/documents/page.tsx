@@ -32,7 +32,7 @@ export default function Documents() {
           <Card><EtatVide icone={FileCheck2} titre="Aucun enfant rattaché" texte="Aucun lien de filiation vérifié n'est associé à votre identité." /></Card>
         ) : (
           <>
-            <Cascade className="space-y-6">
+            <Cascade data-guide="documents-liste" className="space-y-6">
               {enfants.map((d) => (
                 <Element key={d.apprenant.id} className="space-y-3">
                   <h2 className="flex items-center gap-2.5 text-[15px] font-semibold text-ink">

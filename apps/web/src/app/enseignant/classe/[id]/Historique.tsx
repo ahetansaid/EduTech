@@ -67,7 +67,7 @@ export function Historique({ carnet }: { carnet: Carnet }) {
   const compte = (t: Ligne["type"]) => lignes.filter((l) => l.type === t).length;
 
   return (
-    <Card className="min-w-0 p-0">
+    <Card data-guide="historique-journal" className="min-w-0 p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 p-3 sm:p-4">
         <Segmente label="Type d'événement" valeur={filtre} onChange={(f) => { setFiltre(f); setLimite(25); }} options={[
           { valeur: "tout", libelle: "Tout" },

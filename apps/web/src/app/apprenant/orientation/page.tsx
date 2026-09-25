@@ -49,7 +49,7 @@ function Pistes({ d }: { d: Dossier }) {
   return (
     <>
       <p className="text-xs text-ink-muted">Base de calcul : {notes.length} note{notes.length > 1 ? "s" : ""} de l&apos;année {annee}{d.situation.classe ? `, en ${d.situation.classe.libelle}` : ""}. Les séries du second cycle se choisissent en fin de 3e : ces pistes évolueront avec vos résultats.</p>
-      <Cascade className="space-y-4">
+      <Cascade data-guide="orientation-pistes" className="space-y-4">
         {pistes.map((p) => (
           <Element key={p.code}>
             <Card className={cn("min-w-0", p === meilleure && "ring-2 ring-[color:var(--acc)]")}>

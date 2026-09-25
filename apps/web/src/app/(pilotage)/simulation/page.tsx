@@ -112,7 +112,7 @@ function Scenario({ communeId, onCommune, communesPossibles, plusSaturees, restr
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {/* ---------------------------------------------------------------- Paramètres */}
-      <Card className="h-fit min-w-0 lg:sticky lg:top-24">
+      <Card data-guide="simulation-scenario" className="h-fit min-w-0 lg:sticky lg:top-24">
         <CardHeader icon={SlidersHorizontal} title="Scénario" action={<Button variante="fantome" taille="sm" icone={RotateCcw} onClick={reinitialiser}>Réinitialiser</Button>} />
 
         <label htmlFor="commune" className="block text-sm font-medium text-ink">Commune</label>
@@ -145,7 +145,7 @@ function Scenario({ communeId, onCommune, communesPossibles, plusSaturees, restr
           ))}
         </div>
 
-        <div className="mt-6 space-y-6">
+        <div data-guide="simulation-curseurs" className="mt-6 space-y-6">
           <Curseur id="constructions" libelle="Établissements à construire" aide={`Capacité : ${entier(CAPACITE_ETABLISSEMENT)} places chacun`} valeur={constructions} min={0} max={10} onChange={setConstructions} format={(v) => `${v}`} />
           <Curseur id="affectations" libelle="Enseignants à affecter" aide={p ? `${entier(p.enseignants)} en poste aujourd'hui` : undefined} valeur={affectations} min={0} max={200} pas={5} onChange={setAffectations} format={(v) => `+${v}`} />
           <Curseur id="croissance" libelle="Croissance des effectifs d'ici 2030" aide={`Tendance observée prolongée : +${tendance2030} %`} valeur={c} min={0} max={30} onChange={setCroissance} format={(v) => `+${v} %`} />
@@ -161,7 +161,7 @@ function Scenario({ communeId, onCommune, communesPossibles, plusSaturees, restr
       </Card>
 
       {/* ---------------------------------------------------------------- Résultats */}
-      <div className="min-w-0 space-y-6 lg:col-span-2">
+      <div data-guide="simulation-resultats" className="min-w-0 space-y-6 lg:col-span-2">
         {plan.isError ? (
           <EtatEchec erreur={plan.error} onReessayer={() => plan.refetch()} />
         ) : !p ? (

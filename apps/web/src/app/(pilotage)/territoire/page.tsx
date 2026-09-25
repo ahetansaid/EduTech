@@ -93,10 +93,10 @@ function Console({ t }: { t: ConsoleTerritoriale }) {
         surtitre={`Console territoriale · P3 · ${dateLongue(t.date)}`}
         titre={libelle}
         sousTitre="Indicateurs calculés par la couche sémantique nationale, restreints au périmètre de votre habilitation : la direction centrale obtient le même chiffre pour le même territoire."
-        actions={!inspecteur ? <Link href="/cockpit/carte"><Button icone={ArrowRight}>Où agir ?</Button></Link> : <Link href={`/cockpit/carte?commune=${communeCirco ?? ""}`}><Button variante="secondaire" icone={IconeCarte}>Voir sur la carte</Button></Link>}
+        actions={!inspecteur ? <Link href="/cockpit/carte"><Button data-guide="territoire-carte-lien" icone={ArrowRight}>Où agir ?</Button></Link> : <Link href={`/cockpit/carte?commune=${communeCirco ?? ""}`}><Button data-guide="territoire-carte-lien" variante="secondaire" icone={IconeCarte}>Voir sur la carte</Button></Link>}
       />
 
-      <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <Cascade data-guide="territoire-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={r.effectif.valeur ?? 0} format={compact} />} indice={<span>{entier(attendus)} établissements</span>} confiance={r.effectif.confiance} /></Element>
         <Element><TuileIndicateur libelle="Occupation" icone={School} accent={(r.occupation.valeur ?? 0) > 112 ? "critique" : "ambre"} valeur={<Compteur valeur={r.occupation.valeur ?? 0} format={(v) => nombre(v, 1)} />} unite="%" indice={ref ? <span>national : {pourcent(ref.occupation)}</span> : undefined} confiance={r.occupation.confiance} /></Element>
         <Element><TuileIndicateur libelle="Élèves / enseignant" icone={GraduationCap} accent="sarcelle" valeur={<Compteur valeur={r.ratio.valeur ?? 0} format={(v) => nombre(v, 1)} />} indice={ref ? <span>national : {nombre(ref.ratio, 1)}</span> : undefined} confiance={r.ratio.confiance} /></Element>
@@ -106,7 +106,7 @@ function Console({ t }: { t: ConsoleTerritoriale }) {
       </Cascade>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="min-w-0 overflow-hidden p-0">
+        <Card data-guide="territoire-carte" className="min-w-0 overflow-hidden p-0">
           <div className="border-b border-line/60 px-5 py-4">
             <h2 className="text-[15px] font-semibold text-ink">Niveaux de priorité</h2>
             <p className="text-[12.5px] text-ink-muted">
@@ -161,7 +161,7 @@ function AbsencesDuJour() {
   const tauxMax = Math.max(5, ...(d?.etablissements.map((e) => e.taux) ?? [0]));
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="territoire-absences" className="min-w-0">
       <CardHeader
         icon={Radio}
         title="Absences du jour · en direct"
@@ -228,7 +228,7 @@ function ClassementCommunes({ libelle, references, onCommune }: { libelle: strin
   const ref = { taux_occupation: references.occupation, ratio_apprenants_enseignant: references.ratio, taux_seuil_moyenne: references.maths, taux_absenteisme: references.absenteisme }[classement];
   const formater = (v: number) => (classement === "ratio_apprenants_enseignant" ? nombre(v, 0) : pourcent(v));
   return (
-    <Card className="min-w-0">
+    <Card data-guide="territoire-classement" className="min-w-0">
       <CardHeader
         icon={IconeCarte}
         title="Classement des communes"
@@ -271,7 +271,7 @@ function PointsAttention({ etabs, infra }: { etabs: EtablissementTerritoire[]; i
     { libelle: "Sans point d'eau", valeur: sansEau, detail: "infrastructure déclarée absente", grave: sansEau != null && sansEau > etabs.length / 4 },
   ];
   return (
-    <Card className="min-w-0">
+    <Card data-guide="territoire-attention" className="min-w-0">
       <CardHeader icon={TriangleAlert} title="Points d'attention de la circonscription" subtitle={`Sur ${pluriel(etabs.length, "établissement")} du référentiel`} />
       <Cascade className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {items.map((i) => (
@@ -325,7 +325,7 @@ function TableauCirconscription({ etabs, infra }: { etabs: EtablissementTerritoi
   );
 
   return (
-    <Card className="min-w-0 overflow-hidden p-0">
+    <Card data-guide="territoire-etablissements" className="min-w-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold text-ink">Établissements de la circonscription</h2>
@@ -442,7 +442,7 @@ function Retardataires({ etabs, attendus, nonTransmis }: { etabs: EtablissementT
   };
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="territoire-retardataires" className="min-w-0">
       <CardHeader
         icon={Clock}
         title="Établissements n'ayant pas transmis"

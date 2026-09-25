@@ -387,6 +387,7 @@ Une base jetable complète s'obtient avec un conteneur `postgis/postgis:18-3.6` 
 | [DIMENSIONNEMENT.md](docs/DIMENSIONNEMENT.md) | Mesures de performance et ordres de grandeur |
 | [REGISTRE_COUVERTURE.md](docs/REGISTRE_COUVERTURE.md) | Les cinq couches, les dix moteurs, le registre des processus |
 | [CHARTE_GRAPHIQUE.md](docs/design/CHARTE_GRAPHIQUE.md) | Charte fondée sur les plateformes de l'État |
+| [Guides des utilisateurs](docs/guides/README.md) | Un guide par profil (11) : premiers pas, écrans, tâches pas à pas, FAQ — aussi en ligne sur `/aide`, avec une visite guidée animée dans chaque espace |
 | [FRONT_CONVENTIONS.md](docs/FRONT_CONVENTIONS.md) | Règles des interfaces : états, adaptatif, animations, disposition |
 
 ---

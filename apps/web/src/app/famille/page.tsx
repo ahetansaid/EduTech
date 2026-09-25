@@ -53,7 +53,7 @@ export default function EspaceFamille() {
         />
 
         {enfants.length > 1 && enfant && (
-          <div className="-mx-4 overflow-x-auto px-4">
+          <div data-guide="famille-enfants" className="-mx-4 overflow-x-auto px-4">
             <Segmente label="Choisir un enfant" valeur={enfant.apprenant.id} onChange={setChoisi} options={enfants.map((e) => ({ valeur: e.apprenant.id, libelle: e.apprenant.prenoms }))} />
           </div>
         )}
@@ -88,7 +88,7 @@ function FicheEnfant({ d }: { d: Dossier }) {
 
   return (
     <div className="space-y-5">
-      <Card className="min-w-0 overflow-hidden p-0">
+      <Card data-guide="famille-fiche" className="min-w-0 overflow-hidden p-0">
         <div className="p-5" style={{ background: "linear-gradient(135deg, var(--acc-doux), transparent 70%)" }}>
           <div className="flex items-start gap-4">
             <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full font-display text-[19px] font-bold text-white shadow-float" style={{ background: "var(--acc)" }}>{initiales(a)}</span>
@@ -105,7 +105,7 @@ function FicheEnfant({ d }: { d: Dossier }) {
         </div>
       </Card>
 
-      <Cascade className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <Cascade data-guide="famille-indicateurs" className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Element>
           <TuileIndicateur libelle={s.courant ? `Moyenne T${s.courant}` : "Moyenne"} icone={Sigma} accent="bleu"
             valeur={s.moyenne != null ? <Compteur valeur={s.moyenne} format={(n) => nombre(n, 2)} /> : "—"} unite={s.moyenne != null ? "/20" : undefined}
@@ -151,7 +151,7 @@ function Resultats({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
     return <Card className="min-w-0"><CardHeader icon={TrendingUp} title="Résultats par matière" /><EtatVide icone={NotebookPen} titre="Aucune note cette année" texte="Les moyennes apparaîtront dès la première évaluation saisie par un enseignant." /></Card>;
   }
   return (
-    <Card className="min-w-0">
+    <Card data-guide="famille-resultats" className="min-w-0">
       <CardHeader icon={TrendingUp} title="Résultats par matière" subtitle={`${libelleTrimestre(s.courant)} ${s.annee ?? ""}${s.precedent ? ` · repère : ${libelleTrimestre(s.precedent)}` : ""}`} />
       <ul className="space-y-3.5">
         {s.matieres.map((m, i) => {
@@ -193,7 +193,7 @@ function DernieresNotes({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
   if (!s.recentes.length) return null;
   const liste = s.recentes.slice(0, tout ? 30 : 5);
   return (
-    <Card className="min-w-0">
+    <Card data-guide="famille-notes" className="min-w-0">
       <CardHeader icon={NotebookPen} title="Dernières notes" subtitle="Une note saisie en classe apparaît ici au prochain rafraîchissement" />
       <ul className="divide-y divide-line">
         <AnimatePresence initial={false}>
@@ -224,7 +224,7 @@ function DernieresNotes({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
 function Absences({ d, jours }: { d: Dossier; jours: JourAbsence[] }) {
   const [cible, setCible] = useState<JourAbsence | null>(null);
   return (
-    <Card className="min-w-0">
+    <Card data-guide="famille-absences" className="min-w-0">
       <CardHeader icon={CalendarX2} title="Absences" subtitle="Justifiez en un geste : l'établissement reçoit le motif dans le registre" />
       {jours.length === 0 ? (
         <div className="flex items-center gap-3 rounded-lg bg-success-bg px-4 py-3 text-sm text-success"><Check size={17} aria-hidden /> Aucune absence enregistrée cette année.</div>
@@ -336,7 +336,7 @@ function Parcours({ d }: { d: Dossier }) {
   if (!jalons.length) return null;
   const visibles = tout ? jalons : jalons.slice(0, 4);
   return (
-    <Card className="min-w-0">
+    <Card data-guide="famille-parcours" className="min-w-0">
       <CardHeader icon={History} title="Parcours" subtitle="Reconstitué à partir des faits du registre, quelle que soit l'école" />
       <ol className="relative ml-4 border-l-2 border-line pl-6">
         <AnimatePresence initial={false}>
@@ -391,7 +391,7 @@ function BandeauNotification() {
 
 function Fraicheur({ maj, actif, onRafraichir }: { maj: number; actif: boolean; onRafraichir: () => void }) {
   return (
-    <button onClick={onRafraichir} className="flex h-10 items-center gap-2 rounded-full border border-line/70 bg-surface px-3.5 text-xs text-ink-muted shadow-soft transition active:scale-[0.97] hover:text-ink" aria-label="Actualiser maintenant">
+    <button data-guide="famille-direct" onClick={onRafraichir} className="flex h-10 items-center gap-2 rounded-full border border-line/70 bg-surface px-3.5 text-xs text-ink-muted shadow-soft transition active:scale-[0.97] hover:text-ink" aria-label="Actualiser maintenant">
       <span className="relative flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />

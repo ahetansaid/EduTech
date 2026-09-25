@@ -35,7 +35,7 @@ export default function Preuves() {
         ) : !d || d.certificats.length === 0 ? (
           <Card><EtatVide icone={Award} titre="Aucun diplôme pour l'instant" texte="Vos diplômes apparaîtront ici automatiquement après délibération du jury, sans aucune démarche." /></Card>
         ) : (
-          <Cascade className="space-y-5">
+          <Cascade data-guide="preuves-liste" className="space-y-5">
             {d.certificats.map((c) => (
               <Element key={c.id} className="space-y-2.5">
                 <CartePreuve certificat={c} titulaire={nomComplet(d.apprenant)} />
@@ -76,7 +76,7 @@ function Actions({ c, onAgrandir }: { c: Certificat; onAgrandir: () => void }) {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+    <div data-guide="preuves-actions" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
       {partageable && <Button variante="primaire" icone={Share2} onClick={partager} className="col-span-2 sm:col-span-1">Partager</Button>}
       <Button variante="secondaire" icone={copie ? Check : Copy} onClick={copier}>{copie ? "Copié" : "Copier le lien"}</Button>
       <Button variante="secondaire" icone={Maximize2} onClick={onAgrandir}>QR en grand</Button>

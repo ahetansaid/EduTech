@@ -74,7 +74,7 @@ function Inscription({ id }: { id: string }) {
       <PageHeader surtitre="Processus P4 · P6" titre="Inscrire un apprenant" sousTitre="Le système éducatif ne crée jamais une identité : il interroge le registre national, puis rattache l'apprenant à une classe." />
 
       {/* Étapes */}
-      <ol className="grid grid-cols-4 gap-1.5 rounded-lg border border-line/70 bg-surface-2/60 p-1" aria-label="Étapes">
+      <ol data-guide="inscription-etapes" className="grid grid-cols-4 gap-1.5 rounded-lg border border-line/70 bg-surface-2/60 p-1" aria-label="Étapes">
         {ETAPES.map((l, i) => {
           const n = (i + 1) as Etape;
           const faite = n < etape;
@@ -99,7 +99,7 @@ function Inscription({ id }: { id: string }) {
           transition={{ duration: 0.28, ease: EASE }}>
 
           {etape === 1 && (
-            <Card className="space-y-4">
+            <Card data-guide="inscription-recherche" className="space-y-4">
               <form onSubmit={chercher} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">Nom</span>

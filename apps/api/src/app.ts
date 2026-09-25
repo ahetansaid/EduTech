@@ -12,6 +12,7 @@ import { complementsEtablissement } from "./complements-etablissement";
 import { complementsEnseignant } from "./complements-enseignant";
 import { complementsFamille } from "./complements-famille";
 import { complementsGouvernance } from "./complements-gouvernance";
+import { administration } from "./administration";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -52,7 +53,14 @@ app.onError((err, c) => {
   if ((err as { code?: string; cause?: { code?: string } }).code === "23505" || (err as { cause?: { code?: string } }).cause?.code === "23505") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
   // Paramètre d'URL ou de requête invalide (validation zod) : erreur du client, jamais un 500.
   if (err instanceof z.ZodError) return c.json({ erreur: "Paramètre invalide", champs: err.issues.map((i) => i.path.join(".") || "valeur") }, 422);
-  console.error(err);
+  // Journal minimal : jamais la requête SQL ni ses paramètres (identifiants d'élèves) dans les journaux de l'hébergeur.
+  const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+  console.error(JSON.stringify({
+    niveau: "erreur", methode: c.req.method, route: c.req.routePath, chemin: new URL(c.req.url).pathname.replace(/APP-\d{6}/g, "APP-…"),
+    type: err.name, code: cause?.code ?? (err as { code?: string }).code ?? null,
+    // Première ligne seulement : le message des requêtes échouées contient ensuite le SQL et ses paramètres.
+    message: (cause?.message ?? err.message).split(/\r?\n/)[0]!.slice(0, 200),
+  }));
   return c.json({ erreur: "Erreur interne" }, 500);
 });
 app.notFound((c) => c.json({ erreur: "Ressource introuvable" }, 404));
@@ -224,3 +232,4 @@ app.route("/", complementsEtablissement);
 app.route("/", complementsEnseignant);
 app.route("/", complementsFamille);
 app.route("/", complementsGouvernance);
+app.route("/", administration);

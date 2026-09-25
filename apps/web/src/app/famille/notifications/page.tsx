@@ -66,10 +66,10 @@ export default function Notifications() {
       <PageHeader
         titre="Notifications"
         sousTitre="Elles naissent des faits enregistrés par l'établissement : aucune n'est rédigée à la main."
-        actions={nonLues > 0 ? <Button variante="secondaire" icone={CheckCheck} onClick={() => lire()}>Tout marquer comme lu</Button> : undefined}
+        actions={nonLues > 0 ? <Button data-guide="notifications-tout-lire" variante="secondaire" icone={CheckCheck} onClick={() => lire()}>Tout marquer comme lu</Button> : undefined}
       />
 
-      <div className="flex items-center justify-between gap-3">
+      <div data-guide="notifications-filtre" className="flex items-center justify-between gap-3">
         <Segmente label="Filtrer" valeur={filtre} onChange={setFiltre} options={[{ valeur: "toutes", libelle: "Toutes" }, { valeur: "non_lues", libelle: `Non lues${nonLues ? ` (${nonLues})` : ""}` }]} />
         {q.isFetching && !q.isPending && <RefreshCw size={14} className="animate-spin text-ink-muted" aria-label="Actualisation" />}
       </div>

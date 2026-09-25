@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronsUpDown, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronsUpDown, KeyRound, LifeBuoy, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "@/components/motion";
@@ -75,6 +75,9 @@ export function MenuUtilisateur({ compact = false, vers = "haut" }: { compact?: 
             <div className="my-1 h-px bg-line/60" />
             <Link role="menuitem" href="/mot-de-passe" onClick={() => setOuvert(false)} className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink">
               <KeyRound size={15} aria-hidden /> Changer mon mot de passe
+            </Link>
+            <Link role="menuitem" href="/assistance" onClick={() => setOuvert(false)} className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink">
+              <LifeBuoy size={15} aria-hidden /> Assistance
             </Link>
             <button role="menuitem" onClick={() => deconnexion.mutate()} disabled={deconnexion.isPending} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-critical hover:bg-critical-bg">
               <LogOut size={15} aria-hidden /> {deconnexion.isPending ? "Déconnexion…" : "Se déconnecter"}

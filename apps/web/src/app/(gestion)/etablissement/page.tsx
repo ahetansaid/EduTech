@@ -67,7 +67,7 @@ function TableauDeBord({ id }: { id: string }) {
       {!t ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{Array.from({ length: 5 }, (_, i) => <Squelette key={i} className="h-[104px] rounded-lg" />)}</div>
       ) : (
-        <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Cascade data-guide="etab-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={t.chiffres.apprenants} format={entier} />} indice={`${t.classes.length} classes`} /></Element>
           <Element><TuileIndicateur libelle="Occupation" icone={Percent} accent={t.chiffres.apprenants > t.chiffres.capacite ? "critique" : "sarcelle"} valeur={<Compteur valeur={(t.chiffres.apprenants / Math.max(1, t.chiffres.capacite)) * 100} format={(v) => nombre(v, 0)} />} unite="%" indice={`capacité ${entier(t.chiffres.capacite)} places`} /></Element>
           <Element><TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={<Compteur valeur={t.chiffres.enseignants} format={entier} />} indice={t.chiffres.enseignants ? `${nombre(t.chiffres.apprenants / t.chiffres.enseignants, 0)} élèves par enseignant` : undefined} /></Element>
@@ -115,7 +115,7 @@ function CarteAlertes({ t }: { t: Tableau | undefined }) {
   if (a.enseignantsSansFormation) lignes.push({ icone: GraduationCap, ton: "avertissement", titre: `${a.enseignantsSansFormation} enseignant${a.enseignantsSansFormation > 1 ? "s n'ont" : " n'a"} pas suivi la formation obligatoire`, detail: `« ${a.formationObligatoire} »` });
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="etab-alertes" className="min-w-0">
       <CardHeader icon={HandHelping} title="Ce que le système vous signale" subtitle="Calculé à partir du registre, à chaque ouverture — aucune mesure sans décision humaine" action={<Badge ton={lignes.length ? "avertissement" : "succes"}>{lignes.length}</Badge>} />
       {lignes.length === 0 ? (
         <EtatVide icone={Check} titre="Aucune alerte" texte="Effectifs, identités, résultats et formations : rien ne demande votre attention aujourd'hui." />
@@ -167,7 +167,7 @@ function CarteAccompagnement({ id, t }: { id: string; t: Tableau | undefined }) 
   });
 
   return (
-    <Card className="min-w-0">
+    <Card data-guide="etab-accompagnement" className="min-w-0">
       <CardHeader icon={TrendingDown} title="Élèves en baisse en mathématiques" subtitle="Trois dernières notes, de la plus ancienne à la plus récente" action={<Badge ton={baisse.length ? "avertissement" : "succes"}>{baisse.length}</Badge>} />
       {baisse.length === 0 ? (
         <EtatVide icone={Check} titre="Aucune baisse détectée" texte="Aucun élève ne présente trois évaluations consécutives en recul d'au moins 5 points." />
@@ -260,7 +260,7 @@ function CarteAbsences({ absences, chargement, erreur, reessayer, majLe, enCours
 }) {
   const lignes = useMemo(() => regrouper(absences ?? []), [absences]);
   return (
-    <Card className="min-w-0 lg:sticky lg:top-20">
+    <Card data-guide="etab-absences" className="min-w-0 lg:sticky lg:top-20">
       <CardHeader
         icon={CalendarX2}
         title="Absences du jour"
@@ -337,7 +337,7 @@ function ListeAbsences({ lignes, noms, classes, enCours }: { lignes: LigneAbsenc
 
 function CarteClasses({ t, absentsParClasse }: { t: Tableau | undefined; absentsParClasse: Map<string, Set<string>> }) {
   return (
-    <Card className="min-w-0 overflow-hidden p-0">
+    <Card data-guide="etab-classes" className="min-w-0 overflow-hidden p-0">
       <div className="px-5 pt-5"><CardHeader icon={School} title="Classes" subtitle="Effectifs issus des inscriptions et transferts enregistrés au registre" /></div>
       {!t ? (
         <div className="space-y-2 px-5 pb-5">{Array.from({ length: 5 }, (_, i) => <Squelette key={i} className="h-12" />)}</div>
@@ -409,7 +409,7 @@ function CarteDemandes({ id }: { id: string }) {
   const liste = demandes.data ?? [];
   const visibles = tout ? liste : liste.slice(0, 5);
   return (
-    <Card className="min-w-0">
+    <Card data-guide="etab-demandes" className="min-w-0">
       <CardHeader icon={ClipboardList} title="Demandes en circuit" subtitle="Accompagnements proposés et leur étape" action={<Badge>{liste.length}</Badge>} />
       {demandes.isPending ? (
         <div className="space-y-2">{Array.from({ length: 3 }, (_, i) => <Squelette key={i} className="h-14" />)}</div>

@@ -233,6 +233,7 @@ function Ask() {
         sousTitre="Posez une question en français. Le serveur la traduit en requête sur le dictionnaire national, vérifie vos droits, calcule sur le registre, puis renvoie la source, la couverture et la confiance. Il n'invente jamais un chiffre."
       />
       <form
+        data-guide="ask-question"
         onSubmit={(e) => { e.preventDefault(); poser(saisie); }}
         className="relative rounded-xl border border-line/70 bg-surface p-2 shadow-float transition-shadow focus-within:border-blue focus-within:ring-4 focus-within:ring-blue/15"
       >
@@ -257,7 +258,7 @@ function Ask() {
         </div>
       </form>
 
-      <div className="flex flex-wrap gap-2">
+      <div data-guide="ask-exemples" className="flex flex-wrap gap-2">
         {EXEMPLES.map((q) => (
           <button key={q} type="button" disabled={ask.isPending} onClick={() => poser(q)} className="min-h-10 rounded-md border border-line/70 bg-surface px-3 py-1.5 text-left text-[12.5px] text-ink-2 transition hover:-translate-y-0.5 hover:text-ink hover:shadow-float disabled:opacity-50">{q}</button>
         ))}
@@ -271,7 +272,7 @@ function Ask() {
         </div>
       )}
 
-      <div className="space-y-5">
+      <div data-guide="ask-reponses" className="space-y-5">
         <AnimatePresence initial={false}>
           {echanges.map((e) => (
             <motion.div key={e.id} layout initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.35, ease: EASE }}>

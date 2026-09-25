@@ -125,7 +125,7 @@ export default function InteroperabilitePage() {
         ) : interop.isError ? (
           <Card><EtatVide icone={RefreshCw} titre="Mesures indisponibles" texte={interop.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => interop.refetch()}>Réessayer</Button>} /></Card>
         ) : (
-          <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Cascade data-guide="interop-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Element><TuileIndicateur libelle="Raccordements" icone={Network} accent="bleu" valeur={entier(RACCORDEMENTS.length)} indice={`${RACCORDEMENTS.filter((r) => r.statut === "actif").length} en exploitation · ${RACCORDEMENTS.filter((r) => r.statut === "recette").length} en recette`} /></Element>
             <Element><TuileIndicateur libelle="Événements reçus aujourd'hui" icone={Workflow} accent="sarcelle" valeur={<Compteur valeur={jour} format={entier} />} indice="toutes sources confondues" /></Element>
             <Element><TuileIndicateur libelle="Événements au registre" icone={ScrollText} accent="neutre" valeur={<Compteur valeur={total} format={entier} />} indice="provenance tracée pour chacun" /></Element>
@@ -148,7 +148,7 @@ export default function InteroperabilitePage() {
 
         <section aria-labelledby="titre-raccordements" className="space-y-4">
           <h2 id="titre-raccordements" className="text-[18px] font-bold text-ink">Raccordements</h2>
-          <Cascade className="grid gap-4 lg:grid-cols-2">
+          <Cascade data-guide="interop-raccordements" className="grid gap-4 lg:grid-cols-2">
             {RACCORDEMENTS.map((r) => <Element key={r.id}><CarteRaccordement r={r} d={d} /></Element>)}
           </Cascade>
           <p className="text-xs text-ink-muted">Séquence de raccordement : cadrage → contrat d'interface → tests → mise en service → exploitation. Volumes et dates lus dans le registre des événements.</p>
@@ -278,7 +278,7 @@ function ValidationSchema() {
     setResultat({ cle: exemple, ok: r.success, issues: r.success ? [] : r.error.issues.map((i) => ({ chemin: i.path.join(".") || "(racine)", message: i.message })) });
   };
   return (
-    <Card className="min-w-0">
+    <Card data-guide="interop-validation" className="min-w-0">
       <CardHeader icon={FileJson} title="Rejouer une validation" subtitle="Validation exécutée dans votre navigateur contre le schéma identite.personne v1.2." />
       <Segmente label="Message à valider" options={[{ valeur: "non_conforme", libelle: "Message reçu" }, { valeur: "conforme", libelle: "Message corrigé" }]} valeur={exemple} onChange={(v) => { setExemple(v); setResultat(null); }} />
       <pre className="mt-3 max-w-full overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink">{JSON.stringify(EXEMPLES[exemple], null, 2)}</pre>

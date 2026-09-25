@@ -92,7 +92,7 @@ function Liste() {
         actions={<LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>}
       />
 
-      <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div data-guide="eleves-filtres" className="-mx-1 overflow-x-auto px-1 pb-1">
         <Segmente label="Filtre" valeur={filtre} onChange={choisirFiltre} options={[
           { valeur: "tous", libelle: donnees ? `Tous (${donnees.length})` : "Tous" },
           { valeur: "baisse", libelle: `En baisse (${compte.baisse})` },
@@ -100,7 +100,7 @@ function Liste() {
         ]} />
       </div>
 
-      <Card className="p-3">
+      <Card data-guide="eleves-recherche" className="p-3">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
           <ChampRecherche valeur={q} onChange={(v) => { setQ(v); setLimite(PAS); }} placeholder="Nom, prénom ou identifiant" label="Rechercher un apprenant" />
           <select value={classe} onChange={(e) => { setClasse(e.target.value); setLimite(PAS); }} aria-label="Classe" className={classeSelect}>

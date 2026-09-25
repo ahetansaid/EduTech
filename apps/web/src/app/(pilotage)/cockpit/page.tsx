@@ -97,13 +97,13 @@ function Tableau({ s }: { s: SynthesePilotage }) {
         sousTitre="Chiffres calculés sur le registre national et le dictionnaire des indicateurs, sous le périmètre de votre habilitation. Chaque valeur porte sa définition, sa source et son indice de confiance."
         actions={
           <>
-            <Link href="/ask"><Button variante="secondaire" icone={Sparkles}>Poser une question</Button></Link>
-            <Link href="/cockpit/carte"><Button icone={ArrowRight}>Où agir ?</Button></Link>
+            <Link href="/ask"><Button data-guide="cockpit-question" variante="secondaire" icone={Sparkles}>Poser une question</Button></Link>
+            <Link href="/cockpit/carte"><Button data-guide="cockpit-ou-agir" icone={ArrowRight}>Où agir ?</Button></Link>
           </>
         }
       />
 
-      <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <Cascade data-guide="cockpit-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Element>
           <TuileIndicateur
             libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={s.effectif.valeur ?? 0} format={compact} />}
@@ -181,7 +181,7 @@ function Tableau({ s }: { s: SynthesePilotage }) {
             {signe((s.abandon.valeur ?? 0) - (s.abandon.lignes[0]?.valeur ?? 0))} point depuis {s.abandon.lignes[0]?.cle ?? "—"}. Indicateur annuel : la valeur {s.anneeScolaire} reste provisoire jusqu'à la validation de fin d'année.
           </p>
         </Card>
-        <Card className="min-w-0">
+        <Card data-guide="cockpit-priorites" className="min-w-0">
           <CardHeader icon={TriangleAlert} title="Zones à examiner en priorité" subtitle={`${pluriel(critiques.length, "commune")} en « Attention » ou « Critique »`} />
           {critiques.length ? (
             <ul className="divide-y divide-line/60">
@@ -228,7 +228,7 @@ function CarteCockpit({ s, className }: { s: SynthesePilotage; className?: strin
   const critiques = Object.entries(s.priorites).filter(([, p]) => p.niveau === "critique" || p.niveau === "attention").sort((a, b) => b[1].score - a[1].score);
 
   return (
-    <Card className={cn("min-w-0 overflow-hidden p-0", className)}>
+    <Card data-guide="cockpit-carte" className={cn("min-w-0 overflow-hidden p-0", className)}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 px-5 py-4">
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold text-ink">Carte des {pluriel(ids.length, "commune")}{focus ? ` · ${nomDepartement(focus)}` : ""}</h2>
@@ -315,7 +315,7 @@ function FluxDuJour({ className }: { className?: string }) {
   const d = flux.data;
 
   return (
-    <Card className={cn("flex min-w-0 flex-col", className)}>
+    <Card data-guide="cockpit-flux" className={cn("flex min-w-0 flex-col", className)}>
       <CardHeader
         icon={Radio}
         title="Flux des faits du jour"
