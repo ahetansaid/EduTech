@@ -6,11 +6,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { EntreePage, motion } from "@/components/motion";
 import { FeuilleImprimable } from "@/components/etats/Etats";
+import { StatsPromotion } from "@/components/stats/Promotion";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
 import { useEleves, useTableau, type EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { exporterCsv, type Colonne } from "@/lib/export";
-import { date, entier, nombre, note } from "@/lib/format";
+import { bandeAge, entier, nombre, note } from "@/lib/format";
 import { evaluerRisque, LIBELLE_NIVEAU, type EvaluationRisque, type FacteurRisque, type NiveauRisque, type Sensibilite } from "@/lib/risque";
 import { useEtablissementCourant } from "@/lib/session";
 import { Avatar, ChampRecherche, classeSelect, EtatErreur, HorsPerimetre, LienBouton, normaliser, Statut } from "../_composants";
@@ -46,7 +47,7 @@ const COLONNES: Colonne<EleveLigne>[] = [
   { entete: "Nom", valeur: (e) => e.nom },
   { entete: "Prénoms", valeur: (e) => e.prenoms },
   { entete: "Sexe", valeur: (e) => e.sexe },
-  { entete: "Date de naissance", valeur: (e) => date(e.dateNaissance) },
+  { entete: "Classe d'âge", valeur: (e) => bandeAge(e.dateNaissance) },
   { entete: "Classe", valeur: (e) => e.classe },
   { entete: "Moyenne", valeur: (e) => note(e.moyenne) },
   { entete: "Absences", valeur: (e) => e.absences },
@@ -102,6 +103,11 @@ function Liste() {
     identite: donnees?.filter((e) => e.statutIdentite === "regularisation_en_cours").length ?? 0,
     risque: donnees?.filter((e) => evals.get(e.id)!.niveau !== "nominal").length ?? 0,
   }), [donnees, evals]);
+  const niveaux = useMemo(() => {
+    const n = { nominal: 0, a_surveiller: 0, urgent: 0 };
+    for (const ev of evals.values()) n[ev.niveau]++;
+    return n;
+  }, [evals]);
   const classes = useMemo(() => [...new Set((donnees ?? []).map((e) => e.classe))].sort(fr.compare), [donnees]);
 
   const liste = useMemo(() => {
@@ -134,7 +140,7 @@ function Liste() {
         sousTitre={donnees ? `${entier(donnees.length)} apprenants scolarisés. Chaque dossier s'ouvre au titre de la gestion de l'établissement ; chaque ouverture est journalisée.` : "Apprenants scolarisés dans votre établissement."}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, [...COLONNES, { entete: "Score de risque", valeur: (e: EleveLigne) => evals.get(e.id)!.score }, { entete: "Niveau de risque", valeur: (e: EleveLigne) => LIBELLE_NIVEAU[evals.get(e.id)!.niveau] }])} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque)`}>Exporter</Button>
+            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, [...COLONNES, { entete: "Score de risque", valeur: (e: EleveLigne) => evals.get(e.id)!.score }, { entete: "Niveau de risque", valeur: (e: EleveLigne) => LIBELLE_NIVEAU[evals.get(e.id)!.niveau] }], `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — ${tableau.data?.etablissement.nom ?? "établissement"}. Données à caractère personnel : usage limité à la gestion de l'établissement.`)} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque, classe d'âge)`}>Exporter</Button>
             <Button variante="secondaire" icone={Printer} disabled={!liste.length} onClick={() => setImpression(true)} title="Imprimer un état nominatif, une feuille d'appel ou un PV de conseil">Imprimer</Button>
             <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
           </div>
@@ -160,6 +166,8 @@ function Liste() {
           onBasculer={() => setVigilanceOuverte((v) => !v)}
         />
       )}
+
+      {donnees && donnees.length > 0 && <StatsPromotion eleves={donnees} niveaux={niveaux} />}
 
       <Card data-guide="eleves-recherche" className="p-3">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">

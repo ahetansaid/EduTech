@@ -88,8 +88,9 @@
 
 - Filtres « Tous », « À risque », « En baisse », « Identité à régulariser ».
 - Panneau « Vigilance décrochage » : score explicable (moyenne, absences, maths), seuils réglables.
+- Panneau « Statistiques de la promotion » : dispersion des moyennes (médiane, écart-type, bandes), répartition des absences, comparatif filles/garçons — calculés sur les élèves déjà affichés.
 - Dossier : moyennes, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
-- « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque.
+- « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque ; la date de naissance devient une classe d'âge et le fichier porte une ligne de provenance.
 - « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
 
 ### Examens et certification
@@ -138,6 +139,16 @@
 3. Réglez la sensibilité des seuils (basse, normale, sensible) selon votre marge de manœuvre.
 4. Touchez « Dossier » pour ouvrir l'élève, ou filtrez sur « À risque » pour n'afficher que les concernés.
 5. Enchaînez avec « Proposer un accompagnement » pour les élèves que vous décidez de suivre.
+
+### Lire les statistiques de la promotion
+
+> Une moyenne classe ne dit rien de la dispersion : deux classes à 11/20 n'ont pas le même décrochage.
+
+1. Sous la liste des apprenants, dépliez « Statistiques de la promotion ».
+2. Comparez moyenne, médiane et écart-type : un écart-type élevé signale une promotion hétérogène.
+3. Regardez les bandes de moyennes et d'absences plutôt qu'un seul pourcentage.
+4. Lisez la ligne « Filles et garçons » pour repérer un écart à creuser.
+5. Recoupez avec le panneau « Vigilance décrochage » avant de décider un accompagnement.
 
 ### Ajuster une classe (capacité, professeur principal)
 

@@ -16,10 +16,13 @@ export interface Colonne<T> {
 /** Injection CSV : une cellule débutant par = + - @ (ou tabulation) est interprétée comme formule par Excel. */
 const neutraliser = (v: string) => (/^[=+\-@\t]/.test(v) ? `'${v}` : v);
 
+/** Retire les caractères de contrôle (hors \t \n \r, gérés par l'échappement) : prévient l'injection de lignes et la corruption du fichier. */
+const nettoyer = (v: string) => v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+
 const echapper = (v: string) => (/[",;\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
 const cellule = (x: string | number | null | undefined) =>
-  echapper(x == null ? "" : typeof x === "number" ? String(x) : neutraliser(x));
+  echapper(x == null ? "" : typeof x === "number" ? String(x) : neutraliser(nettoyer(x)));
 
 export function versCsv<T>(lignes: readonly T[], colonnes: readonly Colonne<T>[]): string {
   const entetes = colonnes.map((c) => echapper(c.entete)).join(";");
@@ -42,7 +45,10 @@ export function telechargerCsv(nom: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Un seul geste : sérialiser puis télécharger. `nom` sans extension. */
-export function exporterCsv<T>(nom: string, lignes: readonly T[], colonnes: readonly Colonne<T>[]) {
-  telechargerCsv(`${nom}_${new Date().toISOString().slice(0, 10)}.csv`, versCsv(lignes, colonnes));
+/** Un seul geste : sérialiser puis télécharger. `nom` sans extension.
+ *  `provenance` (optionnel) ajoute une dernière ligne de pied de page — périmètre, date, finalité —
+ *  pour tracer le cadre d'usage lorsque le fichier contient des données personnelles et quitte la plateforme. */
+export function exporterCsv<T>(nom: string, lignes: readonly T[], colonnes: readonly Colonne<T>[], provenance?: string) {
+  const csv = lignes.length && provenance ? `${versCsv(lignes, colonnes)}\r\n\r\n${echapper(provenance)}` : versCsv(lignes, colonnes);
+  telechargerCsv(`${nom}_${new Date().toISOString().slice(0, 10)}.csv`, csv);
 }
