@@ -64,6 +64,7 @@
 - « Ce que le système vous signale » : alertes et actions proposées.
 - « Élèves en baisse en mathématiques » et proposition d'accompagnement.
 - Absences du jour en direct, classes, demandes en circuit.
+- Dans le tableau des classes : « Gérer » (capacité, professeur principal) et « Passage » (conseil de fin d'année).
 
 ### Inscrire un apprenant
 
@@ -81,10 +82,11 @@
 
 ### Examens et certification
 
-`/etablissement/examens` — Candidats au BEPC, délibération, diplômes.
+`/etablissement/examens` — Candidatures, délibération, diplômes vérifiables (CEP, BEPC, BAC).
 
-- Candidats inscrits automatiquement depuis les classes de 3e.
-- Délibération définitive ; diplômes avec QR code vérifiable.
+- Choisissez l'examen : les candidats viennent du niveau correspondant (CEP → CM2, BEPC → 3e, BAC → Terminale).
+- La note affichée est la moyenne annuelle de l'apprenant : une base provisoire tant que le centre d'examen n'a pas transmis les notes officielles.
+- Délibération définitive ; chaque admis reçoit un diplôme au QR code vérifiable par un tiers.
 
 ## Tâches pas à pas
 
@@ -105,20 +107,40 @@
 2. Touchez « Proposer un accompagnement » et précisez l'objet (5 à 200 caractères).
 3. Touchez « Transmettre ». La demande apparaît dans « Demandes en circuit ».
 
+### Ajuster une classe (capacité, professeur principal)
+
+> La capacité décide de l'accueil : l'abaisser sous l'effectif crée une alerte de surcharge, sans retirer d'élève.
+
+1. Dans le tableau des classes, touchez « Gérer » sur la classe concernée.
+2. Réglez la « Capacité (places) » (nombre entier entre 1 et 2000).
+3. Désignez le « Professeur principal » : la liste ne propose que les enseignants rattachés à l'établissement.
+4. Touchez « Enregistrer ». Le tableau est recalculé immédiatement.
+
+### Faire tenir un conseil de passage
+
+> Le conseil décide du passage de chaque élève ; l'application respecte les capacités et ouvre une division si nécessaire.
+
+1. Dans le tableau des classes, touchez « Passage » sur la classe (hors niveau terminal).
+2. Indiquez l'« Année scolaire de réinscription » au format AAAA-AAAA.
+3. Pour chaque élève, touchez le statut pour basculer entre « Admis » (passage au niveau supérieur) et « Maintien » (réinscription dans la classe).
+4. Relisez le compteur « admis · maintenus », puis « Enregistrer ».
+5. Les admis changent de niveau, les maintenus sont réinscrits ; une nouvelle division est créée si une classe dépasse sa capacité.
+
 ### Transférer un élève ou déclarer un abandon
 
 1. Ouvrez « Apprenants », puis le dossier de l'élève.
 2. Touchez « Transférer », cherchez la classe d'accueil, cochez la confirmation, puis « Confirmer le transfert ».
 3. Ou touchez « Déclarer un abandon », indiquez le motif, puis « Confirmer l'abandon ».
 
-### Délibérer le BEPC
+### Délibérer un examen national
 
-> La délibération est définitive : toute correction ultérieure passe par un événement correctif journalisé.
+> La délibération est définitive : toute correction ultérieure — notamment l'arrivée des notes officielles du centre — passe par un événement correctif journalisé.
 
-1. Ouvrez « Examens et certification » et relisez la liste des candidats.
-2. Touchez « Délibérer et délivrer les diplômes ».
-3. Pour confirmer, saisissez DÉLIBÉRER, puis touchez « Délibérer définitivement ».
-4. Les diplômes apparaissent dans « Diplômes délivrés » ; « Attestation » affiche le QR code.
+1. Ouvrez « Examens et certification » et choisissez l'examen (CEP, BEPC ou BAC).
+2. Relisez la liste des candidats et leurs moyennes annuelles.
+3. Touchez « Délibérer et délivrer les diplômes » : les candidats sans moyenne ne sont pas jugés.
+4. Pour confirmer, saisissez DÉLIBÉRER, puis « Délibérer définitivement ».
+5. Les diplômes apparaissent dans « Diplômes délivrés » ; « Attestation » affiche le QR code.
 
 ## Questions fréquentes
 
@@ -147,6 +169,7 @@ Chaque indicateur suit la définition du dictionnaire national et porte un indic
 
 - Consultez les absences du jour chaque matin : la famille est déjà prévenue, vous pouvez agir vite.
 - Ne délibérez qu'après avoir relu la liste des candidats : l'opération est irréversible.
+- La note de délibération est provisoire (moyenne annuelle) : elle ne vaut note officielle qu'une fois les résultats du centre transmis.
 - **Votre identifiant est personnel.** Ne le prêtez jamais, même à un collègue ou à un supérieur. Tout ce qui est fait avec votre compte est inscrit à votre nom.
 - **Un mot de passe solide et secret.** 12 caractères au moins, avec majuscule, minuscule et chiffre. Ne l'écrivez pas sur un papier visible, ne le dites à personne.
 - **Personne ne vous demandera votre mot de passe.** Ni l'administrateur, ni l'assistance, ni le ministère. Un message qui le demande est une tentative de fraude : signalez-le.

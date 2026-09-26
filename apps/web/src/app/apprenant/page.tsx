@@ -1,19 +1,21 @@
 "use client";
 
 import {
-  ArrowRightLeft, Award, BookOpenCheck, CalendarCheck, CalendarX2, Check, ChevronRight, Fingerprint, GraduationCap, NotebookPen, RefreshCw,
+  ArrowRightLeft, Award, BookOpenCheck, CalendarCheck, CalendarX2, Check, ChevronRight, Fingerprint, GraduationCap, NotebookPen, Printer, RefreshCw,
   Route, School, ShieldAlert, Sigma, Sparkles, TrendingUp, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Courbes } from "@/components/charts/Graphiques";
 import { Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Squelette } from "@/components/ui/primitives";
+import { Bulletin } from "@/components/bulletin/Bulletin";
 import {
   absencesParJour, jalonsParcours, libelleTrimestre, moyennesParMatiere, NOM_EXAMEN, nomComplet, syntheseScolaire, usePasseport,
   type Dossier, type Jalon, type TypeJalon,
 } from "@/lib/api/parcours";
+import { bulletinDepuisDossier } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
 import { date, nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
@@ -42,6 +44,9 @@ function Contenu({ d }: { d: Dossier }) {
   const annuelles = useMemo(() => moyennesParMatiere(s.notes, s.annee).sort((a, b) => b.moyenne - a.moyenne), [s]);
   const a = d.apprenant;
   const etab = d.situation.etablissementId ? d.etablissements[d.situation.etablissementId] : null;
+  const [bulletinOuvert, setBulletinOuvert] = useState(false);
+  const [trimestre, setTrimestre] = useState<number | null>(null);
+  const tBulletin = trimestre ?? s.courant;
 
   return (
     <>
@@ -75,7 +80,8 @@ function Contenu({ d }: { d: Dossier }) {
 
       {annuelles.length > 0 ? (
         <Card data-guide="apprenant-points-forts" className="min-w-0">
-          <CardHeader icon={Sparkles} title="Mes points forts" subtitle={`Moyennes de l'année ${s.annee}, de la plus haute à la plus basse`} />
+          <CardHeader icon={Sparkles} title="Mes points forts" subtitle={`Moyennes de l'année ${s.annee}, de la plus haute à la plus basse`}
+            action={s.courant != null ? <Button taille="sm" variante="secondaire" icone={Printer} onClick={() => setBulletinOuvert(true)}>Bulletin</Button> : undefined} />
           <ul className="space-y-3">
             {annuelles.map((m, i) => (
               <li key={m.matiere} className="flex items-center gap-3">
@@ -115,6 +121,16 @@ function Contenu({ d }: { d: Dossier }) {
         <CardHeader icon={Route} title="Ma frise" subtitle="Du plus récent au plus ancien · chaque étape indique sa source" />
         {jalons.length ? <Frise jalons={jalons} /> : <EtatVide icone={Route} titre="Parcours vide" texte="Votre parcours se construira au fil de votre scolarité." />}
       </Card>
+
+      {bulletinOuvert && tBulletin != null && (
+        <Bulletin
+          view={bulletinDepuisDossier(d, tBulletin)}
+          trimestres={s.trimestres}
+          trimestre={tBulletin}
+          onTrimestre={setTrimestre}
+          onFermer={() => setBulletinOuvert(false)}
+        />
+      )}
     </>
   );
 }

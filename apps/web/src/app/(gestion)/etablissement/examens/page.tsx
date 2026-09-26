@@ -1,6 +1,6 @@
 "use client";
 
-import { Award, BadgeCheck, ClipboardList, ExternalLink, Gavel, GraduationCap, Lock, QrCode, ScanLine, ShieldAlert, Sigma, Users } from "lucide-react";
+import { Award, BadgeCheck, ClipboardList, ExternalLink, Gavel, GraduationCap, Info, Lock, QrCode, ScanLine, ShieldAlert, Sigma, Users } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
@@ -8,7 +8,7 @@ import { TuileIndicateur } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
 import { CartePreuve, cheminVerification } from "@/components/ui/Preuve";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
-import { useDeliberationMutation, useExamens, type Examens } from "@/lib/api/etablissement";
+import { useDeliberationMutation, useExamens, type ExamenCertifiable, type Examens } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
@@ -18,6 +18,7 @@ import { ChampRecherche, classeChamp, dateCourte, Dialogue, EtatErreur, HorsPeri
 const MOT_CONFIRMATION = "DÉLIBÉRER";
 type FiltreExamen = "tous" | "CEP" | "BEPC" | "BAC";
 const LIBELLE_EXAMEN = { CEP: "Certificat d'études primaires", BEPC: "Brevet d'études du premier cycle", BAC: "Baccalauréat" } as const;
+const OPTIONS_EXAMEN: { valeur: ExamenCertifiable; libelle: string }[] = [{ valeur: "CEP", libelle: "CEP" }, { valeur: "BEPC", libelle: "BEPC" }, { valeur: "BAC", libelle: "BAC" }];
 
 export default function Page() {
   const id = useEtablissementCourant();
@@ -25,7 +26,8 @@ export default function Page() {
 }
 
 function PageExamens({ id }: { id: string }) {
-  const examens = useExamens(id);
+  const [examen, setExamen] = useState<ExamenCertifiable>("BEPC");
+  const examens = useExamens(id, examen);
   const x = examens.data;
 
   return (
@@ -36,6 +38,8 @@ function PageExamens({ id }: { id: string }) {
         sousTitre="Candidatures constituées à partir du référentiel des apprenants, sans ressaisie ; résultats inscrits au registre ; diplômes vérifiables par un tiers en quelques secondes."
         actions={<Link href="/verifier" className="inline-flex h-10 items-center gap-2 rounded-md bg-surface px-4 text-sm font-medium text-ink ring-1 ring-inset ring-line transition-all hover:bg-surface-2 active:scale-[0.97]"><ScanLine size={16} aria-hidden /> Page publique de vérification</Link>}
       />
+
+      <div className="overflow-x-auto"><Segmente label="Examen national" valeur={examen} onChange={setExamen} options={OPTIONS_EXAMEN} /></div>
 
       {examens.isPending ? (
         <>
@@ -52,7 +56,7 @@ function PageExamens({ id }: { id: string }) {
 }
 
 function Contenu({ id, x }: { id: string; x: Examens }) {
-  const bepc = x.certificats.filter((c) => c.examen === "BEPC" && c.session === x.session);
+  const diplomesExamen = x.certificats.filter((c) => c.examen === x.examen && c.session === x.session);
   const moyennes = x.candidats.map((c) => c.moyenne).filter((v): v is number => v != null);
   const moyenne = moyennes.length ? moyennes.reduce((s, v) => s + v, 0) / moyennes.length : null;
   const auDessus = moyennes.filter((v) => v >= 10).length;
@@ -60,15 +64,15 @@ function Contenu({ id, x }: { id: string; x: Examens }) {
   return (
     <>
       <Cascade data-guide="examens-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Element><TuileIndicateur libelle="Candidats BEPC" icone={Users} accent="bleu" valeur={<Compteur valeur={x.candidats.length} format={entier} />} indice={x.classes.length ? `classe${x.classes.length > 1 ? "s" : ""} ${x.classes.join(", ")}` : "aucune classe de 3e"} /></Element>
-        <Element><TuileIndicateur libelle="Moyenne annuelle" icone={Sigma} accent="ambre" valeur={moyenne != null ? <Compteur valeur={moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice="des candidats, toutes matières" /></Element>
+        <Element><TuileIndicateur libelle={`Candidats ${x.examen}`} icone={Users} accent="bleu" valeur={<Compteur valeur={x.candidats.length} format={entier} />} indice={x.classes.length ? `classe${x.classes.length > 1 ? "s" : ""} ${x.classes.join(", ")}` : `aucune classe de ${x.niveau}`} /></Element>
+        <Element><TuileIndicateur libelle="Moyenne annuelle" icone={Sigma} accent="ambre" valeur={moyenne != null ? <Compteur valeur={moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice="base provisoire de la décision" /></Element>
         <Element><TuileIndicateur libelle="Moyenne ≥ 10" icone={GraduationCap} accent="sarcelle" valeur={<Compteur valeur={auDessus} format={entier} />} indice={x.candidats.length ? `${nombre((auDessus / x.candidats.length) * 100, 0)} % des candidats` : undefined} /></Element>
-        <Element><TuileIndicateur libelle="Diplômes rattachés" icone={Award} accent="bleu" valeur={<Compteur valeur={x.certificats.length} format={entier} />} indice={`dont ${bepc.length} BEPC ${x.session}`} /></Element>
+        <Element><TuileIndicateur libelle="Diplômes rattachés" icone={Award} accent="bleu" valeur={<Compteur valeur={x.certificats.length} format={entier} />} indice={`dont ${diplomesExamen.length} ${x.examen} ${x.session}`} /></Element>
       </Cascade>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2"><Candidats x={x} /></div>
-        <div className="min-w-0"><Deliberation id={id} x={x} diplomes={bepc.length} /></div>
+        <div className="min-w-0"><Deliberation id={id} x={x} diplomes={diplomesExamen.length} /></div>
       </div>
 
       <Certificats x={x} />
@@ -90,12 +94,13 @@ function Candidats({ x }: { x: Examens }) {
   return (
     <Card data-guide="examens-candidats" className="min-w-0 overflow-hidden p-0">
       <div className="px-5 pt-5">
-        <CardHeader icon={ClipboardList} title={`BEPC · session ${x.session}`} subtitle="Candidats inscrits automatiquement depuis les classes de 3e"
+        <CardHeader icon={ClipboardList} title={`${x.examen} · session ${x.session}`} subtitle={`Candidatures constituées depuis les classes de ${x.niveau}`}
           action={x.deliberee ? <Statut ton="succes">Délibérée</Statut> : <Statut ton="info">Candidatures ouvertes</Statut>} />
+        <p className="mb-4 flex items-start gap-2 rounded-md bg-info-bg px-3 py-2 text-xs text-info"><Info size={14} className="mt-0.5 shrink-0" aria-hidden /> La note affichée est la <strong className="font-semibold">moyenne annuelle</strong> de l'apprenant : elle sert de base provisoire tant que le centre d'examen n'a pas transmis la note officielle de l'épreuve. Un candidat sans moyenne enregistrée ne sera pas jugé.</p>
         <ChampRecherche valeur={q} onChange={setQ} placeholder="Rechercher un candidat" label="Rechercher un candidat" className="mb-4" />
       </div>
       {x.candidats.length === 0 ? (
-        <EtatVide icone={Users} titre="Aucun candidat" texte="Aucun apprenant n'est scolarisé en classe de 3e cette année." />
+        <EtatVide icone={Users} titre="Aucun candidat" texte={`Aucun apprenant n'est scolarisé en classe de ${x.niveau} cette année.`} />
       ) : liste.length === 0 ? (
         <EtatVide icone={Users} titre="Aucun candidat trouvé" texte="Aucun candidat ne correspond à cette recherche." />
       ) : (
@@ -147,13 +152,14 @@ function Deliberation({ id, x, diplomes }: { id: string; x: Examens; diplomes: n
   const deliberer = useDeliberationMutation(id);
   const erreur = deliberer.error instanceof ErreurApi ? deliberer.error : null;
   const confirme = saisie.trim().toUpperCase() === MOT_CONFIRMATION;
+  const nonJuges = x.candidats.filter((c) => c.moyenne == null).length;
 
   const fermer = () => { if (deliberer.isPending) return; setOuvert(false); setSaisie(""); };
-  const lancer = () => deliberer.mutate(undefined, {
+  const lancer = () => deliberer.mutate({ examen: x.examen, session: x.session }, {
     onSuccess: (r) => {
       setOuvert(false);
       setSaisie("");
-      notifier({ ton: "succes", titre: "Délibération enregistrée", texte: `${r.candidats} candidats · ${r.diplomes} diplômes délivrés, chacun vérifiable par QR code.` });
+      notifier({ ton: "succes", titre: "Délibération enregistrée", texte: `${r.examen} ${r.session} · ${r.candidats} candidats, ${r.diplomes} diplôme${r.diplomes > 1 ? "s" : ""} délivré${r.diplomes > 1 ? "s" : ""}${r.nonJuges ? `, ${r.nonJuges} non jugé${r.nonJuges > 1 ? "s" : ""} (sans moyenne)` : ""} — note provisoire, en attente des notes du centre.` });
     },
     onError: (e) => { if (e instanceof ErreurApi && e.statut === 409) setOuvert(false); },
   });
@@ -163,12 +169,13 @@ function Deliberation({ id, x, diplomes }: { id: string; x: Examens; diplomes: n
       <CardHeader icon={Gavel} title="Délibération" subtitle="Déléguée au centre d'examen : résultats et diplômes, en une transaction" />
       {x.deliberee ? (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-          <p className="flex items-start gap-2 rounded-md bg-success-bg px-3 py-2.5 text-[13px] font-medium text-success"><BadgeCheck size={16} className="mt-0.5 shrink-0" aria-hidden /> Session {x.session} délibérée : {diplomes} diplôme{diplomes > 1 ? "s" : ""} délivré{diplomes > 1 ? "s" : ""}, chacun vérifiable par QR code.</p>
-          <p className="flex items-start gap-2 text-xs text-ink-muted"><Lock size={13} className="mt-0.5 shrink-0" aria-hidden /> Une délibération est définitive : toute correction ultérieure passe par un événement correctif journalisé avec son auteur.</p>
+          <p className="flex items-start gap-2 rounded-md bg-success-bg px-3 py-2.5 text-[13px] font-medium text-success"><BadgeCheck size={16} className="mt-0.5 shrink-0" aria-hidden /> {x.examen} {x.session} délibéré : {diplomes} diplôme{diplomes > 1 ? "s" : ""} délivré{diplomes > 1 ? "s" : ""}, chacun vérifiable par QR code.</p>
+          <p className="flex items-start gap-2 text-xs text-ink-muted"><Lock size={13} className="mt-0.5 shrink-0" aria-hidden /> Une délibération est définitive : toute correction ultérieure (notamment l'arrivée des notes officielles du centre) passe par un événement correctif journalisé avec son auteur.</p>
         </motion.div>
       ) : (
         <>
-          <p className="text-[13px] text-ink-2">Les résultats sont inscrits au registre ; chaque admis reçoit un diplôme avec identifiant et empreinte. L'opération est <strong className="text-ink">irréversible</strong>.</p>
+          <p className="text-[13px] text-ink-2">Les résultats sont inscrits au registre sur la base de la <strong className="text-ink">moyenne annuelle</strong> (provisoire, en attendant les notes du centre) ; chaque admis reçoit un diplôme avec identifiant et empreinte. L'opération est <strong className="text-ink">irréversible</strong>.</p>
+          {nonJuges > 0 && <p className="mt-2 flex items-start gap-2 text-xs text-ink-muted"><Info size={13} className="mt-0.5 shrink-0" aria-hidden /> {nonJuges} candidat{nonJuges > 1 ? "s" : ""} sans moyenne annuelle ne sera{nonJuges > 1 ? "ont" : ""} pas jugé{nonJuges > 1 ? "s" : ""}.</p>}
           {erreur && erreur.statut !== 409 && <p role="alert" className="mt-3 rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">{erreur.message}</p>}
           {erreur?.statut === 409 && <p role="status" className="mt-3 rounded-md bg-info-bg px-3 py-2 text-[13px] text-info">Cette session a déjà été délibérée (par un autre poste) : l'écran vient d'être actualisé.</p>}
           <Button className="mt-4 w-full" variante="valider" icone={Gavel} disabled={!x.candidats.length} onClick={() => setOuvert(true)}>Délibérer et délivrer les diplômes</Button>
@@ -180,8 +187,8 @@ function Deliberation({ id, x, diplomes }: { id: string; x: Examens; diplomes: n
         onFermer={fermer}
         ton="danger"
         icone={ShieldAlert}
-        titre={`Délibérer le BEPC · session ${x.session}`}
-        description="Action définitive : les résultats de tous les candidats seront inscrits au registre et les diplômes délivrés. Elle ne peut être ni annulée ni rejouée."
+        titre={`Délibérer ${x.examen} · session ${x.session}`}
+        description="Action définitive : les résultats de tous les candidats jugés seront inscrits au registre et les diplômes délivrés. Elle ne peut être ni annulée ni rejouée."
         pied={
           <>
             <Button variante="secondaire" onClick={fermer} disabled={deliberer.isPending}>Annuler</Button>
@@ -191,7 +198,7 @@ function Deliberation({ id, x, diplomes }: { id: string; x: Examens; diplomes: n
       >
         <div className="space-y-4">
           <ul className="grid grid-cols-2 gap-2 text-[13px]">
-            <li className="rounded-md bg-surface-2/70 px-3 py-2"><span className="block text-xs text-ink-muted">Candidats</span><span className="font-semibold tabular text-ink">{x.candidats.length}</span></li>
+            <li className="rounded-md bg-surface-2/70 px-3 py-2"><span className="block text-xs text-ink-muted">Candidats jugés</span><span className="font-semibold tabular text-ink">{x.candidats.length - nonJuges}</span></li>
             <li className="rounded-md bg-surface-2/70 px-3 py-2"><span className="block text-xs text-ink-muted">Classes</span><span className="font-semibold text-ink">{x.classes.join(", ") || "—"}</span></li>
           </ul>
           <label className="block">

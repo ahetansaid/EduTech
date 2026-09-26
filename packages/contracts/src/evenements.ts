@@ -53,6 +53,29 @@ export const Evenement = z.discriminatedUnion("type", [
     justifiee: z.boolean(),
     anneeScolaire: z.string(),
   }),
+  /**
+   * Justificatif d'absence transmis par un responsable légal. Ajout seul : il référence les absences
+   * d'origine (jamais modifiées) et porte le motif déclaré. L'établissement statue ensuite par un fait
+   * DECISION_JUSTIFICATION.
+   */
+  Base.extend({
+    type: z.literal("JUSTIFICATION_ABSENCE"),
+    apprenantId: z.string(),
+    absenceIds: z.array(z.string()),
+    dates: z.array(z.string()),
+    classeId: z.string().nullable(),
+    motif: z.string(),
+    declarantNpi: z.string(),
+  }),
+  /** Décision de l'établissement sur un justificatif : référence le fait JUSTIFICATION_ABSENCE d'origine. */
+  Base.extend({
+    type: z.literal("DECISION_JUSTIFICATION"),
+    apprenantId: z.string(),
+    justificationId: z.string(),
+    absenceIds: z.array(z.string()),
+    decision: z.enum(["validee", "refusee"]),
+    motif: z.string().nullable(),
+  }),
   Base.extend({
     type: z.literal("PASSAGE"),
     apprenantId: z.string(),
@@ -95,6 +118,17 @@ export const Evenement = z.discriminatedUnion("type", [
     examen: Examen,
     session: z.string(),
     mention: z.string(),
+  }),
+  /**
+   * Révocation d'un diplôme par l'autorité de certification. Le diplôme n'est jamais effacé — la
+   * révocation est un fait du registre qui référence le certificat, et l'état courant
+   * (core.certificats.revoque) s'en déduit. Le service public de vérification rend alors « révoqué ».
+   */
+  Base.extend({
+    type: z.literal("REVOCATION_CERTIFICAT"),
+    apprenantId: z.string(),
+    certificatId: z.string(),
+    motif: z.string(),
   }),
   Base.extend({
     type: z.literal("REGULARISATION_IDENTITE_DEMANDEE"),

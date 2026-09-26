@@ -10,7 +10,7 @@ import { base } from "./commun";
 export interface FaitNotifiable { id: string; type: string; apprenantId: string; donnees: Record<string, unknown> }
 
 export async function notifierFaits(faits: FaitNotifiable[]) {
-  const utiles = faits.filter((f) => ["ABSENCE", "EVALUATION", "INSCRIPTION", "CORRECTION_EVALUATION", "CERTIFICATION", "TRANSFERT"].includes(f.type));
+  const utiles = faits.filter((f) => ["ABSENCE", "EVALUATION", "INSCRIPTION", "CORRECTION_EVALUATION", "CERTIFICATION", "TRANSFERT", "DECISION_JUSTIFICATION"].includes(f.type));
   if (!utiles.length) return;
   const ids = [...new Set(utiles.map((f) => f.apprenantId))];
   const [apprenants, liens] = await Promise.all([
@@ -30,6 +30,9 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
       : f.type === "CORRECTION_EVALUATION" ? [`Note corrigée pour ${a.prenoms}`, `Nouvelle note : ${String(f.donnees.nouvelleNote).replace(".", ",")}/20 — motif : ${f.donnees.motif}.`]
       : f.type === "INSCRIPTION" ? [`Inscription de ${a.prenoms} confirmée`, `${a.prenoms} est inscrit·e${classe ? ` en ${classe}` : ""} pour l'année ${f.donnees.anneeScolaire ?? ""}.`]
       : f.type === "CERTIFICATION" ? [`Diplôme délivré à ${a.prenoms}`, `${f.donnees.examen} — mention ${f.donnees.mention}. Le diplôme est vérifiable en ligne par QR code.`]
+      : f.type === "DECISION_JUSTIFICATION" ? (f.donnees.decision === "validee"
+        ? [`Justificatif validé pour ${a.prenoms}`, `L'établissement a validé le justificatif d'absence de ${a.prenoms}.`]
+        : [`Justificatif refusé pour ${a.prenoms}`, `L'établissement a refusé le justificatif d'absence de ${a.prenoms}${f.donnees.motif ? ` — motif : ${f.donnees.motif}` : ""}.`])
       : [`Transfert de ${a.prenoms}`, `Le dossier de ${a.prenoms} a été transféré vers son nouvel établissement, sans ressaisie.`];
     const destinataires = new Set([...liens.filter((l) => l.apprenantId === a.id && l.verifie).map((l) => l.responsableNpi), ...(a.npi ? [a.npi] : [])]);
     for (const npi of destinataires) lignes.push({ id: `NOT-${randomUUID()}`, destinataireNpi: npi, titre, texte, evenementId: f.id });

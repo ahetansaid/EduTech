@@ -191,10 +191,12 @@ export const PROFILS: ContenuProfil[] = [
     ecrans: [
       { titre: "Console territoriale", chemin: "/territoire", icone: "landmark", resume: "Votre circonscription en un écran.", points: ["Six chiffres de la circonscription, avec le repère national.", "Carte : votre circonscription et ses établissements (points).", "Absences du jour en direct.", "Points d'attention et tableau des établissements (effectifs, encadrement, eau, électricité, transmission)."] },
       { titre: "Ask Education", chemin: "/ask", icone: "sparkles", resume: "Poser une question chiffrée sur votre circonscription.", points: ["Le périmètre de votre habilitation s'applique à chaque réponse."] },
+      { titre: "Demandes à traiter", chemin: "/demandes", icone: "inbox", resume: "La file des circuits en attente de votre décision.", points: ["Accompagnements à valider et demandes relevant de votre rôle et de votre circonscription.", "« Statuer » pour rendre une décision motivée ; l'étape suivante du circuit est alors déclenchée."] },
     ],
     taches: [
       { titre: "Préparer une visite d'établissement", etapes: ["Lisez « Points d'attention de la circonscription » : saturés, classes surchargées, sans transmission, sans point d'eau.", "Dans « Établissements de la circonscription », repérez l'établissement concerné et ses infrastructures.", "Touchez « Voir sur la carte » pour situer l'établissement et sa commune."] },
       { titre: "Relancer un établissement", etapes: ["Dans le tableau des établissements, touchez « Relancer » en face de l'établissement en retard.", "La relance est envoyée et tracée ; son suivi est visible dans la qualité des données."] },
+      { titre: "Statuer sur une demande", pourquoi: "Un circuit ne peut avancer que si l'étape qui vous incombe reçoit une décision motivée.", etapes: ["Ouvrez « Demandes à traiter » : seules les demandes de votre rôle et de votre périmètre s'affichent.", "Touchez « Statuer » sur la demande concernée.", "Choisissez le sens (avis favorable ou défavorable) et rédigez la motivation.", "Validez : la décision est journalisée et le circuit passe à l'étape suivante."] },
     ],
     faq: [
       { q: "Puis-je ouvrir le dossier d'un élève ?", r: "Non. Votre rôle porte sur les établissements et les agrégats. Les dossiers individuels relèvent de l'établissement." },
@@ -239,23 +241,25 @@ export const PROFILS: ContenuProfil[] = [
     espace: "Mon établissement",
     arrivee: "/etablissement",
     ecrans: [
-      { titre: "Tableau de bord", chemin: "/etablissement", icone: "building", resume: "Votre établissement d'un coup d'œil.", points: ["Apprenants, occupation, enseignants, moyenne du trimestre, absents aujourd'hui.", "« Ce que le système vous signale » : alertes et actions proposées.", "« Élèves en baisse en mathématiques » et proposition d'accompagnement.", "Absences du jour en direct, classes, demandes en circuit."] },
+      { titre: "Tableau de bord", chemin: "/etablissement", icone: "building", resume: "Votre établissement d'un coup d'œil.", points: ["Apprenants, occupation, enseignants, moyenne du trimestre, absents aujourd'hui.", "« Ce que le système vous signale » : alertes et actions proposées.", "« Élèves en baisse en mathématiques » et proposition d'accompagnement.", "Absences du jour en direct, classes, demandes en circuit.", "Dans le tableau des classes : « Gérer » (capacité, professeur principal) et « Passage » (conseil de fin d'année)."] },
       { titre: "Inscrire un apprenant", chemin: "/etablissement/inscription", icone: "user-plus", resume: "Quatre étapes : Registre national, Identité et filiation, Classe, Confirmation.", points: ["Recherche au registre national des personnes : aucune identité créée en double.", "Enfant sans acte d'état civil : inscription avec procédure de régularisation."] },
       { titre: "Apprenants", chemin: "/etablissement/eleves", icone: "users", resume: "La liste des élèves et leur dossier.", points: ["Filtres « Tous », « En baisse », « Identité à régulariser ».", "Dossier : moyennes, parcours, diplômes ; « Transférer » ou « Déclarer un abandon »."] },
-      { titre: "Examens et certification", chemin: "/etablissement/examens", icone: "award", resume: "Candidats au BEPC, délibération, diplômes.", points: ["Candidats inscrits automatiquement depuis les classes de 3e.", "Délibération définitive ; diplômes avec QR code vérifiable."] },
+      { titre: "Examens et certification", chemin: "/etablissement/examens", icone: "award", resume: "Candidatures, délibération, diplômes vérifiables (CEP, BEPC, BAC).", points: ["Choisissez l'examen : les candidats viennent du niveau correspondant (CEP → CM2, BEPC → 3e, BAC → Terminale).", "La note affichée est la moyenne annuelle de l'apprenant : une base provisoire tant que le centre d'examen n'a pas transmis les notes officielles.", "Délibération définitive ; chaque admis reçoit un diplôme au QR code vérifiable par un tiers."] },
     ],
     taches: [
       { titre: "Inscrire un nouvel apprenant", pourquoi: "Interroger le registre national évite les doublons et rattache automatiquement les parents.", etapes: ["Touchez « Inscrire un apprenant ».", "Étape « Registre national » : saisissez le nom et les prénoms, puis « Interroger le registre ».", "Touchez « Sélectionner » en face du bon enfant. S'il n'existe pas : « Inscrire avec procédure de régularisation ».", "Vérifiez l'identité et les responsables légaux, puis « Choisir la classe ».", "Choisissez une classe qui a de la place, puis « Vérifier ».", "Relisez le récapitulatif et touchez « Confirmer l'inscription »."] },
       { titre: "Proposer un accompagnement", etapes: ["Dans « Élèves en baisse en mathématiques », cochez les élèves concernés.", "Touchez « Proposer un accompagnement » et précisez l'objet (5 à 200 caractères).", "Touchez « Transmettre ». La demande apparaît dans « Demandes en circuit »."] },
+      { titre: "Ajuster une classe (capacité, professeur principal)", pourquoi: "La capacité décide de l'accueil : l'abaisser sous l'effectif crée une alerte de surcharge, sans retirer d'élève.", etapes: ["Dans le tableau des classes, touchez « Gérer » sur la classe concernée.", "Réglez la « Capacité (places) » (nombre entier entre 1 et 2000).", "Désignez le « Professeur principal » : la liste ne propose que les enseignants rattachés à l'établissement.", "Touchez « Enregistrer ». Le tableau est recalculé immédiatement."] },
+      { titre: "Faire tenir un conseil de passage", pourquoi: "Le conseil décide du passage de chaque élève ; l'application respecte les capacités et ouvre une division si nécessaire.", etapes: ["Dans le tableau des classes, touchez « Passage » sur la classe (hors niveau terminal).", "Indiquez l'« Année scolaire de réinscription » au format AAAA-AAAA.", "Pour chaque élève, touchez le statut pour basculer entre « Admis » (passage au niveau supérieur) et « Maintien » (réinscription dans la classe).", "Relisez le compteur « admis · maintenus », puis « Enregistrer ».", "Les admis changent de niveau, les maintenus sont réinscrits ; une nouvelle division est créée si une classe dépasse sa capacité."] },
       { titre: "Transférer un élève ou déclarer un abandon", etapes: ["Ouvrez « Apprenants », puis le dossier de l'élève.", "Touchez « Transférer », cherchez la classe d'accueil, cochez la confirmation, puis « Confirmer le transfert ».", "Ou touchez « Déclarer un abandon », indiquez le motif, puis « Confirmer l'abandon »."] },
-      { titre: "Délibérer le BEPC", pourquoi: "La délibération est définitive : toute correction ultérieure passe par un événement correctif journalisé.", etapes: ["Ouvrez « Examens et certification » et relisez la liste des candidats.", "Touchez « Délibérer et délivrer les diplômes ».", "Pour confirmer, saisissez DÉLIBÉRER, puis touchez « Délibérer définitivement ».", "Les diplômes apparaissent dans « Diplômes délivrés » ; « Attestation » affiche le QR code."] },
+      { titre: "Délibérer un examen national", pourquoi: "La délibération est définitive : toute correction ultérieure — notamment l'arrivée des notes officielles du centre — passe par un événement correctif journalisé.", etapes: ["Ouvrez « Examens et certification » et choisissez l'examen (CEP, BEPC ou BAC).", "Relisez la liste des candidats et leurs moyennes annuelles.", "Touchez « Délibérer et délivrer les diplômes » : les candidats sans moyenne ne sont pas jugés.", "Pour confirmer, saisissez DÉLIBÉRER, puis « Délibérer définitivement ».", "Les diplômes apparaissent dans « Diplômes délivrés » ; « Attestation » affiche le QR code."] },
     ],
     faq: [
       { q: "L'enfant n'a pas d'acte de naissance. Puis-je l'inscrire ?", r: "Oui. Touchez « Inscrire avec procédure de régularisation ». L'identité reste déclarative et apparaît dans « Identité à régulariser » jusqu'à l'enregistrement à l'état civil." },
       { q: "Pourquoi une classe n'est-elle pas proposée ?", r: "Elle est complète. Une classe pleine ne peut plus recevoir d'inscription." },
       { q: "L'enfant est « Déjà inscrit·e » ailleurs.", r: "Il faut passer par un transfert, depuis l'établissement d'origine ou via le dossier de l'élève." },
     ],
-    conseils: ["Consultez les absences du jour chaque matin : la famille est déjà prévenue, vous pouvez agir vite.", "Ne délibérez qu'après avoir relu la liste des candidats : l'opération est irréversible."],
+    conseils: ["Consultez les absences du jour chaque matin : la famille est déjà prévenue, vous pouvez agir vite.", "Ne délibérez qu'après avoir relu la liste des candidats : l'opération est irréversible.", "La note de délibération est provisoire (moyenne annuelle) : elle ne vaut note officielle qu'une fois les résultats du centre transmis."],
     visites: ["etablissement"],
   },
   {
@@ -305,7 +309,7 @@ export const PROFILS: ContenuProfil[] = [
     ],
     taches: [
       { titre: "Justifier une absence", pourquoi: "L'établissement reçoit le motif aussitôt, sans billet papier.", etapes: ["Dans « Absences », repérez le jour marqué « À justifier ».", "Touchez « Justifier ».", "Choisissez le motif : Maladie, Rendez-vous médical, Raison familiale, Transport ou Autre.", "Ajoutez une précision si besoin (obligatoire pour « Autre »), puis touchez « Transmettre »."] },
-      { titre: "Suivre les résultats", etapes: ["Regardez la tuile « Moyenne » et son « Évolution ».", "Dans « Résultats par matière », chaque barre montre la moyenne sur 20 ; le trait rappelle le trimestre précédent.", "« Dernières notes » liste les évaluations récentes."] },
+      { titre: "Suivre les résultats", etapes: ["Regardez la tuile « Moyenne » et son « Évolution ».", "Dans « Résultats par matière », chaque barre montre la moyenne sur 20 ; le trait rappelle le trimestre précédent.", "« Dernières notes » liste les évaluations récentes.", "Touchez « Bulletin » pour ouvrir le relevé du trimestre et l'imprimer (ou l'enregistrer en PDF) ; changez de trimestre depuis l'en-tête."] },
       { titre: "Présenter un diplôme", etapes: ["Ouvrez « Documents ».", "Montrez le QR code du diplôme : la personne le scanne et vérifie elle-même, sans compte."] },
     ],
     faq: [
@@ -327,7 +331,7 @@ export const PROFILS: ContenuProfil[] = [
     espace: "Mon passeport éducatif",
     arrivee: "/apprenant",
     ecrans: [
-      { titre: "Mon parcours", chemin: "/apprenant", icone: "route", resume: "Votre passeport éducatif.", points: ["Identifiant, classe, établissement.", "Moyenne, évaluations, absences, diplômes.", "Points forts et frise de votre parcours."] },
+      { titre: "Mon parcours", chemin: "/apprenant", icone: "route", resume: "Votre passeport éducatif.", points: ["Identifiant, classe, établissement.", "Moyenne, évaluations, absences, diplômes.", "« Bulletin » : relevé de notes du trimestre, à imprimer ou enregistrer en PDF.", "Points forts et frise de votre parcours."] },
       { titre: "Mes diplômes", chemin: "/apprenant/preuves", icone: "award", resume: "Vos preuves, à partager.", points: ["« Partager », « Copier le lien », « QR en grand ».", "Le QR code ne contient ni nom ni note."] },
       { titre: "Orientation", chemin: "/apprenant/orientation", icone: "compass", resume: "Des pistes lues dans vos résultats réels.", points: ["Indice de compatibilité et critères visibles.", "Les pistes éclairent votre choix, elles ne le font pas."] },
     ],
@@ -401,24 +405,28 @@ export const PROFILS: ContenuProfil[] = [
     id: "public",
     slug: "public",
     nom: "Public",
-    pourQui: "Employeurs, écoles, administrations, toute personne qui reçoit un diplôme.",
+    pourQui: "Employeurs, écoles, administrations, candidats et familles : toute personne sans compte.",
     icone: "badge",
-    resume: "Vérifier l'authenticité d'un diplôme, sans compte.",
-    objectif: "Savoir en quelques secondes si un diplôme présenté est authentique, altéré, révoqué ou introuvable. Gratuit, sans compte, sans conserver de donnée sur votre appareil.",
-    espace: "Vérifier un diplôme",
+    resume: "Vérifier un diplôme ou consulter un résultat d'examen, sans compte.",
+    objectif: "Deux services publics gratuits, sans compte et sans conserver de donnée : vérifier l'authenticité d'un diplôme, et consulter le verdict officiel d'un examen national à partir du numéro de table.",
+    espace: "Démarches publiques",
     arrivee: "/verifier",
     ecrans: [
       { titre: "Vérifier un diplôme", chemin: "/verifier", icone: "badge", resume: "Scanner le QR code ou saisir l'identifiant.", points: ["« Scanner le QR code » (caméra) ou saisie de l'identifiant (ex. CERT-CEP-2024-000001).", "Verdict : Diplôme authentique, Document altéré, Diplôme révoqué ou Diplôme introuvable."] },
+      { titre: "Résultats d'examens", chemin: "/resultats", icone: "graduation", resume: "Saisir son numéro de table pour connaître le verdict d'une session.", points: ["Choisissez l'examen (CEP, BEPC, BAC), la session (ex. Juin 2024), puis saisissez le numéro de table porté sur la convocation.", "Verdict : Admis (avec moyenne et mention), Non admis, Résultats non publiés ou Numéro de table introuvable.", "Rien ne s'affiche tant que la session n'est pas officiellement publiée par le bureau des examens."] },
     ],
     taches: [
       { titre: "Vérifier un diplôme", pourquoi: "Le registre national compare l'empreinte du document à celle du diplôme délivré.", etapes: ["Ouvrez BEILE, puis « Vérifier un diplôme ».", "Touchez « Scanner le QR code » et visez le code, ou saisissez l'identifiant du diplôme.", "Touchez « Vérifier ».", "Lisez le verdict. S'il est « Diplôme authentique », comparez les informations affichées au document présenté."] },
+      { titre: "Consulter un résultat d'examen", pourquoi: "Le bureau des examens publie les verdicts dès la fin de la délibération du jury.", etapes: ["Ouvrez BEILE, puis « Résultats d'examens » (ou la section « Consulter les résultats » de l'accueil).", "Choisissez l'examen et la session.", "Saisissez le numéro de table de la convocation, puis « Consulter mon résultat ».", "Lisez le verdict. « Résultats non publiés » signifie que la session n'a pas encore été rendue publique."] },
     ],
     faq: [
-      { q: "Faut-il un compte ?", r: "Non. La vérification est publique, gratuite et immédiate." },
+      { q: "Faut-il un compte ?", r: "Non. La vérification d'un diplôme comme la consultation d'un résultat sont publiques, gratuites et immédiates." },
       { q: "Le verdict est « Document altéré ».", r: "Le diplôme existe, mais le document a été modifié (nom, mention, note ou session). Ne l'acceptez pas ; demandez l'original ou le lien de vérification au titulaire." },
       { q: "Le verdict est « Diplôme introuvable ».", r: "Vérifiez la saisie de l'identifiant. Si le document affirme le contraire, il est suspect." },
+      { q: "« Résultats non publiés » alors que les épreuves sont finies.", r: "Le verdict n'apparaît qu'après la publication officielle de la session par le bureau des examens. Revenez après cette date." },
+      { q: "Où trouver mon numéro de table ?", r: "Il est imprimé sur la carte de convocation. C'est la seule information nécessaire pour consulter un résultat." },
     ],
-    conseils: ["Vérifiez toujours avec le QR code du document, pas avec un lien reçu d'un tiers inconnu.", "Comparez le nom, la mention et la session affichés à ceux du document."],
+    conseils: ["Vérifiez un diplôme avec le QR code du document, pas avec un lien reçu d'un tiers inconnu.", "Comparez le nom, la mention et la session affichés à ceux du document.", "Pour un résultat d'examen, ne communiquez votre numéro de table qu'au besoin : c'est lui qui ouvre le verdict."],
     visites: [],
   },
 ];

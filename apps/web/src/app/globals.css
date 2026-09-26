@@ -188,3 +188,34 @@ h1, h2, h3, .font-display {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Impression (bulletins) : seul le document porté dans <body> par l'attribut `data-impression`
+ * part à l'imprimante ; le reste de l'application (navigation, en-têtes) est masqué.
+ * Aucune dépendance : c'est le navigateur qui produit le PDF (« Enregistrer en PDF »).
+ */
+@media print {
+  body > *:not([data-impression]) {
+    display: none !important;
+  }
+
+  [data-impression] {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  [data-impression-doc] {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

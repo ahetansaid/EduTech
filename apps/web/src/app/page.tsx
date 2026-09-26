@@ -6,7 +6,7 @@ import { EASE, motion } from "@/components/motion";
 import { BandeNationale } from "@/components/ui/primitives";
 import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
-import { SectionCalendrier, SectionChiffres, SectionEtablissements, SectionInscription } from "@/components/public/SectionsAccueil";
+import { SectionCalendrier, SectionChiffres, SectionEtablissements, SectionInscription, SectionResultats } from "@/components/public/SectionsAccueil";
 
 /** Un espace pour chaque acteur, chacun avec son guide. */
 const ESPACES = [
@@ -115,6 +115,7 @@ export default function Accueil() {
       <SectionCalendrier />
       <SectionEtablissements />
       <SectionInscription />
+      <SectionResultats />
       <SectionChiffres />
 
       {/* Un espace pour chaque acteur */}

@@ -71,6 +71,13 @@
 
 - Le périmètre de votre habilitation s'applique à chaque réponse.
 
+### Demandes à traiter
+
+`/demandes` — La file des circuits en attente de votre décision.
+
+- Accompagnements à valider et demandes relevant de votre rôle et de votre circonscription.
+- « Statuer » pour rendre une décision motivée ; l'étape suivante du circuit est alors déclenchée.
+
 ## Tâches pas à pas
 
 ### Préparer une visite d'établissement
@@ -83,6 +90,15 @@
 
 1. Dans le tableau des établissements, touchez « Relancer » en face de l'établissement en retard.
 2. La relance est envoyée et tracée ; son suivi est visible dans la qualité des données.
+
+### Statuer sur une demande
+
+> Un circuit ne peut avancer que si l'étape qui vous incombe reçoit une décision motivée.
+
+1. Ouvrez « Demandes à traiter » : seules les demandes de votre rôle et de votre périmètre s'affichent.
+2. Touchez « Statuer » sur la demande concernée.
+3. Choisissez le sens (avis favorable ou défavorable) et rédigez la motivation.
+4. Validez : la décision est journalisée et le circuit passe à l'étape suivante.
 
 ## Questions fréquentes
 

@@ -16,7 +16,7 @@ Dans l'application, le bouton « Guide » relance à tout moment la visite guid�
 | [Apprenant](apprenant.md) | Élèves et apprenants. | Mon passeport éducatif |
 | [Délégué à la protection des données](dpo.md) | Le ou la DPO du ministère et son équipe. | Conformité |
 | [Administrateur](administrateur.md) | L'équipe qui gère les comptes et le support de BEILE. | Comptes et accès |
-| [Public](public.md) | Employeurs, écoles, administrations, toute personne qui reçoit un diplôme. | Vérifier un diplôme |
+| [Public](public.md) | Employeurs, écoles, administrations, candidats et familles : toute personne sans compte. | Démarches publiques |
 
 ---
 

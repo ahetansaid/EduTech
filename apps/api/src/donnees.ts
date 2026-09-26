@@ -116,7 +116,8 @@ export async function contexteApprenant(db: Base, apprenantId: string, profil: P
     profil.npi ? db.select().from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi)) : Promise.resolve([]),
   ]);
   const evenements = lignes.map(enEvenement);
-  const classeIds = [...new Set(evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])))];
+  // Un justificatif d'absence peut ne pas porter de classe : on écarte les identifiants nuls avant chargement.
+  const classeIds = [...new Set(evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])).filter((x): x is string => !!x))];
   const [classes, enseignements] = await Promise.all([
     classeIds.length ? db.select().from(schema.classes).where(inArray(schema.classes.id, classeIds)) : Promise.resolve([]),
     enseignants[0] && classeIds.length

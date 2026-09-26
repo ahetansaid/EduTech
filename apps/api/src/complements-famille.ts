@@ -1,4 +1,5 @@
 import { schema } from "@beile/db";
+import type { Evenement } from "@beile/contracts";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -37,10 +38,19 @@ complementsFamille.post("/famille/absences/justification", authentifie, async (c
   const r = await dossier(profil, apprenantId, "suivi_familial", "Justification d'absence — contrôle d'accès");
   if (!r.dossier) refuser("Cet enfant n'est pas rattaché à votre identité : justification refusée et journalisée");
 
-  const dejaJustifiees = new Set([
-    ...absences.filter((a) => (a.donnees as { justifiee?: boolean }).justifiee).map((a) => a.id),
-    ...r.dossier!.evenements.flatMap((e) => ((e.type as string) === "JUSTIFICATION_ABSENCE" ? ((e as unknown as { absenceIds?: string[] }).absenceIds ?? []) : [])),
-  ]);
+  // Une absence est bloquée si elle est déjà justifiée, ou couverte par un justificatif transmis/validé.
+  // Un justificatif REFUSÉ par l'établissement peut être représenté : il ne bloque pas l'absence d'origine.
+  const decisions = new Map<string, Extract<Evenement, { type: "DECISION_JUSTIFICATION" }>>();
+  for (const e of r.dossier!.evenements) {
+    if (e.type !== "DECISION_JUSTIFICATION") continue;
+    const avant = decisions.get(e.justificationId);
+    if (!avant || avant.survenuLe <= e.survenuLe) decisions.set(e.justificationId, e);
+  }
+  const dejaJustifiees = new Set(absences.filter((a) => (a.donnees as { justifiee?: boolean }).justifiee).map((a) => a.id));
+  for (const e of r.dossier!.evenements) {
+    if (e.type !== "JUSTIFICATION_ABSENCE" || decisions.get(e.id)?.decision === "refusee") continue;
+    for (const id of e.absenceIds) dejaJustifiees.add(id);
+  }
   const aJustifier = absences.filter((a) => !dejaJustifiees.has(a.id));
   if (!aJustifier.length) throw new HTTPException(409, { message: "Ces absences sont déjà justifiées" });
 

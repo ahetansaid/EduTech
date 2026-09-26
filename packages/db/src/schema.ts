@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp,
+  boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -188,6 +188,49 @@ export const certificats = core.table("certificats", {
   revoque: boolean("revoque").notNull().default(false),
 });
 
+/* ------------------------------------------------------------------ Examens nationaux (modèle e-résultat : session, centre, candidat, publication) */
+
+/**
+ * Session officielle d'un examen national, avec son cycle de publication. Une ligne par (examen, session).
+ * Le statut ne bascule sur « publiee » qu'après délibération : avant, la recherche publique ne renvoie rien.
+ */
+export const examensSessions = core.table("examens_sessions", {
+  id: text("id").primaryKey(),
+  examen: text("examen", { enum: ["CEP", "BEPC", "BAC"] }).notNull(),
+  session: text("session").notNull(),
+  statut: text("statut", { enum: ["ouverte", "composition", "deliberation", "publiee"] }).notNull().default("ouverte"),
+  arretCandidatures: date("arret_candidatures"),
+  publieeLe: date("publiee_le"),
+}, (t) => [uniqueIndex("examens_sessions_examen_session_uq").on(t.examen, t.session)]);
+
+/** Centre d'examen (lieu physique où compose le candidat) ; rattaché à une commune pour la cartographie. */
+export const examensCentres = core.table("examens_centres", {
+  id: text("id").primaryKey(),
+  nom: text("nom").notNull(),
+  communeId: text("commune_id").notNull().references(() => communes.id),
+  capacite: integer("capacite").notNull().default(0),
+}, (t) => [index("examens_centres_commune_idx").on(t.communeId)]);
+
+/**
+ * Candidature d'un apprenant à une session : centre retenu et numéro de table, la clé que le public
+ * saisit pour retrouver son sort. Verdicts (décision, moyenne, mention) renseignés à la délibération,
+ * figés à la publication. Le numéro de table est unique au sein d'une session, jamais réutilisé.
+ */
+export const examensCandidatures = core.table("examens_candidatures", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => examensSessions.id),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  centreId: text("centre_id").notNull().references(() => examensCentres.id),
+  numeroTable: text("numero_table").notNull(),
+  decision: text("decision", { enum: ["admis", "non_admis"] }),
+  moyenne: numeric("moyenne", { precision: 4, scale: 2, mode: "number" }),
+  mention: text("mention"),
+}, (t) => [
+  uniqueIndex("examens_candidatures_session_table_uq").on(t.sessionId, t.numeroTable),
+  uniqueIndex("examens_candidatures_session_apprenant_uq").on(t.sessionId, t.apprenantId),
+  index("examens_candidatures_apprenant_idx").on(t.apprenantId),
+]);
+
 /** Comptes de démonstration et leurs habilitations (en production : fournisseur d'identité OIDC). */
 export const profils = core.table("profils", {
   id: text("id").primaryKey(),
@@ -275,6 +318,8 @@ export const demandes = workflow.table("demandes", {
   objet: text("objet").notNull(),
   demandeurId: text("demandeur_id").notNull(),
   ressource: text("ressource"),
+  /** Charge utile propre au circuit (ex. AFFECTATION : enseignantId, versEtablissementId, fonction). Jamais nominative. */
+  donnees: jsonb("donnees").$type<Record<string, unknown> | null>(),
   etapeCourante: text("etape_courante").notNull(),
   statut: text("statut", { enum: ["ouverte", "en_cours", "acceptee", "refusee", "close"] }).notNull(),
   creeeLe: timestamp("creee_le", { withTimezone: true }).notNull().defaultNow(),

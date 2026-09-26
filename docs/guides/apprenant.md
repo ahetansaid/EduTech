@@ -62,6 +62,7 @@
 
 - Identifiant, classe, établissement.
 - Moyenne, évaluations, absences, diplômes.
+- « Bulletin » : relevé de notes du trimestre, à imprimer ou enregistrer en PDF.
 - Points forts et frise de votre parcours.
 
 ### Mes diplômes

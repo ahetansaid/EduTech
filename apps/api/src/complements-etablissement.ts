@@ -28,7 +28,7 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
   const parMatiere = new Map<string, number[]>();
   for (const n of notesApprenant(d.evenements, apprenantId)) if (n.trimestre === TRIMESTRE_COURANT) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
 
-  const classeIds = [...new Set(d.evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])))];
+  const classeIds = [...new Set(d.evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])).filter((x): x is string => !!x))];
   const classes = classeIds.length ? await base().select({ id: schema.classes.id, libelle: schema.classes.libelle }).from(schema.classes).where(inArray(schema.classes.id, classeIds)) : [];
 
   const chefIci = !!d.situation.etablissementId && profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === d.situation.etablissementId);
@@ -43,6 +43,7 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
       classeId: d.situation.classe?.id ?? null,
       classe: d.situation.classe?.libelle ?? null,
       niveau: d.situation.classe?.niveau ?? null,
+      anneeScolaire: d.situation.classe?.anneeScolaire ?? null,
     },
     trimestre: TRIMESTRE_COURANT,
     moyennes: [...parMatiere].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, x) => s + x, 0) / notes.length, nombre: notes.length })).sort((x, y) => comparerFr(x.matiere, y.matiere)),

@@ -2,7 +2,7 @@
 
 import type { Evenement } from "@beile/contracts";
 import { communeById } from "@beile/simulation/territoire";
-import { ArrowLeft, ArrowRightLeft, Award, BookOpenCheck, CalendarX2, Check, History, School, ShieldAlert, UserMinus, UserRoundX } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Award, BookOpenCheck, CalendarX2, Check, History, Printer, School, ShieldAlert, UserMinus, UserRoundX } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
@@ -11,7 +11,9 @@ import { DecisionAccesCarte } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
 import { CartePreuve } from "@/components/ui/Preuve";
 import { Badge, Button, Card, CardHeader, EtatVide, Squelette } from "@/components/ui/primitives";
+import { Bulletin } from "@/components/bulletin/Bulletin";
 import { decisionDuRefus, jourCourant, useAbandonMutation, useClassesAccueil, useDossier, useTransfertMutation, type DossierGestion } from "@/lib/api/etablissement";
+import { bulletinDepuisGestion } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
@@ -75,6 +77,7 @@ function DossierCharge({ d }: { d: DossierGestion }) {
   const s = d.situation;
   const [action, setAction] = useState<"transfert" | "abandon" | null>(null);
   const [decisionVisible, setDecisionVisible] = useState(false);
+  const [bulletinOuvert, setBulletinOuvert] = useState(false);
   const moyenneGenerale = d.moyennes.length ? d.moyennes.reduce((x, m) => x + m.moyenne, 0) / d.moyennes.length : null;
   const titulaire = `${a.prenoms} ${a.nom}`;
 
@@ -115,7 +118,8 @@ function DossierCharge({ d }: { d: DossierGestion }) {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Card className="min-w-0">
-            <CardHeader icon={BookOpenCheck} title={`Moyennes du trimestre ${d.trimestre}`} subtitle="Notes effectives : une correction remplace la note d'origine sans l'effacer du registre" />
+            <CardHeader icon={BookOpenCheck} title={`Moyennes du trimestre ${d.trimestre}`} subtitle="Notes effectives : une correction remplace la note d'origine sans l'effacer du registre"
+              action={d.moyennes.length ? <Button taille="sm" variante="secondaire" icone={Printer} onClick={() => setBulletinOuvert(true)}>Bulletin</Button> : undefined} />
             {d.moyennes.length === 0 ? (
               <EtatVide icone={BookOpenCheck} titre="Aucune note ce trimestre" texte="Les évaluations saisies par les enseignants apparaîtront ici." />
             ) : (
@@ -191,6 +195,7 @@ function DossierCharge({ d }: { d: DossierGestion }) {
 
       {d.actions.transfert && <DialogueTransfert d={d} ouvert={action === "transfert"} onFermer={() => setAction(null)} />}
       {d.actions.abandon && <DialogueAbandon d={d} ouvert={action === "abandon"} onFermer={() => setAction(null)} />}
+      {bulletinOuvert && <Bulletin view={bulletinDepuisGestion(d)} onFermer={() => setBulletinOuvert(false)} />}
     </div>
   );
 }

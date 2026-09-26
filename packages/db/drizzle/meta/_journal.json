@@ -43,6 +43,20 @@
       "when": 1790361641237,
       "tag": "0005_calendrier",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790431634815,
+      "tag": "0006_examens_nationaux",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790434250979,
+      "tag": "0007_affectation_donnees",
+      "breakpoints": true
     }
   ]
 }

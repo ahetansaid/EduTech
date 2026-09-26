@@ -1,6 +1,6 @@
 "use client";
 
-import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification, SourceDonnee } from "@beile/contracts";
+import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification } from "@beile/contracts";
 import { MATIERES } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire, requete } from "@/lib/http";
@@ -14,13 +14,8 @@ import { ecrire, lire, requete } from "@/lib/http";
 
 /* ================================================================== Types de réponse */
 
-/** Fait ajouté par un responsable légal (POST /famille/absences/justification) : référence les absences d'origine. */
-export interface JustificationAbsence {
-  type: "JUSTIFICATION_ABSENCE";
-  id: string; survenuLe: string; enregistreLe: string; auteurId: string; source: SourceDonnee; etablissementId: string | null;
-  apprenantId: string; absenceIds: string[]; dates: string[]; classeId: string | null; motif: string;
-}
-export type EvenementDossier = Evenement | JustificationAbsence;
+/** Les faits du dossier — dont le justificatif d'absence et la décision de l'établissement — sont typés par le contrat partagé. */
+export type EvenementDossier = Evenement;
 
 export interface Dossier {
   apprenant: Apprenant;
@@ -160,24 +155,39 @@ export function syntheseScolaire(d: Dossier) {
 
 export interface JourAbsence {
   date: string; ids: string[]; classeId: string;
-  statut: "justifiee" | "transmise" | "a_justifier";
-  motif: string | null; transmiseLe: string | null;
+  statut: "justifiee" | "transmise" | "refusee" | "a_justifier";
+  motif: string | null; transmiseLe: string | null; decisionMotif: string | null;
 }
 
-/** Absences regroupées par jour, avec leur état : justifiée par l'établissement, justificatif transmis par la famille, ou à justifier. */
+/**
+ * Absences regroupées par jour, avec leur état : justifiée (par l'établissement ou après validation d'un
+ * justificatif), justificatif transmis en attente, justificatif refusé, ou à justifier.
+ * Le registre est en ajout seul : une DECISION_JUSTIFICATION référence le justificatif d'origine.
+ */
 export function absencesParJour(evts: EvenementDossier[]): JourAbsence[] {
-  const justifs = new Map<string, JustificationAbsence>();
-  for (const e of evts) if (e.type === "JUSTIFICATION_ABSENCE") for (const id of e.absenceIds ?? []) justifs.set(id, e);
+  const justifs = new Map<string, Extract<Evenement, { type: "JUSTIFICATION_ABSENCE" }>>();
+  for (const e of evts) if (e.type === "JUSTIFICATION_ABSENCE") for (const id of e.absenceIds) justifs.set(id, e);
+  const decisions = new Map<string, Extract<Evenement, { type: "DECISION_JUSTIFICATION" }>>();
+  for (const e of evts) {
+    if (e.type !== "DECISION_JUSTIFICATION") continue;
+    const avant = decisions.get(e.justificationId);
+    if (!avant || avant.survenuLe <= e.survenuLe) decisions.set(e.justificationId, e);
+  }
   const jours = new Map<string, JourAbsence>();
   for (const e of evts) {
     if (e.type !== "ABSENCE") continue;
-    const j = jours.get(e.date) ?? { date: e.date, ids: [], classeId: e.classeId, statut: "justifiee" as const, motif: null, transmiseLe: null };
+    const j = jours.get(e.date) ?? { date: e.date, ids: [], classeId: e.classeId, statut: "justifiee" as const, motif: null, transmiseLe: null, decisionMotif: null };
     j.ids.push(e.id);
     const justif = justifs.get(e.id);
-    const statut: JourAbsence["statut"] = e.justifiee ? "justifiee" : justif ? "transmise" : "a_justifier";
-    const rang = { a_justifier: 0, transmise: 1, justifiee: 2 } as const;
+    const dec = justif ? decisions.get(justif.id) : undefined;
+    const statut: JourAbsence["statut"] = e.justifiee || dec?.decision === "validee" ? "justifiee"
+      : dec?.decision === "refusee" ? "refusee"
+      : justif ? "transmise"
+      : "a_justifier";
+    const rang = { a_justifier: 0, refusee: 1, transmise: 2, justifiee: 3 } as const;
     if (j.ids.length === 1 || rang[statut] < rang[j.statut]) j.statut = statut;
     if (justif) { j.motif = justif.motif; j.transmiseLe = justif.survenuLe; }
+    if (dec?.motif) j.decisionMotif = dec.motif;
     jours.set(e.date, j);
   }
   return [...jours.values()].sort((a, b) => b.date.localeCompare(a.date));

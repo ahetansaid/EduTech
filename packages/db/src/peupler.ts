@@ -104,6 +104,41 @@ try {
       { code: "etablissement.capacite", definition: "Nombre de places d'accueil déclarées", proprietaire: "MEMP / MESTFP", gestionnaire: "Direction de la programmation", sourceReference: "Référentiel des établissements BEILE", regleQualite: "Capacité > 0 ; cohérente avec le nombre de salles (≤ 70 places par salle)", politiqueAcces: "Public (agrégé)", sensibilite: 1, conservation: "Historisée", finalite: "Carte scolaire, planification", frequence: "Annuelle et à chaque travaux", version: "1.0" },
       { code: "evaluation.note", definition: "Note obtenue à une évaluation", proprietaire: "Établissement", gestionnaire: "Enseignant de la matière", sourceReference: "Registre des événements BEILE", regleQualite: "0 ≤ note ≤ 20, au quart de point ; corrections tracées", politiqueAcces: "Relation pédagogique ou filiation", sensibilite: 3, conservation: "Durée de la scolarité + 5 ans", finalite: "Suivi pédagogique, bulletins, statistiques agrégées", frequence: "Continue", version: "1.0" },
     ]);
+
+    /* ------------------------------------------------------------------ Examens nationaux (e-résultat)
+       Sessions publiées, centres et candidatures dérivés des diplômes déjà délivrés : la recherche
+       publique par numéro de table répond ainsi en cohérence avec le registre des certificats. */
+    const communesExam = [...new Set(monde.etablissements.map((e) => e.communeId))].filter(Boolean);
+    const centres = (communesExam.length ? communesExam : COMMUNES_GEO.features.slice(0, 4).map((f) => f.properties.id)).slice(0, 6)
+      .map((communeId, i) => ({ id: `CEN-EXAM-${i + 1}`, nom: `Centre d'examen ${i + 1}`, communeId, capacite: 300 }));
+    await tx.insert(t.examensCentres).values(centres);
+
+    const sessId = (examen: string, session: string) => `SES-EXAM-${examen}-${session.replace(/\s+/g, "-")}`;
+    const anneeDe = (session: string) => session.match(/\d{4}/)?.[0] ?? "";
+    // Une session « publiee » par (examen, session) rencontré parmi les diplômes.
+    const groupes = [...new Map(monde.certificats.map((c) => [`${c.examen}|${c.session}`, c])).values()];
+    const sessions = groupes.map((c) => ({ id: sessId(c.examen, c.session), examen: c.examen, session: c.session, statut: "publiee" as const, publieeLe: `${anneeDe(c.session)}-07-20`, arretCandidatures: null }));
+    await tx.insert(t.examensSessions).values(sessions);
+
+    const rangs = new Map<string, number>();
+    const tableDe = (sid: string, annee: string) => { const n = (rangs.get(sid) ?? 0) + 1; rangs.set(sid, n); return `${annee}${String(n).padStart(6, "0")}`; };
+    // Chaque admis reçoit un numéro de table ; les verdicts reprennent ceux du diplôme.
+    const candidatures: (typeof t.examensCandidatures.$inferInsert)[] = monde.certificats.map((c, i) => {
+      const sid = sessId(c.examen, c.session);
+      return { id: `CAN-${c.id}`, sessionId: sid, apprenantId: c.apprenantId, centreId: centres[i % centres.length]!.id, numeroTable: tableDe(sid, anneeDe(c.session)), decision: "admis" as const, moyenne: c.moyenne, mention: c.mention };
+    });
+    // Quelques ajournés (admis jamais diplômés) dans la session la plus récente, pour rendre le verdict « non admis » testable.
+    const diplomes = new Set(monde.certificats.map((c) => c.apprenantId));
+    const sansDiplome = monde.apprenants.filter((a) => !diplomes.has(a.id));
+    const recente = [...sessions].sort((a, b) => b.session.localeCompare(a.session))[0];
+    if (recente && sansDiplome.length) {
+      const annee = anneeDe(recente.session);
+      for (const a of sansDiplome.slice(0, Math.min(sansDiplome.length, 25))) {
+        const i = candidatures.length;
+        candidatures.push({ id: `CAN-AJ-${a.id}`, sessionId: recente.id, apprenantId: a.id, centreId: centres[i % centres.length]!.id, numeroTable: tableDe(recente.id, annee), decision: "non_admis" as const, moyenne: Number((6 + (i % 4) * 0.9 + 0.25).toFixed(2)), mention: null });
+      }
+    }
+    await parLots(candidatures, 500, (lot) => tx.insert(t.examensCandidatures).values(lot));
   });
 
   console.log(`Peuplement terminé en ${((Date.now() - debut) / 1000).toFixed(1)} s.`);

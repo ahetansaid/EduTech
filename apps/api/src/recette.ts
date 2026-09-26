@@ -74,7 +74,12 @@ verifier("Directrice → autre établissement", (await directrice!.appel("GET", 
 verifier("Inspecteur de la circonscription → tableau (contrôle)", (await inspecteur!.appel("GET", `/etablissements/${PILOTE}/tableau`)).statut, 200);
 verifier("Inspecteur → délibération (écriture interdite)", (await inspecteur!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 403);
 verifier("Enseignant → délibération", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 403);
-verifier("Directrice → examens", (await directrice!.appel("GET", `/etablissements/${PILOTE}/examens`)).statut, 200);
+const examensBepc = await directrice!.appel("GET", `/etablissements/${PILOTE}/examens`);
+verifier("Directrice → examens", examensBepc.statut, 200);
+verifier("Examen par défaut : BEPC", (examensBepc.json as { examen?: string }).examen === "BEPC", true);
+const examensCep = await directrice!.appel("GET", `/etablissements/${PILOTE}/examens?examen=CEP`);
+verifier("Examen paramétrable : CEP → niveau CM2", (examensCep.json as { niveau?: string }).niveau === "CM2", true, `${liste((examensCep.json as { candidats?: unknown }).candidats).length} candidat(s)`);
+verifier("Examen inconnu → 422 (jamais un 500)", (await directrice!.appel("GET", `/etablissements/${PILOTE}/examens?examen=BREVET`)).statut, 422);
 verifier("Transfert par un enseignant", (await enseignant!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: "CLS-COT-5eA-S" })).statut, 403);
 verifier("Directrice → registre national", (await directrice!.appel("GET", "/registre/personnes?nom=WOROU&prenoms=Sidonie")).statut, 200);
 verifier("Enseignant → registre national", (await enseignant!.appel("GET", "/registre/personnes?nom=WOROU")).statut, 403);
@@ -132,6 +137,32 @@ verifier("Calendrier public : année en cours et échéances", cal.statut === 20
 verifier("Calendrier : enseignant → ajout d'une échéance", (await enseignant!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai", categorie: "autre", debut: "2026-10-01", fin: "2026-10-01", statut: "provisoire" })).statut, 403);
 verifier("Calendrier : fin avant le début", (await admin!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai incohérent", categorie: "conges", debut: "2026-12-20", fin: "2026-12-10", statut: "provisoire" })).statut, 422);
 verifier("Calendrier : date hors de l'année scolaire", (await admin!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai hors année", categorie: "conges", debut: "2029-01-10", fin: "2029-01-12", statut: "provisoire" })).statut, 422);
+
+titre("Examens nationaux — e-résultat");
+// Recherche publique (sans compte) : le verdict d'une session publiée, et rien avant publication.
+const resAdmis = await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001");
+verifier("Public : session publiée → verdict", resAdmis.statut, 200, String(resAdmis.json.statut ?? ""));
+verifier("Public : numéro de table d'un lauréat → « admis »", (resAdmis.json as { statut?: string }).statut === "admis", true);
+verifier("Public : session inconnue → « introuvable » (jamais un 500)", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Janvier%201900&table=1900000001")).statut, 200);
+verifier("Public : table absente d'une session publiée → « introuvable »", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024099999")).statut, 200);
+verifier("Paramètre d'examen invalide → 422", (await anonyme.appel("GET", "/public/resultats?examen=BREVET&session=Juin%202024&table=1")).statut, 422);
+verifier("Requête incomplète (sans numéro de table) → 422", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024")).statut, 422);
+// Bureau des examens : réservé à l'administration centrale ; toute écriture hors session est refusée.
+verifier("Administration centrale → sessions d'examen", (await central!.appel("GET", "/examens/sessions")).statut, 200);
+verifier("Sans session → bureau des examens", (await anonyme.appel("GET", "/examens/sessions")).statut, 401);
+verifier("Enseignant → ouverture d'une session (écriture interdite)", (await enseignant!.appel("POST", "/examens/sessions", { examen: "CEP", session: "Test Recette" })).statut, 403);
+verifier("Inspecteur → constitution du candidaturé (hors bureau)", (await inspecteur!.appel("POST", "/examens/sessions/SES-INEXISTANT/candidatures", { etablissementId: PILOTE, centreId: "CEN-INEXISTANT" })).statut, 403);
+
+titre("Cycle annuel, classes et autorité de certification (refus : aucune écriture)");
+// Révocation d'un diplôme : autorité de certification (administration centrale) seule ; refus journalisé sinon.
+verifier("Sans session → révocation d'un diplôme", (await anonyme.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Tentative anonyme" })).statut, 401);
+verifier("Enseignant → révocation d'un diplôme", (await enseignant!.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Tentative enseignant" })).statut, 403);
+// Édition de classe et conseil de passage : chef de l'établissement concerné uniquement.
+verifier("Enseignant → édition d'une classe d'autrui", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S`, { capacite: 40, enseignantPrincipalId: null })).statut, 403);
+verifier("Enseignant → conseil de passage d'une classe d'autrui", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] })).statut, 403);
+// Affectation d'un enseignant : initiative réservée à la direction départementale ; refus avant toute écriture.
+verifier("Sans session → demande d'affectation", (await anonyme.appel("POST", "/enseignants/ENS-00001/affectation", { versEtablissementId: PILOTE })).statut, 401);
+verifier("Enseignant → demande d'affectation (rôle insuffisant)", (await enseignant!.appel("POST", "/enseignants/ENS-00001/affectation", { versEtablissementId: PILOTE })).statut, 403);
 
 titre("Administration des utilisateurs et assistance (refus : aucune écriture)");
 const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
@@ -213,6 +244,19 @@ if (ECRITURES) {
   verifier("Administrateur : passage en « officiel »", (await admin!.appel("POST", `/admin/calendrier/${idCal}`, { ...echeance, statut: "officiel" })).statut, 200);
   verifier("Public : statut officiel visible", liste((await anonyme.appel("GET", "/public/calendrier?annee=2026-2027")).json.evenements).find((e) => e.id === idCal)?.statut === "officiel", true);
   verifier("Administrateur : suppression", (await admin!.appel("POST", `/admin/calendrier/${idCal}/supprimer`)).statut, 200);
+
+  titre("Cycle annuel et certification (écritures)");
+  // Édition de classe par le chef : capacité relevée puis visible au tableau de bord.
+  const edition = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S`, { capacite: 47, enseignantPrincipalId: null });
+  verifier("Directrice : édition de la capacité d'une classe", edition.statut, 200, `capacité ${edition.json.capacite}`);
+  // Conseil de passage : l'admis est réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
+  const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] });
+  verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
+  // Révocation d'un diplôme par l'autorité de certification, puis vérification publique qui rend « révoqué ».
+  const revo = await central!.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Fraude établie par l'ONEC (recette)" });
+  verifier("Administration centrale : révocation d'un diplôme", [200, 409].includes(revo.statut), true, `statut ${revo.statut}`);
+  const apresRevocation = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification");
+  verifier("Public : diplôme révoqué → statut « revoque »", (apresRevocation.json as { statut?: string }).statut === "revoque", true);
 }
 
 titre("Fin de session");

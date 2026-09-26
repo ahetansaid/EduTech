@@ -313,7 +313,48 @@ export function SectionInscription() {
   );
 }
 
-/* ------------------------------------------------------------------ 4. L'éducation en chiffres */
+/* ------------------------------------------------------------------ 4. Résultats d'examens (e-résultat) */
+
+const ANNEE_COURANTE = new Date().getUTCFullYear();
+const SESSION_DEFAUT = `Juin ${ANNEE_COURANTE}`;
+const EXAMENS_CHIPS: { examen: string; libelle: string }[] = [
+  { examen: "CEP", libelle: "CEP" },
+  { examen: "BEPC", libelle: "BEPC" },
+  { examen: "BAC", libelle: "Bac" },
+];
+
+/** Entrée directe vers le service e-résultat : le candidat saisit son numéro de table, le verdict répond. */
+export function SectionResultats() {
+  const router = useRouter();
+  const [table, setTable] = useState("");
+  return (
+    <Section id="resultats" inverse fond surtitre="Examens nationaux" titre="Consulter les résultats"
+      texte="CEP, BEPC, Baccalauréat : saisissez votre numéro de table pour connaître le verdict officiel de la session, dès sa publication."
+      lien={{ href: "/resultats", libelle: "Ouvrir le service des résultats" }}
+      apercu={
+        <Carte>
+          <form onSubmit={(e) => { e.preventDefault(); const t = table.trim(); if (t) router.push(`/resultats?examen=BEPC&session=${encodeURIComponent(SESSION_DEFAUT)}&table=${encodeURIComponent(t)}`); }} className="flex gap-2">
+            <label className="relative flex-1">
+              <span className="sr-only">Numéro de table</span>
+              <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" aria-hidden />
+              <input value={table} onChange={(e) => setTable(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} placeholder="Numéro de table" inputMode="numeric"
+                className="h-12 w-full rounded-xl border border-line bg-bg pl-11 pr-3 font-mono text-[15px] text-ink outline-none transition focus:border-blue focus:ring-4 focus:ring-blue/15" />
+            </label>
+            <button type="submit" disabled={!table.trim()} className="h-12 shrink-0 rounded-xl bg-navy px-5 text-[14px] font-semibold text-white transition hover:bg-navy-deep disabled:opacity-50">Consulter</button>
+          </form>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {EXAMENS_CHIPS.map((x) => (
+              <Link key={x.examen} href={`/resultats?examen=${x.examen}&session=${encodeURIComponent(SESSION_DEFAUT)}`} className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-ink-2 ring-1 ring-inset ring-line transition hover:bg-blue-soft hover:text-accent-ink">{x.libelle}</Link>
+            ))}
+          </div>
+          <p className="mt-4 flex items-start gap-2 rounded-2xl bg-bg px-3.5 py-3 text-[13px] text-ink-2"><CalendarClock size={16} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden /> Gratuit, sans compte. Ni le nom, ni l&apos;établissement n&apos;est nécessaire : seul le numéro de table ouvre le verdict, et seulement après la publication officielle.</p>
+        </Carte>
+      }
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ 5. L'éducation en chiffres */
 
 export function SectionChiffres() {
   const { data } = useChiffres();

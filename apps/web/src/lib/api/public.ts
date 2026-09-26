@@ -1,7 +1,8 @@
 "use client";
 
+import type { Examen, ResultatExamenPublic } from "@beile/contracts";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { lire } from "@/lib/http";
+import { lire, requete } from "@/lib/http";
 
 /** Services publics (sans compte) : annuaire des établissements et chiffres agrégés. */
 
@@ -69,5 +70,26 @@ export function useCalendrier(annee?: string) {
     queryFn: () => lire<CalendrierPublic>(`/public/calendrier${annee ? `?annee=${encodeURIComponent(annee)}` : ""}`),
     placeholderData: keepPreviousData,
     staleTime: 120_000,
+  });
+}
+
+/* ------------------------------------------------------------------ Résultats d'examens (recherche publique par numéro de table) */
+
+/**
+ * Consultation publique e-résultat : sans session ni compte. L'API ne renvoie un verdict que si la
+ * session est publiée ; la requête n'est émise qu'une fois les trois critères renseignés.
+ */
+export function useResultatExamen(examen: Examen, session: string, table: string) {
+  return useQuery({
+    queryKey: ["public", "resultats", examen, session, table],
+    queryFn: ({ signal }) => requete<ResultatExamenPublic>(
+      "GET",
+      `/public/resultats?examen=${encodeURIComponent(examen)}&session=${encodeURIComponent(session)}&table=${encodeURIComponent(table)}`,
+      undefined,
+      { silencieux401: true, signal },
+    ),
+    enabled: !!table.trim() && !!session.trim(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }

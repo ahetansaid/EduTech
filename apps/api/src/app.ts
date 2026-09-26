@@ -5,6 +5,7 @@ import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ec
 import { auth } from "./auth";
 import { perimetrePilotage, pilotage } from "./pilotage";
 import { etablissement } from "./etablissement";
+import { examens } from "./examens";
 import { enseignant } from "./enseignant";
 import { plateforme } from "./plateforme";
 import { complementsPilotage } from "./complements-pilotage";
@@ -226,6 +227,7 @@ app.get("/audit", authentifie, async (c) => {
 app.route("/", parcours);
 app.route("/", pilotage);
 app.route("/", etablissement);
+app.route("/", examens);
 app.route("/", enseignant);
 app.route("/", plateforme);
 app.route("/", complementsPilotage);

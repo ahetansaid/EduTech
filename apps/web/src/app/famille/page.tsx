@@ -2,7 +2,7 @@
 
 import {
   ArrowRightLeft, Award, Bell, BookOpenCheck, CalendarCheck, CalendarX2, Check, ChevronDown, ChevronRight, Fingerprint, GraduationCap,
-  History, Lock, NotebookPen, RefreshCw, School, Send, ShieldAlert, Sigma, TrendingUp, UserRound, X, type LucideIcon,
+  History, Lock, NotebookPen, Printer, RefreshCw, School, Send, ShieldAlert, Sigma, TrendingUp, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -11,18 +11,20 @@ import { useNotifications } from "@/components/shell/Cloche";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
+import { Bulletin } from "@/components/bulletin/Bulletin";
 import {
   absencesParJour, ageAu, initiales, jalonsParcours, libelleTrimestre, nomComplet, syntheseScolaire, useEnfants, useJustifierAbsenceMutation,
   type Dossier, type JourAbsence, type TypeJalon,
 } from "@/lib/api/parcours";
+import { bulletinDepuisDossier } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
 import { date, dateLongue, nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
 import { useProfil } from "@/lib/session";
 
 /* Statuts d'absence : mapping central (libellé + ton). */
-const TON_ABSENCE: Record<JourAbsence["statut"], Ton> = { a_justifier: "avertissement", transmise: "info", justifiee: "succes" };
-const LIBELLE_ABSENCE: Record<JourAbsence["statut"], string> = { a_justifier: "À justifier", transmise: "Justificatif transmis", justifiee: "Justifiée" };
+const TON_ABSENCE: Record<JourAbsence["statut"], Ton> = { a_justifier: "avertissement", transmise: "info", refusee: "critique", justifiee: "succes" };
+const LIBELLE_ABSENCE: Record<JourAbsence["statut"], string> = { a_justifier: "À justifier", transmise: "Justificatif transmis", refusee: "Justificatif refusé", justifiee: "Justifiée" };
 
 export default function EspaceFamille() {
   const profil = useProfil();
@@ -85,6 +87,9 @@ function FicheEnfant({ d }: { d: Dossier }) {
   const aJustifier = absences.filter((a) => a.statut === "a_justifier").length;
   const a = d.apprenant;
   const etab = d.situation.etablissementId ? d.etablissements[d.situation.etablissementId] : null;
+  const [bulletinOuvert, setBulletinOuvert] = useState(false);
+  const [trimestre, setTrimestre] = useState<number | null>(null);
+  const tBulletin = trimestre ?? s.courant;
 
   return (
     <div className="space-y-5">
@@ -128,9 +133,19 @@ function FicheEnfant({ d }: { d: Dossier }) {
 
       {/* L'espace famille est en colonne étroite (téléphone d'abord) : une seule colonne, ordre de priorité. */}
       <Absences d={d} jours={absences} />
-      <Resultats s={s} />
+      <Resultats s={s} onBulletin={s.courant != null ? () => setBulletinOuvert(true) : undefined} />
       <DernieresNotes s={s} />
       <Parcours d={d} />
+
+      {bulletinOuvert && tBulletin != null && (
+        <Bulletin
+          view={bulletinDepuisDossier(d, tBulletin)}
+          trimestres={s.trimestres}
+          trimestre={tBulletin}
+          onTrimestre={setTrimestre}
+          onFermer={() => setBulletinOuvert(false)}
+        />
+      )}
     </div>
   );
 }
@@ -146,13 +161,14 @@ function BadgePoint({ ton, icone, children }: { ton: Ton; icone?: LucideIcon; ch
 
 /* ------------------------------------------------------------------ Résultats par matière */
 
-function Resultats({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
+function Resultats({ s, onBulletin }: { s: ReturnType<typeof syntheseScolaire>; onBulletin?: () => void }) {
   if (!s.courant) {
     return <Card className="min-w-0"><CardHeader icon={TrendingUp} title="Résultats par matière" /><EtatVide icone={NotebookPen} titre="Aucune note cette année" texte="Les moyennes apparaîtront dès la première évaluation saisie par un enseignant." /></Card>;
   }
   return (
     <Card data-guide="famille-resultats" className="min-w-0">
-      <CardHeader icon={TrendingUp} title="Résultats par matière" subtitle={`${libelleTrimestre(s.courant)} ${s.annee ?? ""}${s.precedent ? ` · repère : ${libelleTrimestre(s.precedent)}` : ""}`} />
+      <CardHeader icon={TrendingUp} title="Résultats par matière" subtitle={`${libelleTrimestre(s.courant)} ${s.annee ?? ""}${s.precedent ? ` · repère : ${libelleTrimestre(s.precedent)}` : ""}`}
+        action={onBulletin ? <Button taille="sm" variante="secondaire" icone={Printer} onClick={onBulletin}>Bulletin</Button> : undefined} />
       <ul className="space-y-3.5">
         {s.matieres.map((m, i) => {
           const avant = s.matieresAvant.get(m.matiere);
@@ -239,10 +255,10 @@ function Absences({ d, jours }: { d: Dossier; jours: JourAbsence[] }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-ink first-letter:uppercase">{dateLongue(j.date)}</p>
-                  <p className="mt-0.5 truncate text-xs text-ink-muted">{j.statut === "transmise" && j.motif ? `Motif : ${j.motif}` : j.ids.length > 1 ? `${j.ids.length} appels · non justifiée` : j.statut === "justifiee" ? "Justifiée par l'établissement" : "Non justifiée"}</p>
+                  <p className="mt-0.5 truncate text-xs text-ink-muted">{j.statut === "refusee" && j.decisionMotif ? `Refusé : ${j.decisionMotif}` : j.statut === "transmise" && j.motif ? `Motif : ${j.motif}` : j.ids.length > 1 ? `${j.ids.length} appels · non justifiée` : j.statut === "justifiee" ? "Justifiée par l'établissement" : "Non justifiée"}</p>
                   <div className="mt-1.5"><BadgePoint ton={TON_ABSENCE[j.statut]}>{LIBELLE_ABSENCE[j.statut]}</BadgePoint></div>
                 </div>
-                {j.statut === "a_justifier" && <Button taille="sm" variante="secondaire" className="h-10 shrink-0" onClick={() => setCible(j)}>Justifier</Button>}
+                {(j.statut === "a_justifier" || j.statut === "refusee") && <Button taille="sm" variante="secondaire" className="h-10 shrink-0" onClick={() => setCible(j)}>{j.statut === "refusee" ? "Rejustifier" : "Justifier"}</Button>}
               </motion.li>
             ))}
           </AnimatePresence>

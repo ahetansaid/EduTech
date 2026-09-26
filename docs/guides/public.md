@@ -1,10 +1,10 @@
 # Guide Public
 
-**Pour qui :** Employeurs, écoles, administrations, toute personne qui reçoit un diplôme.  
-**Votre espace :** Vérifier un diplôme — vous y arrivez directement après la connexion (`/verifier`).  
+**Pour qui :** Employeurs, écoles, administrations, candidats et familles : toute personne sans compte.  
+**Votre espace :** Démarches publiques — vous y arrivez directement après la connexion (`/verifier`).  
 **Accès :** https://edu-tech-api-rho.vercel.app/verifier · centre d'aide en ligne : https://edu-tech-api-rho.vercel.app/aide/public
 
-> Savoir en quelques secondes si un diplôme présenté est authentique, altéré, révoqué ou introuvable. Gratuit, sans compte, sans conserver de donnée sur votre appareil.
+> Deux services publics gratuits, sans compte et sans conserver de donnée : vérifier l'authenticité d'un diplôme, et consulter le verdict officiel d'un examen national à partir du numéro de table.
 
 ## Sommaire
 
@@ -63,6 +63,14 @@
 - « Scanner le QR code » (caméra) ou saisie de l'identifiant (ex. CERT-CEP-2024-000001).
 - Verdict : Diplôme authentique, Document altéré, Diplôme révoqué ou Diplôme introuvable.
 
+### Résultats d'examens
+
+`/resultats` — Saisir son numéro de table pour connaître le verdict d'une session.
+
+- Choisissez l'examen (CEP, BEPC, BAC), la session (ex. Juin 2024), puis saisissez le numéro de table porté sur la convocation.
+- Verdict : Admis (avec moyenne et mention), Non admis, Résultats non publiés ou Numéro de table introuvable.
+- Rien ne s'affiche tant que la session n'est pas officiellement publiée par le bureau des examens.
+
 ## Tâches pas à pas
 
 ### Vérifier un diplôme
@@ -74,16 +82,31 @@
 3. Touchez « Vérifier ».
 4. Lisez le verdict. S'il est « Diplôme authentique », comparez les informations affichées au document présenté.
 
+### Consulter un résultat d'examen
+
+> Le bureau des examens publie les verdicts dès la fin de la délibération du jury.
+
+1. Ouvrez BEILE, puis « Résultats d'examens » (ou la section « Consulter les résultats » de l'accueil).
+2. Choisissez l'examen et la session.
+3. Saisissez le numéro de table de la convocation, puis « Consulter mon résultat ».
+4. Lisez le verdict. « Résultats non publiés » signifie que la session n'a pas encore été rendue publique.
+
 ## Questions fréquentes
 
 **Faut-il un compte ?**  
-Non. La vérification est publique, gratuite et immédiate.
+Non. La vérification d'un diplôme comme la consultation d'un résultat sont publiques, gratuites et immédiates.
 
 **Le verdict est « Document altéré ».**  
 Le diplôme existe, mais le document a été modifié (nom, mention, note ou session). Ne l'acceptez pas ; demandez l'original ou le lien de vérification au titulaire.
 
 **Le verdict est « Diplôme introuvable ».**  
 Vérifiez la saisie de l'identifiant. Si le document affirme le contraire, il est suspect.
+
+**« Résultats non publiés » alors que les épreuves sont finies.**  
+Le verdict n'apparaît qu'après la publication officielle de la session par le bureau des examens. Revenez après cette date.
+
+**Où trouver mon numéro de table ?**  
+Il est imprimé sur la carte de convocation. C'est la seule information nécessaire pour consulter un résultat.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.
@@ -99,8 +122,9 @@ Chaque indicateur suit la définition du dictionnaire national et porte un indic
 
 ## Bons réflexes
 
-- Vérifiez toujours avec le QR code du document, pas avec un lien reçu d'un tiers inconnu.
+- Vérifiez un diplôme avec le QR code du document, pas avec un lien reçu d'un tiers inconnu.
 - Comparez le nom, la mention et la session affichés à ceux du document.
+- Pour un résultat d'examen, ne communiquez votre numéro de table qu'au besoin : c'est lui qui ouvre le verdict.
 - **Votre identifiant est personnel.** Ne le prêtez jamais, même à un collègue ou à un supérieur. Tout ce qui est fait avec votre compte est inscrit à votre nom.
 - **Un mot de passe solide et secret.** 12 caractères au moins, avec majuscule, minuscule et chiffre. Ne l'écrivez pas sur un papier visible, ne le dites à personne.
 - **Personne ne vous demandera votre mot de passe.** Ni l'administrateur, ni l'assistance, ni le ministère. Un message qui le demande est une tentative de fraude : signalez-le.
