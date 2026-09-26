@@ -56,6 +56,14 @@
 
 ## Vos écrans
 
+### Poste de pilotage
+
+`/aujourd-hui` — Vos tâches du jour, triées par urgence réelle.
+
+- Rassemble ce qui attend votre main : classes surchargées, justificatifs à statuer, élèves en baisse, identités à régulariser, absents du jour, demandes en circuit.
+- Trois niveaux : « À traiter aujourd'hui » (échéance atteinte ou bloquante), « Cette semaine », « À surveiller ».
+- Chaque ligne renvoie vers l'écran où agir ; rien n'est affiché d'un périmètre qui ne vous appartient.
+
 ### Tableau de bord
 
 `/etablissement` — Votre établissement d'un coup d'œil.
@@ -93,6 +101,16 @@
 - Délibération définitive ; chaque admis reçoit un diplôme au QR code vérifiable par un tiers.
 
 ## Tâches pas à pas
+
+### Ouvrir sa journée au poste de pilotage
+
+> Le poste ne crée aucune donnée : il rassemble, en urgence réelle, ce que vos écrans signalent déjà.
+
+1. Dans le menu, sous « Aujourd'hui », touchez « Poste de pilotage ».
+2. Traitez d'abord « À traiter aujourd'hui » : classes surchargées et demandes dont l'échéance est atteinte ou dépassée.
+3. Passez à « Cette semaine » : justificatifs à statuer, élèves en baisse à accompagner.
+4. Gardez « À surveiller » pour le fil de l'eau : absents du jour, identités en régularisation, formation obligatoire.
+5. Touchez une ligne pour ouvrir directement l'écran où agir.
 
 ### Inscrire un nouvel apprenant
 

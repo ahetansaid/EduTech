@@ -56,6 +56,14 @@
 
 ## Vos écrans
 
+### Poste de pilotage
+
+`/aujourd-hui` — Vos décisions du jour, triées par échéance.
+
+- Rassemble les demandes dont l'étape courante relève de votre rôle et de votre département.
+- Classées par urgence : échéance atteinte ou dépassée en tête, puis cette semaine, puis à surveiller.
+- Chaque ligne ouvre « Demandes à traiter » sur la demande concernée.
+
 ### Console territoriale
 
 `/territoire` — Votre département en un écran.
@@ -84,6 +92,12 @@
 - Qualité des données : complétude par commune, suivi des relances.
 
 ## Tâches pas à pas
+
+### Prioriser ses décisions du jour
+
+1. Touchez « Poste de pilotage » dans le menu, sous « Aujourd'hui ».
+2. Traitez les demandes « À traiter aujourd'hui » (échéance atteinte ou dépassée).
+3. Touchez une ligne : « Demandes à traiter » s'ouvre sur la demande, où vous rendez la décision motivée.
 
 ### Relancer les établissements qui n'ont pas transmis
 
