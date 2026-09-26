@@ -72,6 +72,7 @@
 - Carte à couches : priorités, occupation, absentéisme, abandon…
 - Flux des faits du jour, actualisé toutes les 15 secondes (faits anonymes).
 - Parité filles-garçons, classement territorial, abandon scolaire, zones à examiner.
+- « Fiabilité et dispersion des chiffres » : indice de confiance et couverture de chaque indicateur, et étendue territoriale du maths ≥ 15/20 (communes masquées exclues du calcul).
 
 ### Où agir ?
 
@@ -117,6 +118,15 @@
 1. Dans le cockpit, regardez la carte « Priorités » et la liste « Zones à examiner en priorité ».
 2. Touchez une commune : le panneau affiche son niveau et le « Pourquoi ? » (facteurs et valeurs).
 3. Touchez « Descendre jusqu'aux établissements » pour ouvrir « Où agir ? » sur cette commune.
+
+### Juger si un chiffre est citable
+
+> Une moyenne nationale se cite d'autant plus prudemment qu'un indicateur est peu complet ou très dispersé.
+
+1. Dépliez « Fiabilité et dispersion des chiffres » sous la carte.
+2. Lisez l'indice de confiance et la couverture de chaque indicateur ; le repère « le plus fragile » signale celui à ne pas citer seul.
+3. Consultez l'étendue territoriale du « Maths ≥ 15/20 » : médiane, écart-type, moitié interquartile.
+4. Notez que les communes masquées (effectif sous le seuil de confidentialité) sont exclues du calcul, pas seulement de l'affichage.
 
 ### Simuler une mesure
 

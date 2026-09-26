@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { BarresClassees, Courbes } from "@/components/charts/Graphiques";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, motion } from "@/components/motion";
 import { CarteBenin, COULEUR_ALERTE, LegendeSequentielle } from "@/components/map/CarteBenin";
+import { StatsNational } from "@/components/stats/National";
 import { BadgeConfiance, TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
@@ -204,6 +205,8 @@ function Tableau({ s }: { s: SynthesePilotage }) {
           {critiques.length > 7 && <Link href="/cockpit/carte" className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-blue hover:underline">Voir toutes les zones sur la carte <ArrowRight size={14} aria-hidden /></Link>}
         </Card>
       </div>
+
+      <StatsNational s={s} />
     </div>
   );
 }
