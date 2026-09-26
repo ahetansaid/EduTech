@@ -79,6 +79,7 @@
 - Six pistes : séries C, D, A1, A2 et deux filières techniques, pondérées sur vos moyennes de l'année.
 - Chaque piste affiche son indice /20, l'écart à la piste de tête et la part de vos matières qui jouent en sa faveur.
 - Un bandeau teste la sensibilité : il dit si la piste de tête tient quand on retire le barème officiel (matières pondérées à égalité).
+- En bas, « Et après le bac ? » prolonge ces pistes vers les filières du supérieur (Licence, Master, écoles nationales, BTS/CQP) que vos résultats et votre série envisagée rendent accessibles.
 - Rien n'est inventé : une matière non évaluée n'est pas remplacée, elle réduit la couverture affichée. Les pistes éclairent votre choix, elles ne le font pas.
 
 ## Tâches pas à pas
@@ -97,7 +98,8 @@
 2. Lisez d'abord le bandeau : il dit si la piste de tête est robuste ou si elle dépend du poids des matières.
 3. Comparez les pistes : indice /20, écart à la tête, et les matières (et leur coefficient) qui fondent chaque score.
 4. Repérez un badge « Quasi équivalente » : deux pistes à moins d'un demi-point se discutent autant l'une que l'autre.
-5. Parlez-en avec vos enseignants, votre famille et le conseiller d'orientation : les pistes évoluent avec vos résultats.
+5. Descendez jusqu'à « Et après le bac ? » pour voir les filières du supérieur cohérentes avec votre profil, avec un badge « Concours » quand l'entrée est sélective.
+6. Parlez-en avec vos enseignants, votre famille et le conseiller d'orientation : les pistes évoluent avec vos résultats.
 
 ## Questions fréquentes
 
