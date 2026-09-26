@@ -1,27 +1,35 @@
 "use client";
 
-import { ArrowDownAZ, ArrowRight, Download, Fingerprint, TrendingDown, UserPlus, Users } from "lucide-react";
+import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, Fingerprint, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { EntreePage, motion } from "@/components/motion";
-import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
+import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
 import { useEleves, type EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { exporterCsv, type Colonne } from "@/lib/export";
 import { date, entier, nombre, note } from "@/lib/format";
+import { evaluerRisque, LIBELLE_NIVEAU, type EvaluationRisque, type FacteurRisque, type NiveauRisque, type Sensibilite } from "@/lib/risque";
 import { useEtablissementCourant } from "@/lib/session";
 import { Avatar, ChampRecherche, classeSelect, EtatErreur, HorsPerimetre, LienBouton, normaliser, Statut } from "../_composants";
 
-type Filtre = "tous" | "baisse" | "identite";
-type Tri = "classe" | "nom" | "moyenne_desc" | "moyenne_asc" | "absences";
-const FILTRES: Filtre[] = ["tous", "baisse", "identite"];
+type Filtre = "tous" | "baisse" | "identite" | "risque";
+type Tri = "classe" | "nom" | "moyenne_desc" | "moyenne_asc" | "absences" | "risque_desc";
+const FILTRES: Filtre[] = ["tous", "baisse", "identite", "risque"];
 const TRIS: { valeur: Tri; libelle: string }[] = [
   { valeur: "classe", libelle: "Classe, puis nom" },
   { valeur: "nom", libelle: "Nom (A → Z)" },
   { valeur: "moyenne_desc", libelle: "Moyenne décroissante" },
   { valeur: "moyenne_asc", libelle: "Moyenne croissante" },
   { valeur: "absences", libelle: "Absences (les plus nombreuses)" },
+  { valeur: "risque_desc", libelle: "Risque de décrochage (le plus élevé)" },
+];
+const TON_NIVEAU: Record<NiveauRisque, Ton> = { nominal: "neutre", a_surveiller: "avertissement", urgent: "critique" };
+const SENSIBILITES: { valeur: Sensibilite; libelle: string }[] = [
+  { valeur: "basse", libelle: "Seuils bas" },
+  { valeur: "normale", libelle: "Normaux" },
+  { valeur: "elevee", libelle: "Sensibles" },
 ];
 const PAS = 60;
 const fr = new Intl.Collator("fr");
@@ -67,6 +75,8 @@ function Liste() {
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<Tri>("classe");
   const [limite, setLimite] = useState(PAS);
+  const [sens, setSens] = useState<Sensibilite>("normale");
+  const [vigilanceOuverte, setVigilanceOuverte] = useState(true);
 
   const choisirFiltre = (f: Filtre) => {
     const p = new URLSearchParams(params.toString());
@@ -76,16 +86,25 @@ function Liste() {
   };
 
   const donnees = eleves.data;
+  // Évaluation recalculée dès que la cohorte ou la sensibilité change ; indexée par identifiant.
+  const evals = useMemo(() => {
+    const m = new Map<string, EvaluationRisque>();
+    for (const e of donnees ?? []) m.set(e.id, evaluerRisque(e, sens));
+    return m;
+  }, [donnees, sens]);
+  const risque = (id: string) => evals.get(id)!;
+
   const compte = useMemo(() => ({
     baisse: donnees?.filter((e) => e.baisseMaths).length ?? 0,
     identite: donnees?.filter((e) => e.statutIdentite === "regularisation_en_cours").length ?? 0,
-  }), [donnees]);
+    risque: donnees?.filter((e) => evals.get(e.id)!.niveau !== "nominal").length ?? 0,
+  }), [donnees, evals]);
   const classes = useMemo(() => [...new Set((donnees ?? []).map((e) => e.classe))].sort(fr.compare), [donnees]);
 
   const liste = useMemo(() => {
     const n = normaliser(q);
     const l = (donnees ?? [])
-      .filter((e) => filtre === "tous" || (filtre === "baisse" ? !!e.baisseMaths : e.statutIdentite === "regularisation_en_cours"))
+      .filter((e) => filtre === "tous" || (filtre === "baisse" ? !!e.baisseMaths : filtre === "identite" ? e.statutIdentite === "regularisation_en_cours" : evals.get(e.id)!.niveau !== "nominal"))
       .filter((e) => classe === "toutes" || e.classe === classe)
       .filter((e) => !n || normaliser(`${e.nom} ${e.prenoms} ${e.prenoms} ${e.nom} ${e.id}`).includes(n));
     const moy = (e: EleveLigne) => e.moyenne ?? -1;
@@ -95,10 +114,11 @@ function Liste() {
         case "moyenne_desc": return moy(b) - moy(a);
         case "moyenne_asc": return (a.moyenne ?? 99) - (b.moyenne ?? 99);
         case "absences": return b.absences - a.absences || fr.compare(a.nom, b.nom);
+        case "risque_desc": return evals.get(b.id)!.score - evals.get(a.id)!.score || fr.compare(a.nom, b.nom);
         default: return fr.compare(a.classe, b.classe) || fr.compare(a.nom, b.nom) || fr.compare(a.prenoms, b.prenoms);
       }
     });
-  }, [donnees, filtre, classe, q, tri]);
+  }, [donnees, filtre, classe, q, tri, evals]);
 
   if (!id) return <HorsPerimetre />;
   const visibles = liste.slice(0, limite);
@@ -111,7 +131,7 @@ function Liste() {
         sousTitre={donnees ? `${entier(donnees.length)} apprenants scolarisés. Chaque dossier s'ouvre au titre de la gestion de l'établissement ; chaque ouverture est journalisée.` : "Apprenants scolarisés dans votre établissement."}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, COLONNES)} title={`Exporter les ${liste.length} lignes affichées au format CSV`}>Exporter</Button>
+            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, [...COLONNES, { entete: "Score de risque", valeur: (e: EleveLigne) => evals.get(e.id)!.score }, { entete: "Niveau de risque", valeur: (e: EleveLigne) => LIBELLE_NIVEAU[evals.get(e.id)!.niveau] }])} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque)`}>Exporter</Button>
             <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
           </div>
         }
@@ -120,10 +140,22 @@ function Liste() {
       <div data-guide="eleves-filtres" className="-mx-1 overflow-x-auto px-1 pb-1">
         <Segmente label="Filtre" valeur={filtre} onChange={choisirFiltre} options={[
           { valeur: "tous", libelle: donnees ? `Tous (${donnees.length})` : "Tous" },
+          { valeur: "risque", libelle: `À risque (${compte.risque})` },
           { valeur: "baisse", libelle: `En baisse (${compte.baisse})` },
           { valeur: "identite", libelle: `Identité à régulariser (${compte.identite})` },
         ]} />
       </div>
+
+      {donnees && donnees.length > 0 && (
+        <PanneauVigilance
+          eleves={donnees}
+          risque={risque}
+          sens={sens}
+          setSens={setSens}
+          ouvert={vigilanceOuverte}
+          onBasculer={() => setVigilanceOuverte((v) => !v)}
+        />
+      )}
 
       <Card data-guide="eleves-recherche" className="p-3">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
@@ -170,9 +202,10 @@ function Liste() {
                     </div>
                     <ArrowRight size={16} className="shrink-0 text-ink-muted" aria-hidden />
                   </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-[12.5px]">
+                  <dl className="mt-3 grid grid-cols-3 gap-2 text-[12.5px]">
                     <div className="rounded-md bg-surface-2/60 px-2.5 py-1.5"><dt className="text-ink-muted">Moyenne T2</dt><dd className={cn("font-semibold tabular", e.moyenne != null && e.moyenne < 10 ? "text-critical" : "text-ink")}>{nombre(e.moyenne, 2)}</dd></div>
                     <div className="rounded-md bg-surface-2/60 px-2.5 py-1.5"><dt className="text-ink-muted">Absences</dt><dd className="font-semibold tabular text-ink">{e.absences}</dd></div>
+                    <div className="rounded-md bg-surface-2/60 px-2.5 py-1.5"><dt className="text-ink-muted">Risque</dt><dd className="mt-0.5"><PuceRisque ev={risque(e.id)} compact /></dd></div>
                   </dl>
                   {(e.baisseMaths || e.statutIdentite === "regularisation_en_cours") && <Signalements e={e} className="mt-2.5" />}
                 </Link>
@@ -190,6 +223,7 @@ function Liste() {
                     <th className="px-5 py-2.5 font-semibold">Classe</th>
                     <th className="px-5 py-2.5 text-right font-semibold">Moyenne T2</th>
                     <th className="hidden px-5 py-2.5 text-right font-semibold lg:table-cell">Absences</th>
+                    <th className="px-5 py-2.5 font-semibold">Risque</th>
                     <th className="px-5 py-2.5 font-semibold">Signalement</th>
                     <th className="px-5 py-2.5"><span className="sr-only">Actions</span></th>
                   </tr>
@@ -210,6 +244,7 @@ function Liste() {
                       <td className="px-5 py-3 text-ink-2">{e.classe}</td>
                       <td className={cn("px-5 py-3 text-right font-medium", e.moyenne != null && e.moyenne < 10 ? "text-critical" : "text-ink")}>{nombre(e.moyenne, 2)}</td>
                       <td className="hidden px-5 py-3 text-right text-ink-2 lg:table-cell">{e.absences}</td>
+                      <td className="px-5 py-3"><PuceRisque ev={risque(e.id)} /></td>
                       <td className="px-5 py-3"><Signalements e={e} /></td>
                       <td className="px-5 py-3 text-right">
                         <LienBouton href={`/etablissement/eleves/${e.id}`} onClick={(ev) => ev.stopPropagation()} variante="fantome" taille="sm" className="group-hover:bg-surface group-hover:text-blue">Dossier <ArrowRight size={13} aria-hidden /></LienBouton>
@@ -238,6 +273,109 @@ function Signalements({ e, className }: { e: EleveLigne; className?: string }) {
     <div className={cn("flex flex-wrap gap-1.5", className)}>
       {e.baisseMaths && <Badge ton="avertissement" icone={TrendingDown}>Maths {e.baisseMaths.map((n) => nombre(n, 1)).join(" → ")}</Badge>}
       {e.statutIdentite === "regularisation_en_cours" && <Statut ton="info"><Fingerprint size={12} aria-hidden /> Régularisation</Statut>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Pastille de risque */
+
+function PuceRisque({ ev, compact }: { ev: EvaluationRisque; compact?: boolean }) {
+  if (ev.niveau === "nominal") return <span className="text-xs text-ink-muted">{compact ? "—" : "Nominal"}</span>;
+  const raison = ev.facteurs.filter((f) => f.points > 0).map((f) => f.detail).join(" · ");
+  return (
+    <span title={`Score ${ev.score}/100 — ${raison}${ev.fiable ? "" : " · signal mince"}`}>
+      <Badge ton={TON_NIVEAU[ev.niveau]} icone={ShieldAlert}>{compact ? `${LIBELLE_NIVEAU[ev.niveau]} ${ev.score}` : `${LIBELLE_NIVEAU[ev.niveau]} · ${ev.score}`}</Badge>
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ Panneau de vigilance (décrochage) */
+
+function PanneauVigilance({ eleves, risque, sens, setSens, ouvert, onBasculer }: {
+  eleves: EleveLigne[];
+  risque: (id: string) => EvaluationRisque;
+  sens: Sensibilite;
+  setSens: (s: Sensibilite) => void;
+  ouvert: boolean;
+  onBasculer: () => void;
+}) {
+  const evalues = eleves.map((e) => ({ e, ev: risque(e.id) }));
+  const n = { urgent: 0, a_surveiller: 0, nominal: 0 };
+  for (const { ev } of evalues) n[ev.niveau]++;
+  const aSuivre = evalues.filter((x) => x.ev.niveau !== "nominal").sort((a, b) => b.ev.score - a.ev.score);
+
+  return (
+    <Card data-guide="eleves-vigilance" className="min-w-0 overflow-hidden p-0">
+      <button onClick={onBasculer} aria-expanded={ouvert} className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-critical-bg text-critical"><Activity size={16} aria-hidden /></span>
+          <span className="min-w-0">
+            <span className="block text-[15px] font-semibold text-ink">Vigilance décrochage</span>
+            <span className="block text-xs text-ink-muted">
+              {aSuivre.length === 0 ? "Aucun apprenant au-dessus du seuil" : `${n.urgent} urgent(s) · ${n.a_surveiller} à surveiller · score explicable, calculé ici`}
+            </span>
+          </span>
+        </span>
+        <ChevronDown size={18} className={cn("shrink-0 text-ink-muted transition-transform duration-200", ouvert && "rotate-180")} aria-hidden />
+      </button>
+
+      <div className={cn("border-t border-line/60", ouvert ? "block" : "hidden")}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <p className="max-w-xl text-[13px] text-ink-2">
+            Le score additionne trois signaux déjà connus de l'établissement — moyenne, absences, tendance en maths. Aucun algorithme opaque : chaque contribution est affichée. Le statut d'identité, administratif, n'entre pas dans le calcul.
+          </p>
+          <div className="-mx-1 overflow-x-auto px-1">
+            <Segmente label="Sensibilité des seuils" valeur={sens} onChange={setSens} options={SENSIBILITES} />
+          </div>
+        </div>
+
+        {aSuivre.length === 0 ? (
+          <EtatVide icone={ShieldAlert} titre="Personne à signaler" texte="Aucun apprenant ne franchit le seuil de vigilance avec ces réglages." />
+        ) : (
+          <ul className="divide-y divide-line/60 border-t border-line/60">
+            {aSuivre.slice(0, 8).map(({ e, ev }) => (
+              <li key={e.id} className="grid gap-x-4 gap-y-2.5 px-5 py-3.5 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_auto] lg:items-center">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Avatar prenoms={e.prenoms} nom={e.nom} taille="sm" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink"><span className="uppercase">{e.nom}</span> {e.prenoms}</p>
+                    <p className="text-xs text-ink-muted">{e.classe} · score {ev.score}/100</p>
+                  </div>
+                  <Badge ton={TON_NIVEAU[ev.niveau]}>{LIBELLE_NIVEAU[ev.niveau]}</Badge>
+                </div>
+                <div className="space-y-1.5">
+                  {ev.facteurs.filter((f) => f.points > 0).map((f) => (
+                    <BarreFacteur key={f.cle} facteur={f} />
+                  ))}
+                </div>
+                <div className="justify-self-start lg:justify-self-end">
+                  <LienBouton href={`/etablissement/eleves/${e.id}`} variante="secondaire" taille="sm">Dossier</LienBouton>
+                </div>
+              </li>
+            ))}
+            {aSuivre.length > 8 && (
+              <li className="px-5 py-2.5 text-center text-xs text-ink-muted">
+                et {entier(aSuivre.length - 8)} apprenant{aSuivre.length - 8 > 1 ? "s" : ""} de plus — basculez le filtre « À risque » pour les lister.
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function BarreFacteur({ facteur }: { facteur: FacteurRisque }) {
+  const ratio = Math.min(100, (facteur.points / facteur.pointsMax) * 100);
+  const ton = ratio >= 66 ? "bg-critical" : ratio >= 33 ? "bg-warning" : "bg-[var(--series-1)]";
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 text-[12px] sm:grid-cols-[7.5rem_minmax(0,1fr)_3rem]">
+      <span className="truncate text-ink-2">{facteur.libelle}</span>
+      <span className="flex items-center gap-2">
+        <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2"><span className={cn("block h-full rounded-full transition-[width] duration-500", ton)} style={{ width: `${Math.max(4, ratio)}%` }} /></span>
+        <span className="tabular text-ink-muted">+{facteur.points}</span>
+      </span>
+      <span className="truncate text-ink-muted sm:text-right">{facteur.detail}</span>
     </div>
   );
 }

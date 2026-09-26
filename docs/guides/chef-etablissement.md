@@ -77,8 +77,10 @@
 
 `/etablissement/eleves` — La liste des élèves et leur dossier.
 
-- Filtres « Tous », « En baisse », « Identité à régulariser ».
+- Filtres « Tous », « À risque », « En baisse », « Identité à régulariser ».
+- Panneau « Vigilance décrochage » : score explicable (moyenne, absences, maths), seuils réglables.
 - Dossier : moyennes, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
+- « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque.
 
 ### Examens et certification
 
@@ -106,6 +108,16 @@
 1. Dans « Élèves en baisse en mathématiques », cochez les élèves concernés.
 2. Touchez « Proposer un accompagnement » et précisez l'objet (5 à 200 caractères).
 3. Touchez « Transmettre ». La demande apparaît dans « Demandes en circuit ».
+
+### Repérer un décrochage qui se profile
+
+> Le score additionne des signaux que vous connaissez déjà ; il ne remplace pas votre jugement, il vous montre où regarder en premier.
+
+1. Ouvrez « Apprenants » et dépliez le panneau « Vigilance décrochage ».
+2. Chaque élève affiche son score sur 100 et les trois contributions : moyenne, absences, tendance en maths.
+3. Réglez la sensibilité des seuils (basse, normale, sensible) selon votre marge de manœuvre.
+4. Touchez « Dossier » pour ouvrir l'élève, ou filtrez sur « À risque » pour n'afficher que les concernés.
+5. Enchaînez avec « Proposer un accompagnement » pour les élèves que vous décidez de suivre.
 
 ### Ajuster une classe (capacité, professeur principal)
 
