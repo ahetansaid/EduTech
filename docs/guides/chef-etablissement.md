@@ -82,6 +82,7 @@
 - Panneau « Vigilance décrochage » : score explicable (moyenne, absences, maths), seuils réglables.
 - Dossier : moyennes, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
 - « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque.
+- « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
 
 ### Examens et certification
 
@@ -154,6 +155,15 @@
 1. Ouvrez « Apprenants », puis le dossier de l'élève.
 2. Touchez « Transférer », cherchez la classe d'accueil, cochez la confirmation, puis « Confirmer le transfert ».
 3. Ou touchez « Déclarer un abandon », indiquez le motif, puis « Confirmer l'abandon ».
+
+### Imprimer un état (nominatif, appel, conseil)
+
+> Certains actes restent signés sur papier : l'état reprend exactement la liste affichée à l'écran, rien de plus.
+
+1. Filtrez d'abord la liste (par classe via la recherche ou le sélecteur) pour cibler l'état voulu.
+2. Touchez « Imprimer » en haut de « Apprenants ».
+3. Choisissez le type dans la barre d'outils : État nominatif, Feuille d'appel ou PV de conseil.
+4. Touchez « Imprimer / PDF » ; dans la fenêtre du navigateur, sélectionnez « Enregistrer en PDF » pour archiver.
 
 ### Délibérer un examen national
 

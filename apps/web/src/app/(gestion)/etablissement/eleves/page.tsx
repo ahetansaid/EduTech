@@ -1,12 +1,13 @@
 "use client";
 
-import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, Fingerprint, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
+import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, Fingerprint, Printer, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { EntreePage, motion } from "@/components/motion";
+import { FeuilleImprimable } from "@/components/etats/Etats";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
-import { useEleves, type EleveLigne } from "@/lib/api/etablissement";
+import { useEleves, useTableau, type EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { exporterCsv, type Colonne } from "@/lib/export";
 import { date, entier, nombre, note } from "@/lib/format";
@@ -66,6 +67,7 @@ export default function Page() {
 function Liste() {
   const id = useEtablissementCourant();
   const eleves = useEleves(id);
+  const tableau = useTableau(id);
   const params = useSearchParams();
   const router = useRouter();
   const chemin = usePathname();
@@ -77,6 +79,7 @@ function Liste() {
   const [limite, setLimite] = useState(PAS);
   const [sens, setSens] = useState<Sensibilite>("normale");
   const [vigilanceOuverte, setVigilanceOuverte] = useState(true);
+  const [impression, setImpression] = useState(false);
 
   const choisirFiltre = (f: Filtre) => {
     const p = new URLSearchParams(params.toString());
@@ -132,6 +135,7 @@ function Liste() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, [...COLONNES, { entete: "Score de risque", valeur: (e: EleveLigne) => evals.get(e.id)!.score }, { entete: "Niveau de risque", valeur: (e: EleveLigne) => LIBELLE_NIVEAU[evals.get(e.id)!.niveau] }])} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque)`}>Exporter</Button>
+            <Button variante="secondaire" icone={Printer} disabled={!liste.length} onClick={() => setImpression(true)} title="Imprimer un état nominatif, une feuille d'appel ou un PV de conseil">Imprimer</Button>
             <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
           </div>
         }
@@ -262,6 +266,14 @@ function Liste() {
             </div>
           )}
         </>
+      )}
+
+      {impression && (
+        <FeuilleImprimable
+          eleves={liste}
+          meta={{ etablissement: tableau.data?.etablissement.nom ?? "", classe: classe === "toutes" ? "Toutes les classes" : classe, trimestre: tableau.data?.trimestre ?? 2, dateJour: new Date().toISOString() }}
+          onFermer={() => setImpression(false)}
+        />
       )}
     </div>
   );
