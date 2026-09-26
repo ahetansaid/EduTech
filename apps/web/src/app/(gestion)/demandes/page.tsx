@@ -1,12 +1,13 @@
 "use client";
 
-import { Inbox, Landmark } from "lucide-react";
+import { Download, Inbox, Landmark } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
 import { useDemandesATraiter, type DemandeATraiter } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, LIBELLE_ROLE_CIRCUIT, libelleEtape } from "@/lib/circuits";
+import { exporterCsv, type Colonne } from "@/lib/export";
 import { entier } from "@/lib/format";
 import { useRoles } from "@/lib/session";
 import { dateCourte, EtatErreur, LIBELLE_STATUT_DEMANDE, normaliser, Statut, TON_STATUT_DEMANDE } from "../etablissement/_composants";
@@ -14,6 +15,18 @@ import { DialogueStatuer } from "@/components/demandes/DialogueStatuer";
 
 /** Rôles susceptibles d'avoir une étape de circuit à traiter (le droit réel est décidé par l'API : rôle de l'étape + périmètre). */
 const ROLES_FILE = ["inspecteur", "direction_departementale", "administration_centrale"] as const;
+
+/** Colonnes exportées : la file telle qu'affichée (circuit, étape courante, échéance), rien de plus. */
+const COLONNES: Colonne<DemandeATraiter>[] = [
+  { entete: "Objet", valeur: (d) => d.objet },
+  { entete: "Circuit", valeur: (d) => CIRCUIT_LIBELLE[d.modele] ?? d.modeleLibelle },
+  { entete: "Étape courante", valeur: (d) => libelleEtape(d.modele, d.etapeCourante) },
+  { entete: "Rôle de l'étape", valeur: (d) => LIBELLE_ROLE_CIRCUIT[d.etapeRole] ?? d.etapeRole },
+  { entete: "Établissement", valeur: (d) => d.etablissement ?? "" },
+  { entete: "Statut", valeur: (d) => LIBELLE_STATUT_DEMANDE[d.statut] },
+  { entete: "Ouverte le", valeur: (d) => dateCourte(d.creeeLe) },
+  { entete: "Échéance", valeur: (d) => (d.echeance ? dateCourte(d.echeance) : "") },
+];
 
 export default function Page() {
   const roles = useRoles();
@@ -83,16 +96,19 @@ function Contenu({ demandes }: { demandes: DemandeATraiter[] }) {
       <Card className="min-w-0 overflow-hidden p-0">
         <div className="space-y-4 px-5 pt-5">
           <CardHeader className="mb-0" icon={Inbox} title="File de décisions" subtitle="Le droit de statuer est vérifié par l'API à chaque étape" action={<Badge>{demandes.length}</Badge>} />
-          <label className="relative block sm:max-w-sm">
-            <span className="sr-only">Rechercher une demande</span>
-            <input
-              type="search"
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value.slice(0, 60))}
-              placeholder="Objet, établissement ou circuit"
-              className="h-10 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-ink-muted focus:border-blue focus:outline-none focus:ring-4 focus:ring-blue/15"
-            />
-          </label>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="relative block w-full sm:max-w-sm">
+              <span className="sr-only">Rechercher une demande</span>
+              <input
+                type="search"
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value.slice(0, 60))}
+                placeholder="Objet, établissement ou circuit"
+                className="h-10 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-ink-muted focus:border-blue focus:outline-none focus:ring-4 focus:ring-blue/15"
+              />
+            </label>
+            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv("demandes-a-traiter", liste, COLONNES)} title={`Exporter les ${liste.length} demandes affichées au format CSV`}>Exporter</Button>
+          </div>
         </div>
 
         {liste.length === 0 ? (
