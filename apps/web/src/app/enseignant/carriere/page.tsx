@@ -1,11 +1,13 @@
 "use client";
 
-import { AlertTriangle, Award, BadgeCheck, BookOpen, Briefcase, CalendarDays, Clock, GraduationCap, IdCard, Layers, MapPin, Plus } from "lucide-react";
+import { AlertTriangle, Award, BadgeCheck, BookOpen, Briefcase, CalendarDays, Clock, Download, GraduationCap, IdCard, Layers, MapPin, Plus } from "lucide-react";
 import { useState } from "react";
 import { Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
+import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Squelette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { date, nombre } from "@/lib/format";
+import { date, entier, nombre } from "@/lib/format";
+import { exporterCsv, type Colonne } from "@/lib/export";
 import { useCarriere, useInscriptionFormation, useSynchronisationEnseignant, type Carriere } from "@/lib/api/enseignant";
 import { BadgePoint, Erreur, FeuilleModale, LIBELLE_FORMATION, TON_FORMATION, type StatutFormation } from "../communs";
 
@@ -13,6 +15,25 @@ const statutFormation = (s: string | null): StatutFormation => (s === "validee" 
 
 /** Années d'ancienneté depuis une date AAAA-MM-JJ. */
 const anciennete = (depuis: string) => Math.max(0, (Date.now() - new Date(depuis).getTime()) / (365.25 * 86_400_000));
+
+/* ------------------------------------------------------------------ Passeport exportable */
+
+interface LignePasseport { type: string; date: string; intitule: string; detail: string; statut: string }
+
+const COLONNES_PASSEPORT: Colonne<LignePasseport>[] = [
+  { entete: "Type", valeur: (l) => l.type },
+  { entete: "Date", valeur: (l) => date(l.date) },
+  { entete: "Intitulé", valeur: (l) => l.intitule },
+  { entete: "Détail", valeur: (l) => l.detail },
+  { entete: "Statut", valeur: (l) => l.statut },
+];
+
+/** Le parcours complet, du recrutement au dernier jalon : ce que remet l'enseignant lors d'une mutation. */
+const passeport = (data: Carriere): LignePasseport[] => [
+  { type: "Recrutement", date: data.enseignant.dateRecrutement, intitule: data.enseignant.grade, detail: `NPI ${data.enseignant.npi}`, statut: "" },
+  ...data.affectations.map((a) => ({ type: "Affectation", date: a.valideDu, intitule: a.etablissement, detail: a.fonction, statut: a.valideAu ? `Terminée le ${date(a.valideAu)}` : "En poste" })),
+  ...data.formations.map((f) => ({ type: "Formation", date: f.le, intitule: f.formation, detail: "", statut: LIBELLE_FORMATION[statutFormation(f.statut)] })),
+].sort((a, b) => a.date.localeCompare(b.date));
 
 export default function PageCarriere() {
   useSynchronisationEnseignant();
@@ -32,6 +53,11 @@ export default function PageCarriere() {
           surtitre="Passeport professionnel"
           titre={`${e.prenoms} ${e.nom}`}
           sousTitre="Votre carrière se reconstitue à partir des événements du registre : aucun dossier papier à recomposer lors d'une mutation."
+          actions={
+            <Button variante="secondaire" icone={Download} onClick={() => { const l = passeport(data); exporterCsv(`passeport_${e.npi}`, l, COLONNES_PASSEPORT); notifier({ ton: "succes", titre: "Passeport exporté", texte: `${entier(l.length)} jalon(s) du recrutement à aujourd'hui.` }); }} title="Exporter tout le parcours (recrutement, affectations, formations) au format CSV">
+              Exporter le parcours
+            </Button>
+          }
         />
 
         {obligatoire && <AlerteObligatoire formation={obligatoire} />}
