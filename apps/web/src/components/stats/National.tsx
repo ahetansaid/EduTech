@@ -1,12 +1,13 @@
 "use client";
 
-import { BadgeCheck, ChevronDown, ShieldQuestion } from "lucide-react";
+import { BadgeCheck, ChevronDown, Download, ShieldQuestion } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { BarresClassees, SERIES, TableauDonnees, type Barre } from "@/components/charts/Graphiques";
 import { BadgeConfiance } from "@/components/ui/donnees";
-import { Card } from "@/components/ui/primitives";
+import { Button, Card } from "@/components/ui/primitives";
 import type { SynthesePilotage } from "@/lib/api/pilotage";
 import { cn } from "@/lib/cn";
+import { exporterStats, type LigneStat } from "@/lib/export";
 import { compact, entier, nombre, pourcent } from "@/lib/format";
 import { ecartType, mediane, moyenne, quantile, repartir, type Bande } from "@/lib/statistiques";
 
@@ -64,6 +65,40 @@ export function StatsNational({ s }: { s: SynthesePilotage }) {
       bandes: bandes(BANDES_MATHS, repartir(valeurs, BANDES_MATHS)),
     };
   }, [s.mathsTerritoire, s.maths]);
+
+  // On n'ajoute aucune donnée : le fichier reprend la synthèse chargée et, pour la dispersion, uniquement
+  // les zones NON masquées. Une commune masquée (effectif sous le seuil) ne figure ni dans les stats ni dans le CSV.
+  function exporter() {
+    const l: LigneStat[] = [];
+    for (const l2 of lignes) {
+      l.push({
+        section: "Fiabilité",
+        indicateur: l2.libelle + (l2.cle === moinsFiable.cle ? " (le plus fragile)" : ""),
+        valeur: `${l2.format(l2.valeur)} — confiance ${entier(l2.confiance.score)} %, couverture ${entier(l2.couverture.etablissementsAyantTransmis)}/${entier(l2.couverture.etablissementsAttendus)}`,
+      });
+    }
+    l.push({ section: "Transmission", indicateur: "Établissements ayant transmis", valeur: `${entier(s.etablissements.transmis)} / ${entier(s.etablissements.total)} (${pourcent(tauxTransmission, 0)})` });
+    l.push(
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Zones affichables", valeur: entier(d.n) },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Communes masquées (exclues du calcul)", valeur: entier(d.masquées) },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Médiane", valeur: pourcent(d.med, 0) },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Moyenne", valeur: pourcent(d.moy, 0) },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Écart-type", valeur: `${nombre(d.ecart, 0)} pt` },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Étendue", valeur: `${pourcent(d.min, 0)} – ${pourcent(d.max, 0)}` },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "1er quartile", valeur: pourcent(d.q1, 0) },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "3e quartile", valeur: pourcent(d.q3, 0) },
+      { section: "Dispersion territoriale (Maths ≥ 15/20)", indicateur: "Communes au-dessus du repère national", valeur: d.auDessus != null ? `${entier(d.auDessus)} / ${entier(d.n)}` : "—" },
+    );
+    for (const b of d.bandes) l.push({ section: "Bandes de réussite (Maths ≥ 15/20)", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
+    for (const z of s.mathsTerritoire.lignes.filter((x) => !x.masquee && x.valeur != null).sort((a, b) => b.valeur! - a.valeur!)) {
+      l.push({ section: "Zones classées", indicateur: z.libelle, valeur: pourcent(z.valeur, 0) });
+    }
+    exporterStats(
+      "Fiabilité et dispersion nationale",
+      l,
+      `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — synthèse nationale de pilotage (grain commune/département, aucun individu). Les ${entier(d.masquées)} commune(s) sous le seuil de confidentialité sont exclues de ce fichier comme du calcul. À citer avec l'indice de confiance qui accompagne chaque chiffre.`,
+    );
+  }
 
   return (
     <Card data-guide="cockpit-stats" className="min-w-0 overflow-hidden p-0">
@@ -124,9 +159,14 @@ export function StatsNational({ s }: { s: SynthesePilotage }) {
             )}
           </section>
 
-          <p className="text-[11.5px] text-ink-muted">
-            Deux lectures d'une même synthèse, sans donnée nouvelle : la fiabilité rappelle ce qu'on peut citer, la dispersion rappelle qu'une moyenne nationale cache des situations opposées. Croisez-les avant tout arbitrage.
-          </p>
+          <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-4">
+            <p className="min-w-0 text-[11.5px] text-ink-muted">
+              Deux lectures d'une même synthèse, sans donnée nouvelle : la fiabilité rappelle ce qu'on peut citer, la dispersion rappelle qu'une moyenne nationale cache des situations opposées. Croisez-les avant tout arbitrage.
+            </p>
+            <Button variante="secondaire" taille="sm" icone={Download} onClick={exporter} className="shrink-0">
+              Exporter (CSV)
+            </Button>
+          </div>
         </div>
       )}
     </Card>

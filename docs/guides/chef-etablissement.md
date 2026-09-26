@@ -88,7 +88,7 @@
 
 - Filtres « Tous », « À risque », « En baisse », « Identité à régulariser ».
 - Panneau « Vigilance décrochage » : score explicable (moyenne, absences, maths), seuils réglables.
-- Panneau « Statistiques de la promotion » : dispersion des moyennes (médiane, écart-type, bandes), répartition des absences, comparatif filles/garçons — calculés sur les élèves déjà affichés.
+- Panneau « Statistiques de la promotion » : dispersion des moyennes (médiane, écart-type, bandes), répartition des absences, comparatif filles/garçons — calculés sur les élèves déjà affichés, exportables en CSV.
 - Dossier : « Évolution longitudinale » (courbe de la moyenne générale et matrice matière × trimestre, calculées sur l'historique des notes du dossier), moyennes du trimestre, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
 - « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque ; la date de naissance devient une classe d'âge et le fichier porte une ligne de provenance.
 - « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
@@ -149,6 +149,7 @@
 3. Regardez les bandes de moyennes et d'absences plutôt qu'un seul pourcentage.
 4. Lisez la ligne « Filles et garçons » pour repérer un écart à creuser.
 5. Recoupez avec le panneau « Vigilance décrochage » avant de décider un accompagnement.
+6. Touchez « Exporter (CSV) » en bas du panneau pour conserver ce portrait (moyennes, bandes, comparatif, vigilance) : les mêmes chiffres que l'écran, dans un fichier daté portant sa provenance.
 
 ### Suivre l'évolution d'un élève trimestre après trimestre
 

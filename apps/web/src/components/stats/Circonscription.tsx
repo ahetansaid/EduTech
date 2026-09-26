@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, ChevronDown } from "lucide-react";
+import { BarChart3, ChevronDown, Download } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { BarresClassees, SERIES, type Barre } from "@/components/charts/Graphiques";
-import { Card, Segmente } from "@/components/ui/primitives";
+import { Button, Card, Segmente } from "@/components/ui/primitives";
 import type { EtablissementTerritoire, Infrastructures } from "@/lib/api/pilotage";
 import { cn } from "@/lib/cn";
+import { exporterStats, type LigneStat } from "@/lib/export";
 import { entier, nombre, pourcent } from "@/lib/format";
 import { ecartType, mediane, moyenne, quantile, repartir, type Bande } from "@/lib/statistiques";
 
@@ -94,6 +95,35 @@ export function StatsCirconscription({ etabs, infra, inspecteur }: {
 
   const titre = inspecteur ? "Statistiques de la circonscription" : "Statistiques du département";
 
+  // Même principle : on n'invente aucune donnée. On sérialise le portrait déjà calculé au grain établissement.
+  function exporter() {
+    const l: LigneStat[] = [
+      { section: "Résumé", indicateur: "Établissements dans le périmètre", valeur: entier(s.n) },
+      { section: "Résumé", indicateur: "Occupation — médiane", valeur: pourcent(s.occMed, 0) },
+      { section: "Résumé", indicateur: "Occupation — moyenne", valeur: pourcent(s.occMoy, 0) },
+      { section: "Résumé", indicateur: "Occupation — écart-type", valeur: `${nombre(s.occEcart, 0)} pt` },
+      { section: "Résumé", indicateur: "Occupation — minimum", valeur: pourcent(s.occMin, 0) },
+      { section: "Résumé", indicateur: "Occupation — 1er quartile", valeur: pourcent(s.occQ1, 0) },
+      { section: "Résumé", indicateur: "Occupation — 3e quartile", valeur: pourcent(s.occQ3, 0) },
+      { section: "Résumé", indicateur: "Occupation — maximum", valeur: pourcent(s.occMax, 0) },
+      { section: "Résumé", indicateur: "Élèves/enseignant — médian", valeur: nombre(s.ratMed, 0) },
+      { section: "Résumé", indicateur: "Élèves/enseignant — moyenne", valeur: nombre(s.ratMoy, 0) },
+      { section: "Résumé", indicateur: "Élèves/enseignant — écart-type", valeur: nombre(s.ratEcart, 0) },
+      { section: "Résumé", indicateur: `Établissements saturés (> ${SEUIL_SATURE} %)`, valeur: `${entier(s.saturés)} / ${entier(s.n)}` },
+      { section: "Résumé", indicateur: `Classes surchargées (> ${SEUIL_SURCHARGE} élèves/ens.)`, valeur: `${entier(s.surchargées)} / ${entier(s.n)}` },
+    ];
+    for (const b of s.bandesOcc) l.push({ section: "Bandes d'occupation", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
+    for (const b of s.bandesRat) l.push({ section: "Bandes d'élèves/enseignant", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
+    l.push({ section: "Comparateur", indicateur: "Critère", valeur: critere === "occupation" ? "Taux d'occupation" : "Élèves par enseignant" });
+    for (const c of s.classées) l.push({ section: "Comparateur", indicateur: c.libelle, valeur: (critere === "occupation" ? pourcent(c.valeur, 0) : nombre(c.valeur, 0)) + (c.accent ? " (au-dessus du seuil)" : "") });
+    if (s.infra) for (const q of s.infra) l.push({ section: "Infrastructures", indicateur: q.libelle, valeur: q.taux != null ? pourcent(q.taux, 0) : "—" });
+    exporterStats(
+      inspecteur ? "Statistiques circonscription" : "Statistiques département",
+      l,
+      `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — portrait descriptif de vos ${entier(s.n)} établissements (grain établissement : aucun chiffre d'élève). Périmètre limité à la console que votre habilitation autorise déjà à consulter.`,
+    );
+  }
+
   return (
     <Card data-guide="territoire-stats" className="min-w-0 overflow-hidden p-0">
       <button onClick={() => setOuvert((v) => !v)} aria-expanded={ouvert} className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left">
@@ -171,9 +201,14 @@ export function StatsCirconscription({ etabs, infra, inspecteur }: {
             )}
           </section>
 
-          <p className="text-[11.5px] text-ink-muted">
-            Lecture descriptive de vos {entier(s.n)} établissements : occupation, encadrement et infrastructures, agrégés au grain de l'établissement — les mêmes valeurs que le tableau ci-dessous, résumées pour situer les écarts. Aucune donnée d'élève n'entre dans ces chiffres.
-          </p>
+          <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-4">
+            <p className="min-w-0 text-[11.5px] text-ink-muted">
+              Lecture descriptive de vos {entier(s.n)} établissements : occupation, encadrement et infrastructures, agrégés au grain de l'établissement — les mêmes valeurs que le tableau ci-dessous, résumées pour situer les écarts. Aucune donnée d'élève n'entre dans ces chiffres.
+            </p>
+            <Button variante="secondaire" taille="sm" icone={Download} onClick={exporter} className="shrink-0">
+              Exporter (CSV)
+            </Button>
+          </div>
         </div>
       )}
     </Card>

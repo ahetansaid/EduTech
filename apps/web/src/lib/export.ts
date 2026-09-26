@@ -52,3 +52,28 @@ export function exporterCsv<T>(nom: string, lignes: readonly T[], colonnes: read
   const csv = lignes.length && provenance ? `${versCsv(lignes, colonnes)}\r\n\r\n${echapper(provenance)}` : versCsv(lignes, colonnes);
   telechargerCsv(`${nom}_${new Date().toISOString().slice(0, 10)}.csv`, csv);
 }
+
+/** Une ligne d'un relevé statistique : indicateur déjà mis en forme (texte), regroupé par section. */
+export interface LigneStat {
+  section: string;
+  indicateur: string;
+  valeur: string;
+}
+
+/**
+ * Export d'un portrait statistique (dispersion, bandes, comparatifs) déjà calculé à l'écran :
+ * trois colonnes Section / Indicateur / Valeur, lisibles dans Excel sans réouvrir d'assistant.
+ * Passe par `exporterCsv`, donc hérite du pied de page de provenance et de la neutralisation des formules.
+ */
+export function exporterStats(nom: string, lignes: readonly LigneStat[], provenance?: string) {
+  exporterCsv<LigneStat>(
+    nom,
+    lignes,
+    [
+      { entete: "Section", valeur: (l) => l.section },
+      { entete: "Indicateur", valeur: (l) => l.indicateur },
+      { entete: "Valeur", valeur: (l) => l.valeur },
+    ],
+    provenance,
+  );
+}

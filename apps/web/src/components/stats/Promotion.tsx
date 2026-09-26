@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, ChevronDown } from "lucide-react";
+import { BarChart3, ChevronDown, Download } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { BarresClassees, SERIES, TableauDonnees, type Barre } from "@/components/charts/Graphiques";
-import { Card, CardHeader } from "@/components/ui/primitives";
+import { Button, Card, CardHeader } from "@/components/ui/primitives";
 import type { EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
+import { exporterStats, type LigneStat } from "@/lib/export";
 import { entier, note, nombre, pourcent } from "@/lib/format";
 import { ecartType, mediane, moyenne, repartir, sousSeuil, type Bande } from "@/lib/statistiques";
 
@@ -61,6 +62,31 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
   }, [eleves]);
 
   const enSousS = s.sous10.taux != null ? pourcent(s.sous10.taux * 100, 0) : "—";
+
+  // On n'exporte rien de neuf : les mêmes chiffres, déjà calculés sur la cohorte chargée pour ce rôle.
+  function exporter() {
+    const lignes: LigneStat[] = [
+      { section: "Résumé", indicateur: "Moyenne de la promotion", valeur: note(s.moyenne) },
+      { section: "Résumé", indicateur: "Médiane", valeur: note(s.mediane) },
+      { section: "Résumé", indicateur: "Écart-type", valeur: s.ecart != null ? nombre(s.ecart, 2) : "—" },
+      { section: "Résumé", indicateur: "Élèves sous 10/20", valeur: `${entier(s.sous10.k)} sur ${entier(s.notes)} (${enSousS})` },
+    ];
+    for (const b of s.bandesMoyenne) lignes.push({ section: "Bandes de moyennes", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
+    for (const b of s.bandesAbsences) lignes.push({ section: "Bandes d'absences", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
+    lignes.push({ section: "Bandes d'absences", indicateur: "12 jours et plus (seuil vigilance)", valeur: entier(s.longues) });
+    lignes.push(
+      { section: "Filles et garçons", indicateur: "Filles — effectif", valeur: entier(s.filles.effectif) },
+      { section: "Filles et garçons", indicateur: "Filles — moyenne", valeur: note(s.filles.moyenne) },
+      { section: "Filles et garçons", indicateur: "Filles — sous 10/20", valeur: s.filles.sous.taux != null ? pourcent(s.filles.sous.taux * 100, 0) : "—" },
+      { section: "Filles et garçons", indicateur: "Garçons — effectif", valeur: entier(s.garcons.effectif) },
+      { section: "Filles et garçons", indicateur: "Garçons — moyenne", valeur: note(s.garcons.moyenne) },
+      { section: "Filles et garçons", indicateur: "Garçons — sous 10/20", valeur: s.garcons.sous.taux != null ? pourcent(s.garcons.sous.taux * 100, 0) : "—" },
+      { section: "Vigilance", indicateur: "Urgent", valeur: entier(niveaux.urgent) },
+      { section: "Vigilance", indicateur: "À surveiller", valeur: entier(niveaux.a_surveiller) },
+      { section: "Vigilance", indicateur: "Au nominal", valeur: entier(niveaux.nominal) },
+    );
+    exporterStats("Statistiques promotion", lignes, `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — portrait descriptif de la promotion affichée à l'écran ; périmètre limité à la cohorte que votre habilitation autorise déjà à voir.`);
+  }
 
   return (
     <Card data-guide="eleves-stats" className="min-w-0 overflow-hidden p-0">
@@ -118,10 +144,15 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
             </p>
           </section>
 
-          <p className="text-[11.5px] text-ink-muted">
-            Lecture descriptive de la cohorte que vous gérez, tous effectifs affichés : ce panneau ne masque aucun chiffre, la direction ayant accès à chaque dossier.
-            Une moyenne ne prouve rien seule — croisez-la avec les bandes et la médiane avant toute décision.
-          </p>
+          <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-4">
+            <p className="min-w-0 text-[11.5px] text-ink-muted">
+              Lecture descriptive de la cohorte que vous gérez, tous effectifs affichés : ce panneau ne masque aucun chiffre, la direction ayant accès à chaque dossier.
+              Une moyenne ne prouve rien seule — croisez-la avec les bandes et la médiane avant toute décision.
+            </p>
+            <Button variante="secondaire" taille="sm" icone={Download} onClick={exporter} className="shrink-0">
+              Exporter (CSV)
+            </Button>
+          </div>
         </div>
       )}
     </Card>
