@@ -1,4 +1,4 @@
-import type { CycleLMD, Diplome, Domaine, Matiere, TypeParcours } from "@beile/contracts";
+import type { Concours, CycleLMD, Diplome, Domaine, EtablissementSup, Matiere, TypeParcours } from "@beile/contracts";
 import { moyennesParMatiere, type NoteEffective } from "@/lib/api/parcours";
 
 /**
@@ -64,7 +64,7 @@ export const CATALOGUE_FILIERES: FiliereCatalogue[] = [
     criteres: [{ matiere: "SVT", poids: 0.5 }, { matiere: "Sciences physiques", poids: 0.3 }, { matiere: "Mathématiques", poids: 0.2 }],
   },
   {
-    id: "l-medecine", nom: "Médecine (première année commune)", etablissement: "Université des Sciences Médicales", sigle: "UNIMED",
+    id: "l-medecine", nom: "Médecine (première année commune)", etablissement: "Université des Sciences de la Santé", sigle: "UNIMED",
     voie: "universitaire", cycle: "licence", diplomeVise: "LICENCE", domaine: "sciences_vie_sante",
     accesConcours: true, seriesAcces: ["C", "D"],
     criteres: [{ matiere: "SVT", poids: 0.45 }, { matiere: "Sciences physiques", poids: 0.3 }, { matiere: "Mathématiques", poids: 0.25 }],
@@ -183,3 +183,109 @@ export function adequationFilieres(notes: NoteEffective[], annee: string | null,
 export function estFiliereValidee(p: PisteSuperieure): boolean {
   return p.couverture >= 0.6 && (p.ecartTete == null || p.ecartTete >= 0.5);
 }
+
+/* ================================================================== Stage obligatoire (indicatif) */
+
+/** Durée de stage obligatoire (mois) par filière — indicatif, à sertir en base à S2. */
+export const STAGE_OBLIGATOIRE_MOIS: Record<string, number> = {
+  "l-info": 2, "l-medecine": 6, "l-enseignement": 3, "ecole-administration": 6, "ecole-btp": 3, "lp-energies": 4, "bts-maintenance": 5, "bts-gestion": 4,
+};
+export const stageMois = (id: string): number => STAGE_OBLIGATOIRE_MOIS[id] ?? 0;
+
+const EFTP_DIPLOMES = new Set<Diplome>(["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP"]);
+
+/** Filières EFTP (voie technologique/professionnelle/apprentissage ou diplôme hors LMD). */
+export const filieresEFTP = (): FiliereCatalogue[] =>
+  CATALOGUE_FILIERES.filter((f) => f.voie === "technique" || f.voie === "professionnel" || f.voie === "apprentissage" || EFTP_DIPLOMES.has(f.diplomeVise));
+
+/** Filières imposant un stage. */
+export const filieresAvecStage = (): FiliereCatalogue[] => CATALOGUE_FILIERES.filter((f) => stageMois(f.id) > 0);
+
+export const nomFiliere = (id: string): string => CATALOGUE_FILIERES.find((f) => f.id === id)?.nom ?? id;
+
+/* ================================================================== Libellés partagés */
+
+export const LIBELLE_TYPE_ETAB: Record<string, string> = {
+  universite: "Université", ecole_nationale: "École nationale", ecole_superieure: "École supérieure", institut: "Institut",
+  lycee_technique: "Lycée technique", centre_formation_professionnelle: "CFP",
+  institut_regional_formation_professionnelle: "IRFP", institut_national_formation_professionnelle: "INFP", ecole_d_application: "École d'application",
+};
+
+export const LIBELLE_TUTELLE: Record<string, string> = { MESRS: "MESRS", MESTFP: "MESTFP", EMPLOI_PME: "Emploi / PME" };
+
+export const LIBELLE_STATUT_CONCOURS: Record<string, string> = {
+  annonce: "Annoncé", inscriptions: "Inscriptions", admissibilite: "Admissibilité", ecrits: "Épreuves écrites", oraux: "Oral", resultats: "Résultats", clos: "Clôturé",
+};
+
+/** Libellé d'une voie (miroir de `TypeParcours`) — source unique pour la console et ses volets. */
+export const LIBELLE_TYPE_PARCOURS: Record<TypeParcours, string> = {
+  universitaire: "Universitaire", technique: "Technologique", professionnel: "Professionnelle", apprentissage: "Apprentissage",
+  scolaire: "Scolaire", formation_courte: "Formation courte", alphabetisation: "Alphabétisation",
+};
+
+/** Libellé d'un diplôme national (deux voies confondues). */
+export const LIBELLE_DIPLOME: Record<Diplome, string> = {
+  CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique", BT: "BT", BTS: "BTS", CQP: "CQP",
+  BAC: "Bac", LICENCE: "Licence", LICENCE_PRO: "Licence pro", MASTER: "Master", MASTER_PRO: "Master pro",
+  DOCTORAT: "Doctorat", DES: "DES", DNSV: "DNSV",
+};
+
+/** Nom lisible du cursus : un cycle LMD, sinon le diplôme visé (filière EFTP hors LMD). */
+export function libelleCycle(f: { cycle: CycleLMD | null; diplomeVise: Diplome }): string {
+  if (f.cycle === "licence") return "Licence";
+  if (f.cycle === "master") return "Master";
+  if (f.cycle === "doctorat") return "Doctorat";
+  return LIBELLE_DIPLOME[f.diplomeVise];
+}
+
+/* ================================================================== Établissements (catalogue indicatif) */
+
+/**
+ * Liste INDICATIVE et volontairement courte. Elle illustre les TYPES (université, école nationale,
+ * institut, école privée agréée) et la double tutelle EFTP — la liste officielle complète (arrêté
+ * MESRS + écoles privées agréées) est une DONNÉE à sertir en base à S2, pas une vérité en dur ici.
+ */
+export const CATALOGUE_ETABLISSEMENTS: EtablissementSup[] = [
+  { id: "uac", nom: "Université d'Abomey-Calavi", sigle: "UAC", type: "universite", statut: "public", tuts: ["MESRS"], communeId: "abomey-calavi", rattachementId: null },
+  { id: "unimed", nom: "Université des Sciences de la Santé", sigle: "UNIMED", type: "universite", statut: "public", tuts: ["MESRS"], communeId: "cotonou", rattachementId: null },
+  { id: "enam", nom: "École Nationale d'Administration et de Magistrature", sigle: "ENAM", type: "ecole_nationale", statut: "public", tuts: ["MESRS"], communeId: "cotonou", rattachementId: "uac" },
+  { id: "ens", nom: "École Normale Supérieure", sigle: "ENS", type: "ecole_nationale", statut: "public", tuts: ["MESRS"], communeId: "cotonou", rattachementId: "uac" },
+  { id: "insta-ap", nom: "Institut National de la Statistique Appliquée (INSta-Ap)", sigle: "INSta-Ap", type: "institut", statut: "public", tuts: ["MESRS"], communeId: "calavi", rattachementId: null },
+  { id: "infp", nom: "Institut National de Formation Professionnelle", sigle: "INFP", type: "institut_national_formation_professionnelle", statut: "public", tuts: ["MESTFP", "EMPLOI_PME"], communeId: "cotonou", rattachementId: null },
+  { id: "irfp", nom: "Institut Régional de Formation Professionnelle (par chef-lieu)", sigle: "IRFP", type: "institut_regional_formation_professionnelle", statut: "public", tuts: ["MESTFP", "EMPLOI_PME"], communeId: "portonovo", rattachementId: null },
+  { id: "ecole-privee", nom: "École supérieure privée agréée (à référencer)", sigle: null, type: "ecole_superieure", statut: "prive", tuts: ["MESRS"], communeId: "cotonou", rattachementId: null },
+];
+
+/* ================================================================== Concours (sessions indicatives) */
+
+/**
+ * Sessions INDICATIVES façon calendrier-type : elles montrent la forme d'un concours (diplôme
+ * requis, séries, places, épreuves pondérées, fenêtres de dates). Les chiffres (places, dates)
+ * sont illustratifs et seront remplacés par les arrêtés officiels à S2.
+ */
+export const CATALOGUE_CONCOURS: Concours[] = [
+  {
+    id: "cc-medecine", nom: "Concours d'accès en Médecine", filiereId: "l-medecine", session: "2026", statut: "inscriptions",
+    diplomeRequis: "BAC", serieRequise: ["C", "D"], places: 350,
+    epreuves: [{ matiere: "Sciences de la vie et de la Terre", coef: 4 }, { matiere: "Sciences physiques", coef: 3 }, { matiere: "Mathématiques", coef: 3 }, { matiere: "Français", coef: 1 }],
+    ouvertureLe: "2026-07-01", clotureLe: "2026-08-15", epreuvesLe: "2026-09-05",
+  },
+  {
+    id: "cc-enam", nom: "Concours d'entrée ENAM (premier cycle)", filiereId: "ecole-administration", session: "2026", statut: "annonce",
+    diplomeRequis: "BAC", serieRequise: ["A", "C", "D", "G"], places: 60,
+    epreuves: [{ matiere: "Culture générale", coef: 5 }, { matiere: "Droit et économie", coef: 3 }, { matiere: "Conduite d'épreuve", coef: 3 }],
+    ouvertureLe: null, clotureLe: null, epreuvesLe: null,
+  },
+  {
+    id: "cc-ens", nom: "Concours d'entrée ENS (professorat)", filiereId: "l-enseignement", session: "2026", statut: "inscriptions",
+    diplomeRequis: "BAC", serieRequise: ["A", "C", "D"], places: 120,
+    epreuves: [{ matiere: "Dissertation", coef: 4 }, { matiere: "Mathématiques", coef: 3 }, { matiere: "Sciences physiques", coef: 3 }],
+    ouvertureLe: "2026-07-10", clotureLe: "2026-08-20", epreuvesLe: "2026-09-10",
+  },
+  {
+    id: "cc-esta", nom: "Concours d'accès École Supérieure Technique", filiereId: "ecole-btp", session: "2026", statut: "admissibilite",
+    diplomeRequis: "BAC", serieRequise: ["C", "D", "T"], places: 90,
+    epreuves: [{ matiere: "Mathématiques", coef: 4 }, { matiere: "Sciences physiques", coef: 4 }, { matiere: "Dessin technique", coef: 2 }],
+    ouvertureLe: "2026-06-15", clotureLe: "2026-07-30", epreuvesLe: "2026-08-25",
+  },
+];

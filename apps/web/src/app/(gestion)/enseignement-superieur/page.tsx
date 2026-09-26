@@ -4,31 +4,15 @@ import { Download, Info, School } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { TableauDonnees } from "@/components/charts/Graphiques";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
-import { CATALOGUE_FILIERES, type FiliereCatalogue } from "@/lib/enseignement-superieur";
+import { CATALOGUE_FILIERES, LIBELLE_DIPLOME, LIBELLE_TYPE_PARCOURS, libelleCycle, type FiliereCatalogue } from "@/lib/enseignement-superieur";
 import { exporterCsv, type Colonne } from "@/lib/export";
 import { useRoles } from "@/lib/session";
+import { OngletsESup } from "./_Onglets";
 
 type FiltreVoie = "toutes" | "universitaire" | "technique" | "professionnel" | "apprentissage";
 
 const LIBELLE_VOIE: Record<FiltreVoie, string> = {
   toutes: "Toutes", universitaire: "Universitaire", technique: "Technologique", professionnel: "Professionnelle", apprentissage: "Apprentissage",
-};
-
-const LIBELLE_TYPE_PARCOURS: Record<string, string> = {
-  universitaire: "Universitaire", technique: "Technologique", professionnel: "Professionnelle", apprentissage: "Apprentissage",
-  scolaire: "Scolaire", formation_courte: "Formation courte", alphabetisation: "Alphabétisation",
-};
-
-function libelleCycle(f: FiliereCatalogue): string {
-  if (f.cycle === "licence") return "Licence";
-  if (f.cycle === "master") return "Master";
-  if (f.cycle === "doctorat") return "Doctorat";
-  return LIBELLE_DIPLOME[f.diplomeVise] ?? f.diplomeVise;
-}
-
-const LIBELLE_DIPLOME: Record<string, string> = {
-  LICENCE: "Licence", LICENCE_PRO: "Licence pro", MASTER: "Master", MASTER_PRO: "Master pro", DOCTORAT: "Doctorat",
-  DES: "DES", DNSV: "DNSV", BTS: "BTS", BT: "BT", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
 };
 
 /** Enseignement supérieur : console de gouvernance (MESRS) et de pilotage de l'offre de formation. */
@@ -58,9 +42,9 @@ export default function EnseignementSuperieur() {
   const COLONNES: Colonne<FiliereCatalogue>[] = [
     { entete: "Filière", valeur: (f) => f.nom },
     { entete: "Établissement", valeur: (f) => f.etablissement },
-    { entete: "Voie", valeur: (f) => LIBELLE_TYPE_PARCOURS[f.voie] ?? f.voie },
+    { entete: "Voie", valeur: (f) => LIBELLE_TYPE_PARCOURS[f.voie] },
     { entete: "Cycle", valeur: (f) => (f.cycle ? libelleCycle(f) : "Hors LMD") },
-    { entete: "Diplôme visé", valeur: (f) => LIBELLE_DIPLOME[f.diplomeVise] ?? f.diplomeVise },
+    { entete: "Diplôme visé", valeur: (f) => LIBELLE_DIPLOME[f.diplomeVise] },
     { entete: "Accès concours", valeur: (f) => (f.accesConcours ? "oui" : "non") },
     { entete: "Séries d'accès", valeur: (f) => f.seriesAcces.join("/") },
     { entete: "Critères pondérés", valeur: (f) => f.criteres.map((c) => `${c.matiere} ${Math.round(c.poids * 100)}%`).join(", ") },
@@ -70,7 +54,7 @@ export default function EnseignementSuperieur() {
   const lignes: ReactNode[][] = filtres.map((f) => [
     f.nom,
     f.etablissement,
-    LIBELLE_TYPE_PARCOURS[f.voie] ?? f.voie,
+    LIBELLE_TYPE_PARCOURS[f.voie],
     libelleCycle(f),
     f.domaine.replaceAll("_", " "),
     <span key={f.id} className="flex flex-wrap gap-1.5">
@@ -84,6 +68,8 @@ export default function EnseignementSuperieur() {
     <div className="space-y-5">
       <PageHeader titre="Enseignement supérieur" sousTitre={cadre.sous} surtitre={cadre.sur}
         actions={<Button variante="secondaire" taille="sm" icone={Download} onClick={() => exporterCsv("catalogue_enseignement_superieur", filtres, COLONNES, `Catalogue BEILE — ${filtres.length} filières — voie ${LIBELLE_VOIE[voie]} — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+
+      <OngletsESup />
 
       <div className="flex items-start gap-3 rounded-lg bg-info-bg px-4 py-3 text-[13px] text-info">
         <Info size={17} className="mt-0.5 shrink-0" aria-hidden />
