@@ -76,6 +76,10 @@ export function StatsNational({ s }: { s: SynthesePilotage }) {
         indicateur: l2.libelle + (l2.cle === moinsFiable.cle ? " (le plus fragile)" : ""),
         valeur: `${l2.format(l2.valeur)} — confiance ${entier(l2.confiance.score)} %, couverture ${entier(l2.couverture.etablissementsAyantTransmis)}/${entier(l2.couverture.etablissementsAttendus)}`,
       });
+      const c = l2.confiance;
+      const plusFaible = Math.min(c.completude, c.fraicheur, c.coherence, c.validation);
+      const maillon = c.completude === plusFaible ? "complétude" : c.fraicheur === plusFaible ? "fraîcheur" : c.coherence === plusFaible ? "cohérence" : "validation";
+      l.push({ section: "Décomposition de la confiance", indicateur: `${l2.libelle} — complétude/fraîcheur/cohérence/validation`, valeur: `${entier(c.completude)} / ${entier(c.fraicheur)} / ${entier(c.coherence)} / ${entier(c.validation)} — verdict : ${c.score >= 70 ? "citable seul" : c.score >= 50 ? `à nuancer (${maillon})` : `à éviter seul (${maillon})`}` });
     }
     l.push({ section: "Transmission", indicateur: "Établissements ayant transmis", valeur: `${entier(s.etablissements.transmis)} / ${entier(s.etablissements.total)} (${pourcent(tauxTransmission, 0)})` });
     l.push(
@@ -135,6 +139,30 @@ export function StatsNational({ s }: { s: SynthesePilotage }) {
               <BadgeCheck size={12} className="mr-1 inline align-[-2px] text-success" aria-hidden />
               {entier(s.etablissements.transmis)} établissements sur {entier(s.etablissements.total)} ({pourcent(tauxTransmission, 0)}) ont transmis cette année ; {entier(s.etablissements.total - s.etablissements.transmis)} restant muets abaissent la couverture de ces chiffres.
             </p>
+          </section>
+
+          <section>
+            <SousTitre>D'où vient la confiance ?</SousTitre>
+            <p className="mt-1 text-[12.5px] text-ink-muted">Chaque score de confiance se décompose en quatre composantes (0-100). Un même score n'a pas le même remède : une complétude basse se rattrape par la relance, une fraîcheur basse par la transmission, une cohérence basse par la vérification des saisies.</p>
+            <TableauDonnees
+              className="mt-2"
+              colonnes={["Indicateur", "Complétude", "Fraîcheur", "Cohérence", "Validation", "Verdict"]}
+              lignes={lignes.map((l) => {
+                const c = l.confiance;
+                const plusFaible = Math.min(c.completude, c.fraicheur, c.coherence, c.validation);
+                const maillon = c.completude === plusFaible ? "complétude" : c.fraicheur === plusFaible ? "fraîcheur" : c.coherence === plusFaible ? "cohérence" : "validation";
+                return [
+                  l.libelle,
+                  entier(c.completude),
+                  entier(c.fraicheur),
+                  entier(c.coherence),
+                  entier(c.validation),
+                  <span key="v" className={cn("font-semibold", c.score >= 70 ? "text-success" : c.score >= 50 ? "text-warning" : "text-critical")}>
+                    {c.score >= 70 ? "citable seul" : c.score >= 50 ? `à nuancer (${maillon} ${entier(plusFaible)})` : `à éviter seul (${maillon} ${entier(plusFaible)})`}
+                  </span>,
+                ];
+              })}
+            />
           </section>
 
           <section>

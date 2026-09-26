@@ -7,6 +7,7 @@ import { Suspense, useMemo, useState } from "react";
 import { EntreePage, motion } from "@/components/motion";
 import { FeuilleImprimable } from "@/components/etats/Etats";
 import { StatsPromotion } from "@/components/stats/Promotion";
+import { StatsLiaison } from "@/components/stats/Liaison";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
 import { useEleves, useTableau, type EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
@@ -168,6 +169,7 @@ function Liste() {
       )}
 
       {donnees && donnees.length > 0 && <StatsPromotion eleves={donnees} niveaux={niveaux} />}
+      {donnees && donnees.length > 0 && <StatsLiaison eleves={donnees} />}
 
       <Card data-guide="eleves-recherche" className="p-3">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">

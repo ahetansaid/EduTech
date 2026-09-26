@@ -2,13 +2,13 @@
 
 import { BarChart3, ChevronDown, Download } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { BarresClassees, SERIES, type Barre } from "@/components/charts/Graphiques";
+import { BarresClassees, SERIES, TableauDonnees, type Barre } from "@/components/charts/Graphiques";
 import { Button, Card, Segmente } from "@/components/ui/primitives";
 import type { EtablissementTerritoire, Infrastructures } from "@/lib/api/pilotage";
 import { cn } from "@/lib/cn";
 import { exporterStats, type LigneStat } from "@/lib/export";
 import { entier, nombre, pourcent } from "@/lib/format";
-import { ecartType, mediane, moyenne, quantile, repartir, type Bande } from "@/lib/statistiques";
+import { ecartType, mediane, moyenne, quantile, rangPercentile, repartir, type Bande } from "@/lib/statistiques";
 
 /**
  * Statistiques descriptives d'un territoire de pilotage (circonscription pour l'inspecteur, département
@@ -88,6 +88,10 @@ export function StatsCirconscription({ etabs, infra, inspecteur }: {
           accent: critere === "occupation" ? occupationDe(e) > SEUIL_SATURE : ratioDe(e) > SEUIL_SURCHARGE,
         })),
       mediatrice: critere === "occupation" ? mediane(occ) : mediane(rat),
+      // Rang percentile de chaque établissement dans la distribution du territoire (0-1) : « au Nième percentile ».
+      positions: [...etabs]
+        .sort((a, b) => occupationDe(b) - occupationDe(a))
+        .map((e) => ({ id: e.id, nom: e.nom, occ: occupationDe(e), rat: ratioDe(e), occP: rangPercentile(occ, occupationDe(e)), ratP: rangPercentile(rat, ratioDe(e)) })),
       infra: infra ? EQUIPEMENTS.map((q) => ({ ...q, taux: equipes.length ? (equipes.filter((i) => i[q.cle]).length / equipes.length) * 100 : null })) : null,
       infraN: equipes.length,
     };
@@ -116,6 +120,8 @@ export function StatsCirconscription({ etabs, infra, inspecteur }: {
     for (const b of s.bandesRat) l.push({ section: "Bandes d'élèves/enseignant", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
     l.push({ section: "Comparateur", indicateur: "Critère", valeur: critere === "occupation" ? "Taux d'occupation" : "Élèves par enseignant" });
     for (const c of s.classées) l.push({ section: "Comparateur", indicateur: c.libelle, valeur: (critere === "occupation" ? pourcent(c.valeur, 0) : nombre(c.valeur, 0)) + (c.accent ? " (au-dessus du seuil)" : "") });
+    for (const p of s.positions) l.push({ section: "Percentiles", indicateur: `${p.nom} — percentile d'occupation`, valeur: p.occP != null ? `${entier(Math.round(p.occP * 100))}ᵉ (${pourcent(p.occ, 0)})` : "—" });
+    for (const p of s.positions) l.push({ section: "Percentiles", indicateur: `${p.nom} — percentile d'encadrement`, valeur: p.ratP != null ? `${entier(Math.round(p.ratP * 100))}ᵉ (${nombre(p.rat, 0)} élèves/ens.)` : "—" });
     if (s.infra) for (const q of s.infra) l.push({ section: "Infrastructures", indicateur: q.libelle, valeur: q.taux != null ? pourcent(q.taux, 0) : "—" });
     exporterStats(
       inspecteur ? "Statistiques circonscription" : "Statistiques département",
@@ -178,6 +184,22 @@ export function StatsCirconscription({ etabs, infra, inspecteur }: {
               reference={s.mediatrice != null ? { valeur: s.mediatrice, libelle: "Médiane du territoire" } : undefined}
               limite={12}
               className="mt-2"
+            />
+          </section>
+
+          <section>
+            <SousTitre>Où se situe chaque établissement ?</SousTitre>
+            <p className="mt-1 text-[12.5px] text-ink-muted">Le percentile indique la part d'établissements du territoire situés en dessous : un établissement au 90ᵉ percentile d'occupation est plus saturé que 9 sur 10. Classé ici du plus occupé au moins occupé (les 10 premiers).</p>
+            <TableauDonnees
+              className="mt-2"
+              colonnes={["Établissement", "Occupation", "Percentile d'occupation", "Élèves/enseignant", "Percentile d'encadrement"]}
+              lignes={s.positions.slice(0, 10).map((p) => [
+                p.nom,
+                pourcent(p.occ, 0),
+                p.occP != null ? `${entier(Math.round(p.occP * 100))}ᵉ` : "—",
+                nombre(p.rat, 0),
+                p.ratP != null ? `${entier(Math.round(p.ratP * 100))}ᵉ` : "—",
+              ])}
             />
           </section>
 

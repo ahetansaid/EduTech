@@ -72,7 +72,7 @@
 - Carte : votre circonscription et ses établissements (points).
 - Absences du jour en direct.
 - Points d'attention et tableau des établissements (effectifs, encadrement, eau, électricité, transmission).
-- « Statistiques de la circonscription » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, couverture en infrastructures — le tout exportable en CSV.
+- « Statistiques de la circonscription » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, position percentile de chaque établissement, couverture en infrastructures — le tout exportable en CSV.
 
 ### Ask Education
 
@@ -109,7 +109,8 @@
 2. Lisez les quatre repères : occupation médiane, établissements saturés, élèves/enseignant médian, classes surchargées.
 3. Choisissez le critère du comparateur (Occupation ou Élèves / ens.) : le trait vertical est la médiane du territoire, les barres en surbrillance dépassent le seuil d'alerte.
 4. Regardez la couverture en infrastructures pour préparer votre visite.
-5. Touchez « Exporter (CSV) » pour emporter ce portrait (résumé, bandes, comparateur, infrastructures) avant une visite ou une relance.
+5. Lisez « Où se situe chaque établissement ? » : le percentile d'occupation (ex. 90ᵉ = plus saturé que 9 établissements sur 10) et d'encadrement situent objectivement la tension.
+6. Touchez « Exporter (CSV) » pour emporter ce portrait (résumé, bandes, comparateur, percentiles, infrastructures) avant une visite ou une relance.
 
 ### Relancer un établissement
 

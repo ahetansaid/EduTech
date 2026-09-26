@@ -50,3 +50,55 @@ export function sousSeuil(xs: number[], seuil: number): { k: number; taux: numbe
   const k = xs.reduce((a, x) => a + (x < seuil ? 1 : 0), 0);
   return { k, taux: xs.length ? k / xs.length : null };
 }
+
+/**
+ * Coefficient de corrélation linéaire de Pearson entre deux séries appariées (r ∈ [-1, 1]).
+ * null si moins de 3 paires ou si l'une des séries est constante (pas de liaison mesurable).
+ * Ne mesure qu'un lien linéaire et N'IMPLIQUE AUCUNE causalité — à interpréter avec l'effectif.
+ */
+export function correlation(xs: readonly number[], ys: readonly number[]): number | null {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 3) return null;
+  const mx = moyenne(xs.slice(0, n))!, my = moyenne(ys.slice(0, n))!;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i]! - mx, dy = ys[i]! - my;
+    sxy += dx * dy; sxx += dx * dx; syy += dy * dy;
+  }
+  if (sxx === 0 || syy === 0) return null;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+/** Drette des moindres carrés y = ordonnee + pente·x sur les paires appariées ; null si non calculable. */
+export function droiteAjustee(xs: readonly number[], ys: readonly number[]): { pente: number; ordonnee: number } | null {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 3) return null;
+  const mx = moyenne(xs.slice(0, n))!, my = moyenne(ys.slice(0, n))!;
+  let sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i]! - mx) * (ys[i]! - my); sxx += (xs[i]! - mx) ** 2; }
+  if (sxx === 0) return null;
+  const pente = sxy / sxx;
+  return { pente, ordonnee: my - pente * mx };
+}
+
+/**
+ * Asymétrie (coefficient de Pearson 2) : 3·(moyenne − médiane) / écart-type. Positif = queue tirée
+ * vers les notes hautes (peu d'élèves très forts relèvent la moyenne) ; négatif = concentration en bas.
+ * null si moins de 2 valeurs ou dispersion nulle.
+ */
+export function asymetrie(xs: number[]): number | null {
+  const m = moyenne(xs), e = ecartType(xs), med = mediane(xs);
+  if (m == null || e == null || med == null || e === 0) return null;
+  return (3 * (m - med)) / e;
+}
+
+/**
+ * Rang percentile d'une valeur `v` dans un jeu de valeurs `xs` : part de valeurs situées en dessous
+ * (½ des égalités comprise), entre 0 et 1. Sert à dire « cet élément est au Nième percentile du groupe ».
+ */
+export function rangPercentile(xs: number[], v: number): number | null {
+  if (!xs.length) return null;
+  const inf = xs.reduce((a, x) => a + (x < v ? 1 : 0), 0);
+  const egaux = xs.reduce((a, x) => a + (x === v ? 1 : 0), 0);
+  return (inf + 0.5 * egaux) / xs.length;
+}

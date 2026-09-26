@@ -144,6 +144,80 @@ export function BarresClassees({ barres, formater = (v) => String(v), max: maxFo
   );
 }
 
+/* ------------------------------------------------------------------ Nuage de points */
+
+export interface Point { x: number; y: number; label?: string; accent?: boolean }
+
+/**
+ * Nuage de points (dispersion x → y) avec droite d'ajustement optionnelle. Comme les autres graphiques :
+ * un seul jeu de données par couleur, traits fins, survol, vue tableau. Sert à rendre visible une liaison
+ * (ex. absences × moyenne) plutôt qu'un simple coefficient.
+ */
+export function Nuage({ points, xLabel, yLabel, ajustement, formaterX = (v) => String(v), formaterY = (v) => String(v), couleur = SERIES[0], hauteur = 300, className }: {
+  points: Point[]; xLabel: string; yLabel: string; ajustement?: { pente: number; ordonnee: number } | null;
+  formaterX?: (v: number) => string; formaterY?: (v: number) => string; couleur?: string; hauteur?: number; className?: string;
+}) {
+  const [survol, setSurvol] = useState<number | null>(null);
+  const [tableau, setTableau] = useState(false);
+  if (!points.length) return null;
+
+  const W = 640, H = hauteur, g = 52, d = 24, h = 16, b = 44;
+  const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
+  let xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
+  if (xmin === xmax) { xmin -= 0.5; xmax += 0.5; }
+  if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
+  const padY = (ymax - ymin) * 0.08; ymin -= padY; ymax += padY;
+  const X = (v: number) => g + ((v - xmin) / (xmax - xmin || 1)) * (W - g - d);
+  const Y = (v: number) => h + (1 - (v - ymin) / (ymax - ymin || 1)) * (H - h - b);
+  const gx = [0, 0.25, 0.5, 0.75, 1].map((t) => xmin + t * (xmax - xmin));
+  const gy = [0, 0.25, 0.5, 0.75, 1].map((t) => ymin + t * (ymax - ymin));
+
+  return (
+    <div className={cn("relative", className)}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[12px] text-ink-muted"><span className="font-medium text-ink-2">{yLabel}</span> en fonction de <span className="font-medium text-ink-2">{xLabel}</span></span>
+        <button onClick={() => setTableau((t) => !t)} className="inline-flex items-center gap-1 text-[12px] font-medium text-blue hover:underline">
+          <Table2 size={13} aria-hidden /> {tableau ? "Graphique" : "Tableau"}
+        </button>
+      </div>
+      {tableau ? (
+        <TableauDonnees colonnes={[xLabel, yLabel]} lignes={points.map((p) => [formaterX(p.x), formaterY(p.y)])} />
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full overflow-visible" role="img" aria-label={`Nuage de ${points.length} points : ${yLabel} en fonction de ${xLabel}`} onMouseLeave={() => setSurvol(null)}>
+          {gy.map((v, i) => (
+            <g key={`y${i}`}>
+              <line x1={g} x2={W - d} y1={Y(v)} y2={Y(v)} stroke="var(--grid)" strokeWidth={1} />
+              <text x={g - 8} y={Y(v) + 4} textAnchor="end" className="fill-[var(--text-muted)] text-[11px] tabular">{formaterY(v)}</text>
+            </g>
+          ))}
+          {gx.map((v, i) => (
+            <text key={`x${i}`} x={X(v)} y={H - b + 16} textAnchor="middle" className="fill-[var(--text-muted)] text-[11px] tabular">{formaterX(v)}</text>
+          ))}
+          <line x1={g} x2={W - d} y1={H - b} y2={H - b} stroke="var(--border)" strokeWidth={1} />
+          <line x1={g} x2={g} y1={h} y2={H - b} stroke="var(--border)" strokeWidth={1} />
+          {ajustement && (
+            <line x1={X(xmin)} y1={Y(ajustement.ordonnee + ajustement.pente * xmin)} x2={X(xmax)} y2={Y(ajustement.ordonnee + ajustement.pente * xmax)}
+              stroke="var(--text-muted)" strokeWidth={1.5} strokeDasharray="5 4" opacity={0.7} />
+          )}
+          {points.map((p, i) => (
+            <motion.circle key={i} cx={X(p.x)} cy={Y(p.y)} fill={p.accent ? "var(--critical)" : couleur} stroke="var(--surface)" strokeWidth={1}
+              initial={{ r: 0, opacity: 0 }} animate={{ r: survol === i ? 6 : 4, opacity: survol == null || survol === i ? 0.9 : 0.35 }}
+              transition={{ type: "spring", stiffness: 500, damping: 26, delay: survol == null ? Math.min(i, 30) * 0.012 : 0 }}
+              onMouseEnter={() => setSurvol(i)} />
+          ))}
+        </svg>
+      )}
+      {!tableau && survol != null && points[survol] && (
+        <div className="pointer-events-none absolute top-2 z-10 rounded-md border border-line/70 bg-surface px-3 py-1.5 text-[12px] shadow-pop" style={{ left: `calc(${(X(points[survol]!.x) / W) * 100}% + ${X(points[survol]!.x) > W * 0.6 ? -140 : 12}px)` }}>
+          {points[survol]!.label && <p className="font-semibold text-ink">{points[survol]!.label}</p>}
+          <p className="tabular text-ink-2">{xLabel} : <span className="font-semibold text-ink">{formaterX(points[survol]!.x)}</span></p>
+          <p className="tabular text-ink-2">{yLabel} : <span className="font-semibold text-ink">{formaterY(points[survol]!.y)}</span></p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ Tableau de données */
 
 export function TableauDonnees({ colonnes, lignes, className }: { colonnes: string[]; lignes: ReactNode[][]; className?: string }) {

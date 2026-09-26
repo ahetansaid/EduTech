@@ -72,7 +72,7 @@
 - Carte des niveaux de priorité par commune.
 - Absences du jour en direct (toutes les 30 secondes).
 - Classement des communes et établissements n'ayant pas transmis.
-- « Statistiques du département » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, couverture en infrastructures — le tout exportable en CSV.
+- « Statistiques du département » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, position percentile de chaque établissement, couverture en infrastructures — le tout exportable en CSV.
 
 ### Où agir ?
 
@@ -122,7 +122,8 @@
 2. Comparez médiane et moyenne d'occupation, et le nombre d'établissements saturés ou à classes surchargées.
 3. Utilisez le comparateur classé (Occupation ou Élèves / ens.) pour voir les établissements les plus en tension, repère : la médiane départementale.
 4. Lisez la couverture en infrastructures pour prioriser les visites.
-5. Touchez « Exporter (CSV) » pour emporter ce portrait (résumé, bandes, comparateur, infrastructures) vers une note ou un arbitrage.
+5. Lisez « Où se situe chaque établissement ? » : le percentile d'occupation et d'encadrement transforme une valeur brute en rang défendable dans le département.
+6. Touchez « Exporter (CSV) » pour emporter ce portrait (résumé, bandes, comparateur, percentiles, infrastructures) vers une note ou un arbitrage.
 
 ## Questions fréquentes
 

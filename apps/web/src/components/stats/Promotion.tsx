@@ -8,7 +8,7 @@ import type { EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { exporterStats, type LigneStat } from "@/lib/export";
 import { entier, note, nombre, pourcent } from "@/lib/format";
-import { ecartType, mediane, moyenne, repartir, sousSeuil, type Bande } from "@/lib/statistiques";
+import { asymetrie, ecartType, mediane, moyenne, quantile, repartir, sousSeuil, type Bande } from "@/lib/statistiques";
 
 /**
  * Statistiques descriptives d'une promotion, calculées sur les apprenants *déjà chargés* pour le rôle.
@@ -43,6 +43,7 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
   const s = useMemo(() => {
     const notes = eleves.map((e) => e.moyenne).filter((v): v is number => v != null);
     const absences = eleves.map((e) => e.absences);
+    const tri = [...notes].sort((a, b) => a - b);
     const groupe = (xs: EleveLigne[]) => {
       const n = xs.map((e) => e.moyenne).filter((v): v is number => v != null);
       return { effectif: xs.length, moyenne: moyenne(n), absMoy: moyenne(xs.map((e) => e.absences)), sous: sousSeuil(n, 10) };
@@ -58,6 +59,11 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
       bandesAbsences: bandes(BANDES_ABSENCES, repartir(absences, BANDES_ABSENCES)),
       filles: groupe(eleves.filter((e) => e.sexe === "F")),
       garcons: groupe(eleves.filter((e) => e.sexe === "M")),
+      // Forme de la distribution : où sont les élèves, pas seulement leur moyenne.
+      q1: quantile(tri, 0.25), q3: quantile(tri, 0.75), p90: quantile(tri, 0.9),
+      asym: asymetrie(notes),
+      tete: notes.filter((v) => v >= 14).length,
+      bascule: notes.filter((v) => v < 8).length,
     };
   }, [eleves]);
 
@@ -73,6 +79,14 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
     ];
     for (const b of s.bandesMoyenne) lignes.push({ section: "Bandes de moyennes", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
     for (const b of s.bandesAbsences) lignes.push({ section: "Bandes d'absences", indicateur: b.libelle, valeur: entier(b.valeur ?? 0) });
+    lignes.push(
+      { section: "Forme de la distribution", indicateur: "1er quartile (Q1)", valeur: note(s.q1) },
+      { section: "Forme de la distribution", indicateur: "3e quartile (Q3)", valeur: note(s.q3) },
+      { section: "Forme de la distribution", indicateur: "Meilleur décile (P90)", valeur: note(s.p90) },
+      { section: "Forme de la distribution", indicateur: "Asymétrie (Pearson 2)", valeur: s.asym != null ? nombre(s.asym, 2) : "—" },
+      { section: "Forme de la distribution", indicateur: "Élèves à 14/20 et plus", valeur: entier(s.tete) },
+      { section: "Forme de la distribution", indicateur: "Élèves sous 8/20", valeur: entier(s.bascule) },
+    );
     lignes.push({ section: "Bandes d'absences", indicateur: "12 jours et plus (seuil vigilance)", valeur: entier(s.longues) });
     lignes.push(
       { section: "Filles et garçons", indicateur: "Filles — effectif", valeur: entier(s.filles.effectif) },
@@ -123,6 +137,20 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
               <p className="mt-1.5 text-[12px] text-ink-muted">{entier(s.longues)} élève(s) avec 12 jours d'absence ou plus — seuil du score de vigilance.</p>
             </section>
           </div>
+
+          <section>
+            <Titre>Forme de la distribution</Titre>
+            <div className="mt-2 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              <Puce libelle="Moitié basse (Q1)" valeur={note(s.q1)} aide="25 % des élèves sont en dessous" />
+              <Puce libelle="Moitié haute (Q3)" valeur={note(s.q3)} aide="25 % des élèves sont au-dessus" />
+              <Puce libelle="Le meilleur décile" valeur={note(s.p90)} aide="note au-dessus de laquelle sont les 10 % les plus forts" />
+              <Puce libelle="Asymétrie" valeur={s.asym != null ? nombre(s.asym, 2) : "—"} aide={s.asym == null ? "trop peu d'élèves notés" : s.asym < -0.3 ? "queue tirée vers le bas" : s.asym > 0.3 ? "queue tirée vers le haut" : "distribution à peu près symétrique"} />
+            </div>
+            <p className="mt-2 text-[13px] text-ink-2">
+              {entier(s.tete)} élève(s) à 14/20 et plus · {entier(s.bascule)} sous 8/20.
+              Deux classes à la même moyenne se pilotent différemment si l'une est serrée autour de 11 et l'autre partagée entre très forts et très faibles : l'écart interquartile (Q3 − Q1) et l'asymétrie le révèlent, la moyenne seule non.
+            </p>
+          </section>
 
           <section>
             <Titre>Filles et garçons</Titre>

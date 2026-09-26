@@ -88,7 +88,8 @@
 
 - Filtres « Tous », « À risque », « En baisse », « Identité à régulariser ».
 - Panneau « Vigilance décrochage » : score explicable (moyenne, absences, maths), seuils réglables.
-- Panneau « Statistiques de la promotion » : dispersion des moyennes (médiane, écart-type, bandes), répartition des absences, comparatif filles/garçons — calculés sur les élèves déjà affichés, exportables en CSV.
+- Panneau « Statistiques de la promotion » : dispersion des moyennes (médiane, écart-type, bandes), forme de la distribution (quartiles, asymétrie), répartition des absences, comparatif filles/garçons — calculés sur les élèves déjà affichés, exportables en CSV.
+- Panneau « Lien absences ↔ réussite » : corrélation (r de Pearson) entre jours d'absence et moyenne, nuage de points et moyenne par palier d'absence — la lecture d'une association, jamais d'une causalité.
 - Dossier : « Évolution longitudinale » (courbe de la moyenne générale et matrice matière × trimestre, calculées sur l'historique des notes du dossier), moyennes du trimestre, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
 - « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque ; la date de naissance devient une classe d'âge et le fichier porte une ligne de provenance.
 - « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
@@ -146,10 +147,22 @@
 
 1. Sous la liste des apprenants, dépliez « Statistiques de la promotion ».
 2. Comparez moyenne, médiane et écart-type : un écart-type élevé signale une promotion hétérogène.
-3. Regardez les bandes de moyennes et d'absences plutôt qu'un seul pourcentage.
-4. Lisez la ligne « Filles et garçons » pour repérer un écart à creuser.
-5. Recoupez avec le panneau « Vigilance décrochage » avant de décider un accompagnement.
-6. Touchez « Exporter (CSV) » en bas du panneau pour conserver ce portrait (moyennes, bandes, comparatif, vigilance) : les mêmes chiffres que l'écran, dans un fichier daté portant sa provenance.
+3. Lisez la « Forme de la distribution » (quartiles, asymétrie) : une asymétrie marquée vers le bas signale une minorité d'élèves très en difficulté qui tire la moyenne.
+4. Regardez les bandes de moyennes et d'absences plutôt qu'un seul pourcentage.
+5. Lisez la ligne « Filles et garçons » pour repérer un écart à creuser.
+6. Recoupez avec le panneau « Vigilance décrochage » avant de décider un accompagnement.
+7. Touchez « Exporter (CSV) » en bas du panneau pour conserver ce portrait : les mêmes chiffres que l'écran, dans un fichier daté portant sa provenance.
+
+### Interpréter le lien absences ↔ réussite
+
+> Savoir si l'absentéisme explique les notes de VOTRE promotion évite de généraliser une intuition.
+
+1. Sous les statistiques, dépliez « Lien absences ↔ réussite ».
+2. Le coefficient r va de -1 à +1 : proche de -1, beaucoup d'absences rime avec moyenne basse ; proche de 0, les absences ne prédisent rien ici.
+3. Le nuage de points montre chaque élève (en rouge ceux sous 10/20) ; la pointillée est la tendance.
+4. Comparez la moyenne d'un palier d'absence à l'autre : c'est la même information, plus parlante pour une équipe.
+5. Gardez la prudence affichée : corrélation n'est pas causalité — un même décrochage peut produire absences et baisse de notes.
+6. Le panneau ne se lance qu'à partir de 8 élèves notés, pour ne pas donner un chiffre instable.
 
 ### Suivre l'évolution d'un élève trimestre après trimestre
 
