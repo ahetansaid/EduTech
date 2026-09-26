@@ -12,6 +12,7 @@ import { notifier } from "@/components/ui/Notifications";
 import { CartePreuve } from "@/components/ui/Preuve";
 import { Badge, Button, Card, CardHeader, EtatVide, Squelette } from "@/components/ui/primitives";
 import { Bulletin } from "@/components/bulletin/Bulletin";
+import { Evolution } from "@/components/parcours/Evolution";
 import { decisionDuRefus, jourCourant, useAbandonMutation, useClassesAccueil, useDossier, useTransfertMutation, type DossierGestion } from "@/lib/api/etablissement";
 import { bulletinDepuisGestion } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
@@ -138,6 +139,8 @@ function DossierCharge({ d }: { d: DossierGestion }) {
               </ul>
             )}
           </Card>
+
+          <Evolution historique={d.historique} />
 
           <Card className="min-w-0">
             <CardHeader icon={History} title="Parcours" subtitle="Événements du registre national, du plus récent au plus ancien" action={<Badge>{d.evenements.length}</Badge>} />

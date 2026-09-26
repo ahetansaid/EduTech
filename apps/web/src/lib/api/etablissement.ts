@@ -74,6 +74,7 @@ export interface DossierGestion {
   situation: { statut: "scolarise" | "abandon" | "non_inscrit"; etablissementId: string | null; etablissement: string | null; classeId: string | null; classe: string | null; niveau: string | null; anneeScolaire: string | null };
   trimestre: number;
   moyennes: { matiere: string; moyenne: number; nombre: number }[];
+  historique: { anneeScolaire: string; trimestre: number; moyenne: number | null; matieres: { matiere: string; moyenne: number; nombre: number }[] }[];
   absences: number;
   evenements: Evenement[];
   certificats: Certificat[];

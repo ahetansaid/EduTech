@@ -89,7 +89,7 @@
 - Filtres « Tous », « À risque », « En baisse », « Identité à régulariser ».
 - Panneau « Vigilance décrochage » : score explicable (moyenne, absences, maths), seuils réglables.
 - Panneau « Statistiques de la promotion » : dispersion des moyennes (médiane, écart-type, bandes), répartition des absences, comparatif filles/garçons — calculés sur les élèves déjà affichés.
-- Dossier : moyennes, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
+- Dossier : « Évolution longitudinale » (courbe de la moyenne générale et matrice matière × trimestre, calculées sur l'historique des notes du dossier), moyennes du trimestre, parcours, diplômes ; « Transférer » ou « Déclarer un abandon ».
 - « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque ; la date de naissance devient une classe d'âge et le fichier porte une ligne de provenance.
 - « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
 
@@ -149,6 +149,16 @@
 3. Regardez les bandes de moyennes et d'absences plutôt qu'un seul pourcentage.
 4. Lisez la ligne « Filles et garçons » pour repérer un écart à creuser.
 5. Recoupez avec le panneau « Vigilance décrochage » avant de décider un accompagnement.
+
+### Suivre l'évolution d'un élève trimestre après trimestre
+
+> Un élève à 11/20 ce trimestre n'a pas le même profil selon qu'il monte ou qu'il glisse depuis trois trimestres.
+
+1. Ouvrez « Apprenants », puis le dossier de l'élève.
+2. Repérez la carte « Évolution longitudinale » : la courbe suit la moyenne générale, le tableau détaille matière par matière et trimestre par trimestre.
+3. Lisez la puce « Progression » pour mesurer l'écart depuis le premier trimestre noté.
+4. Un « — » dans le tableau signifie que la matière n'a pas été évaluée sur la période, jamais une donnée estimée.
+5. Croisez avec l'onglet « Parcours » (inscriptions, passages, diplômes) pour situer le chiffre dans l'histoire de l'élève.
 
 ### Ajuster une classe (capacité, professeur principal)
 

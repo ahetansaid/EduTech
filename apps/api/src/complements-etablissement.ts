@@ -25,8 +25,26 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
   if (!r.dossier) return c.json({ decision: r.decision }, 403);
   const d = r.dossier;
 
+  const notes = notesApprenant(d.evenements, apprenantId);
   const parMatiere = new Map<string, number[]>();
-  for (const n of notesApprenant(d.evenements, apprenantId)) if (n.trimestre === TRIMESTRE_COURANT) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
+  for (const n of notes) if (n.trimestre === TRIMESTRE_COURANT) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
+
+  // Historique longitudinal : les mêmes notes déjà chargées pour ce dossier, agrégées par année et trimestre.
+  // Moyenne générale = moyenne non pondérée des moyennes de matière (aucun coefficient transmis), comme la tuile du trimestre courant.
+  const moy = (v: number[]) => (v.length ? v.reduce((s, x) => s + x, 0) / v.length : null);
+  const parPeriode = new Map<string, typeof notes>();
+  for (const n of notes) {
+    const k = `${n.anneeScolaire}¦${n.trimestre}`;
+    const g = parPeriode.get(k);
+    if (g) g.push(n); else parPeriode.set(k, [n]);
+  }
+  const historique = [...parPeriode.entries()].map(([k, ns]) => {
+    const [anneeScolaire, t] = k.split("¦") as [string, string];
+    const par = new Map<string, number[]>();
+    for (const n of ns) par.set(n.matiere, [...(par.get(n.matiere) ?? []), n.note]);
+    const matieres = [...par].map(([matiere, v]) => ({ matiere, moyenne: moy(v)!, nombre: v.length })).sort((a, b) => comparerFr(a.matiere, b.matiere));
+    return { anneeScolaire, trimestre: Number(t), moyenne: moy(matieres.map((m) => m.moyenne)), matieres };
+  }).sort((a, b) => a.anneeScolaire.localeCompare(b.anneeScolaire) || a.trimestre - b.trimestre);
 
   const classeIds = [...new Set(d.evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])).filter((x): x is string => !!x))];
   const classes = classeIds.length ? await base().select({ id: schema.classes.id, libelle: schema.classes.libelle }).from(schema.classes).where(inArray(schema.classes.id, classeIds)) : [];
@@ -47,6 +65,7 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
     },
     trimestre: TRIMESTRE_COURANT,
     moyennes: [...parMatiere].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, x) => s + x, 0) / notes.length, nombre: notes.length })).sort((x, y) => comparerFr(x.matiere, y.matiere)),
+    historique,
     absences: d.evenements.filter((e) => e.type === "ABSENCE").length,
     evenements: d.evenements.filter((e) => e.type !== "EVALUATION" && e.type !== "ABSENCE").reverse(),
     certificats: d.certificats,
