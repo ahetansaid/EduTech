@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, uniqueIndex,
+  type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -64,13 +64,19 @@ export const etablissements = core.table("etablissements", {
   id: text("id").primaryKey(),
   nom: text("nom").notNull(),
   typeInstitution: text("type_institution", {
-    enum: ["ecole_maternelle", "ecole_primaire", "college", "lycee_general", "lycee_technique", "centre_formation_professionnelle", "centre_alphabetisation", "universite", "ecole_superieure", "centre_examen"],
+    enum: ["ecole_maternelle", "ecole_primaire", "college", "lycee_general", "lycee_technique", "centre_formation_professionnelle", "centre_alphabetisation", "universite", "ecole_superieure", "centre_examen", "ecole_nationale", "institut", "institut_regional_formation_professionnelle", "institut_national_formation_professionnelle", "ecole_d_application"],
   }).notNull(),
   ministereTutelle: text("ministere_tutelle", { enum: ["MEMP", "MESTFP", "MESRS"] }).notNull(),
-  cycle: text("cycle", { enum: ["primaire", "secondaire"] }).notNull(),
+  cycle: text("cycle", { enum: ["primaire", "secondaire", "superieur"] }).notNull(),
   statut: text("statut", { enum: ["public", "prive", "confessionnel", "communautaire"] }).notNull(),
   gestionnaire: text("gestionnaire"),
   agrement: text("agrement"),
+  /** Sigle de l'établissement (ex. UAC, ENAM) ; renseigné surtout pour le supérieur. */
+  sigle: text("sigle"),
+  /** Tutelle(s) pour le supérieur : la double tutelle MESTFP + Emploi/PME est fréquente en EFTP. Vide pour le K-12. */
+  tutelles: text("tutelles", { enum: ["MESRS", "MESTFP", "EMPLOI_PME"] }).array(),
+  /** Établissement-parent pour une école rattachée (ex. ENAM → UAC) ; null sinon. */
+  rattachementId: text("rattachement_id").references((): AnyPgColumn => etablissements.id),
   communeId: text("commune_id").notNull().references(() => communes.id),
   circonscription: text("circonscription").notNull(),
   position: point("position"),
@@ -493,3 +499,77 @@ export const calendrier = core.table("calendrier", {
   majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
   majPar: text("maj_par"),
 }, (t) => [index("calendrier_annee_idx").on(t.annee, t.debut)]);
+
+/* ------------------------------------------------------------------ Enseignement supérieur & formation professionnelle
+ * Miroir en base des contrats zod `packages/contracts/src/enseignement-superieur.ts` (S0). Trois voies
+ * (université MESRS, écoles nationales rattachées, EFTP MESTFP + Emploi/PME), deux carrefours (BAC ;
+ * passerelle CQP/BTS → licence pro). Les établissements vivent dans `etablissements` (cycle « superieur ») :
+ * aucune table miroir. Le `parcours` existant (type « universitaire »…) reste l'épine dorsale du suivi.
+ */
+
+/** Filière d'une école/université/CFP : offre de formation avec ses conditions d'accès lisibles. */
+export const filiereSuperieure = core.table("filiere_superieure", {
+  id: text("id").primaryKey(),
+  etablissementId: text("etablissement_id").notNull().references(() => etablissements.id),
+  nom: text("nom").notNull(),
+  domaine: text("domaine", { enum: ["sciences_exactes", "sciences_vie_sante", "sciences_technologie", "agronomie", "droit_economie_gestion", "lettres_arts_sc_humaines", "sciences_education", "metier"] }).notNull(),
+  voie: text("voie", { enum: ["scolaire", "technique", "professionnel", "universitaire", "apprentissage", "formation_courte", "alphabetisation"] }).notNull(),
+  /** null pour une filière EFTP hors LMD (CAP, BT, BTS…). */
+  cycle: text("cycle", { enum: ["licence", "master", "doctorat"] }),
+  diplomeVise: text("diplome_vise", { enum: ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES", "DNSV"] }).notNull(),
+  /** Composantes effectivement ouvertes (L1…Dr). Liste ouverte, verrouillée à l'arrêté au seed. */
+  composantes: text("composantes").array().notNull().default(sql`'{}'::text[]`),
+  creditsEcts: integer("credits_ects").notNull().default(0),
+  capaciteAnnuelle: integer("capacite_annuelle"),
+  serieBacRequise: text("serie_bac_requise").array().notNull().default(sql`'{}'::text[]`),
+  accesConcours: boolean("acces_concours").notNull().default(false),
+  /** Durée cumulée de(s) stage(s) obligatoire(s), en mois ; 0 si aucun. */
+  stageObligatoireMois: integer("stage_obligatoire_mois").notNull().default(0),
+  ...validite(),
+}, (t) => [index("filiere_superieure_etablissement_idx").on(t.etablissementId), index("filiere_superieure_domaine_idx").on(t.domaine)]);
+
+/** Session de concours sélectif rattachée à une filière. Une ligne par (filière, session). */
+export const concoursSession = core.table("concours_session", {
+  id: text("id").primaryKey(),
+  nom: text("nom").notNull(),
+  filiereId: text("filiere_id").notNull().references(() => filiereSuperieure.id),
+  session: text("session").notNull(),
+  statut: text("statut", { enum: ["annonce", "inscriptions", "admissibilite", "ecrits", "oraux", "resultats", "clos"] }).notNull().default("annonce"),
+  diplomeRequis: text("diplome_requis", { enum: ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES", "DNSV"] }).notNull(),
+  serieRequise: text("serie_requise").array().notNull().default(sql`'{}'::text[]`),
+  places: integer("places"),
+  epreuves: jsonb("epreuves").$type<{ matiere: string; coef: number }[]>().notNull().default(sql`'[]'::jsonb`),
+  ouvertureLe: date("ouverture_le"),
+  clotureLe: date("cloture_le"),
+  epreuvesLe: date("epreuves_le"),
+}, (t) => [uniqueIndex("concours_session_filiere_session_uq").on(t.filiereId, t.session), index("concours_session_statut_idx").on(t.statut)]);
+
+/** Vœu d'orientation supérieur déposé par un apprenant. Un vœu ≠ une inscription. */
+export const voeuSuperieur = core.table("voeu_superieur", {
+  id: text("id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  filiereId: text("filiere_id").notNull().references(() => filiereSuperieure.id),
+  /** Si le cycle est sélectif, le vœu précise le concours visé. */
+  concoursId: text("concours_id").references(() => concoursSession.id),
+  rang: integer("rang").notNull(),
+  statut: text("statut", { enum: ["brouillon", "soumis", "admissible", "admis", "refuse", "desiste"] }).notNull().default("brouillon"),
+  anneeScolaire: text("annee_scolaire").notNull(),
+}, (t) => [
+  uniqueIndex("voeu_superieur_apprenant_filiere_annee_uq").on(t.apprenantId, t.filiereId, t.anneeScolaire),
+  index("voeu_superieur_apprenant_idx").on(t.apprenantId, t.anneeScolaire),
+]);
+
+/** Stage rattaché à un apprenant du supérieur (transversal L3/M2/licence pro/écoles/CFP). */
+export const stage = core.table("stage", {
+  id: text("id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  etablissementId: text("etablissement_id").references(() => etablissements.id),
+  entreprise: text("entreprise").notNull(),
+  tuteurPro: text("tuteur_pro"),
+  /** Enseignant BEILE assurant l'encadrement académique ; null si non encadré par BEILE. */
+  tuteurAcademiqueId: text("tuteur_academique_id").references(() => enseignants.id),
+  du: date("du"),
+  au: date("au"),
+  statut: text("statut", { enum: ["recherche", "piste", "convention_en_cours", "signe", "en_cours", "termine", "interrompu"] }).notNull().default("recherche"),
+  valideParEtablissement: boolean("valide_par_etablissement").notNull().default(false),
+}, (t) => [index("stage_apprenant_idx").on(t.apprenantId), index("stage_statut_idx").on(t.statut)]);
