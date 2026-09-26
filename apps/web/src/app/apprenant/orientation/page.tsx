@@ -1,11 +1,12 @@
 "use client";
 
-import { Compass, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, UserCheck } from "lucide-react";
+import { Compass, GraduationCap, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, UserCheck } from "lucide-react";
 import { useMemo } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
 import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePasseport, type Dossier } from "@/lib/api/parcours";
 import { cn } from "@/lib/cn";
+import { adequationFilieres, estFiliereValidee, type PisteSuperieure, type SerieBac } from "@/lib/enseignement-superieur";
 import { nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
 
@@ -35,10 +36,13 @@ export default function Orientation() {
 }
 
 function Pistes({ d }: { d: Dossier }) {
-  const { notes, annee, pistes } = useMemo(() => {
+  const { notes, annee, pistes, apres, serie } = useMemo(() => {
     const notes = notesEffectives(d.evenements);
     const annee = anneeCourante(d, notes);
-    return { notes: notes.filter((n) => n.anneeScolaire === annee), annee, pistes: pistesOrientation(notes, annee) };
+    const pistes = pistesOrientation(notes, annee);
+    const tete = pistes.find((p) => p.score != null) ?? null;
+    const serie = tete ? (tete.code[0] as SerieBac) : null;
+    return { notes: notes.filter((n) => n.anneeScolaire === annee), annee, pistes, serie, apres: adequationFilieres(notes, annee, serie) };
   }, [d]);
 
   if (!notes.length) {
@@ -100,10 +104,52 @@ function Pistes({ d }: { d: Dossier }) {
           </Element>
         ))}
       </Cascade>
+
+      <ApresLeBac pistes={apres} serie={serie} />
+
       <Card className="flex items-start gap-3">
         <UserCheck size={20} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
         <p className="text-[13.5px] text-ink-2">Prochaine étape : un entretien avec le conseiller d&apos;orientation, qui voit exactement les mêmes critères et les mêmes pondérations que vous.</p>
       </Card>
     </>
+  );
+}
+
+const LIBELLE_DIPLOME: Record<string, string> = {
+  LICENCE: "Licence", LICENCE_PRO: "Licence professionnelle", MASTER: "Master", MASTER_PRO: "Master professionnel", DOCTORAT: "Doctorat",
+  DES: "DES (santé)", DNSV: "DNSV (vétérinaire)", BTS: "BTS", BT: "Brevet de Technicien", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
+};
+
+/** Prolongement post-bac, indicatif : mêmes données du passeport, autres horizons. */
+function ApresLeBac({ pistes, serie }: { pistes: PisteSuperieure[]; serie: SerieBac | null }) {
+  const visibles = pistes.filter((p) => p.score != null).slice(0, 6);
+  if (!visibles.length) return null;
+  const teteValidee = estFiliereValidee(visibles[0]);
+  return (
+    <section className="space-y-3">
+      <div className="flex items-start gap-3 rounded-lg bg-surface-2 px-4 py-3 text-[13px] text-ink-2">
+        <GraduationCap size={17} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
+        <p>
+          <strong>Et après le bac ?</strong>{" "}
+          {serie ? <>Prolongement de votre série {serie} : </> : "Prolongement de vos matières : "}les filières du supérieur qui s&apos;ouvrent selon vos résultats réels, concours le cas échéant. <em>Catalogue indicatif en cours de constitution — pas encore le registre national.</em>
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {visibles.map((f, i) => (
+          <Element key={f.id}>
+            <Card className={cn("h-full min-w-0", teteValidee && i === 0 && "ring-2 ring-[color:var(--acc)]")}>
+              <CardHeader icon={GraduationCap} title={f.nom}
+                subtitle={`${f.etablissement} · ${LIBELLE_DIPLOME[f.diplomeVise] ?? f.diplomeVise}`}
+                action={<div className="flex flex-wrap justify-end gap-1.5">
+                  {f.accesConcours && <Badge ton="critique">Concours</Badge>}
+                  {f.accessibleParSerie && <Badge ton="succes">Votre série</Badge>}
+                </div>} />
+              <p className="text-[13px] text-ink">Indice : {nombre(f.score!, 1)}/20{f.ecartTete != null && f.ecartTete > 0 ? ` · ${nombre(f.ecartTete, 1)} pt sous la tête` : ""}{f.couverture < 0.99 ? ` · ${Math.round(f.couverture * 100)} % des critères évalués` : ""}</p>
+              <p className="mt-1 text-xs text-ink-muted">{f.criteres.filter((c) => c.moyenne != null).map((c) => `${c.matiere} ${nombre(c.moyenne!, 1)}`).join(" · ") || "Aucune matière de référence encore évaluée"}</p>
+            </Card>
+          </Element>
+        ))}
+      </div>
+    </section>
   );
 }
