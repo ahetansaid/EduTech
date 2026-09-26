@@ -72,6 +72,7 @@
 - Carte : votre circonscription et ses établissements (points).
 - Absences du jour en direct.
 - Points d'attention et tableau des établissements (effectifs, encadrement, eau, électricité, transmission).
+- « Statistiques de la circonscription » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, couverture en infrastructures.
 
 ### Ask Education
 
@@ -99,6 +100,15 @@
 1. Lisez « Points d'attention de la circonscription » : saturés, classes surchargées, sans transmission, sans point d'eau.
 2. Dans « Établissements de la circonscription », repérez l'établissement concerné et ses infrastructures.
 3. Touchez « Voir sur la carte » pour situer l'établissement et sa commune.
+
+### Situer un établissement par rapport aux autres
+
+> Une occupation de 95 % n'a pas le même sens si la moitié de la circonscription tourne à 120 % : le comparateur montre l'écart, pas seulement la valeur.
+
+1. Sur la console, dépliez « Statistiques de la circonscription ».
+2. Lisez les quatre repères : occupation médiane, établissements saturés, élèves/enseignant médian, classes surchargées.
+3. Choisissez le critère du comparateur (Occupation ou Élèves / ens.) : le trait vertical est la médiane du territoire, les barres en surbrillance dépassent le seuil d'alerte.
+4. Regardez la couverture en infrastructures pour préparer votre visite.
 
 ### Relancer un établissement
 

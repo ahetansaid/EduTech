@@ -72,6 +72,7 @@
 - Carte des niveaux de priorité par commune.
 - Absences du jour en direct (toutes les 30 secondes).
 - Classement des communes et établissements n'ayant pas transmis.
+- « Statistiques du département » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, couverture en infrastructures.
 
 ### Où agir ?
 
@@ -112,6 +113,15 @@
 1. Dans « Classement des communes », choisissez l'indicateur (occupation, élèves par enseignant, maths, absentéisme).
 2. Le trait vertical marque la valeur du département.
 3. Touchez une commune pour ouvrir sa fiche dans « Où agir ? ».
+
+### Mesurer les écarts entre établissements
+
+> La valeur du département masque des situations opposées : ce sont les écarts entre établissements qui décident où envoyer un appui.
+
+1. Sur la console, dépliez « Statistiques du département ».
+2. Comparez médiane et moyenne d'occupation, et le nombre d'établissements saturés ou à classes surchargées.
+3. Utilisez le comparateur classé (Occupation ou Élèves / ens.) pour voir les établissements les plus en tension, repère : la médiane départementale.
+4. Lisez la couverture en infrastructures pour prioriser les visites.
 
 ## Questions fréquentes
 
