@@ -1,18 +1,19 @@
 "use client";
 
 import { communeById } from "@beile/simulation/territoire";
-import { ArrowRight, BookOpenCheck, CalendarX2, Check, ClipboardList, Fingerprint, GraduationCap, HandHelping, Percent, School, Send, Settings2, TrendingDown, UserPlus, Users, type LucideIcon } from "lucide-react";
+import { ArrowRight, BookOpenCheck, CalendarX2, Check, ClipboardList, Fingerprint, GraduationCap, HandHelping, Percent, Scale, School, Send, Settings2, TrendingDown, UserPlus, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
+import { BarresClassees, SERIES, type Barre } from "@/components/charts/Graphiques";
 import { DialogueStatuer } from "@/components/demandes/DialogueStatuer";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
-import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, ETAPES_ACCOMPAGNEMENT, etapesDuCircuit } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
-import { entier, nombre, pourcent } from "@/lib/format";
+import { entier, nombre, note, pourcent } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
 import { classeChamp, classeSelect, dateCourte, Dialogue, EtatErreur, heureLocale, heureSecondes, HorsPerimetre, Jauge, LIBELLE_STATUT_DEMANDE, LienBouton, PointDirect, Statut, TON_STATUT_DEMANDE } from "./_composants";
 
@@ -98,7 +99,10 @@ function TableauDeBord({ id }: { id: string }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 lg:col-span-2"><CarteClasses id={id} t={t} eleves={eleves.data} absentsParClasse={absentsParClasse} /></div>
+        <div className="min-w-0 space-y-6 lg:col-span-2">
+          <CarteClasses id={id} t={t} eleves={eleves.data} absentsParClasse={absentsParClasse} />
+          <ComparatifClasses t={t} />
+        </div>
         <div className="min-w-0"><CarteDemandes id={id} /></div>
       </div>
     </div>
@@ -544,6 +548,89 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
         )}
       </div>
     </Dialogue>
+  );
+}
+
+/* ================================================================== Comparatif des classes (écarts à la référence de l'établissement) */
+
+type MetricClasse = "moyenne" | "occupation" | "absenteisme";
+const METRIQUES: { valeur: MetricClasse; libelle: string }[] = [
+  { valeur: "moyenne", libelle: "Moyenne" },
+  { valeur: "occupation", libelle: "Occupation" },
+  { valeur: "absenteisme", libelle: "Absents du jour" },
+];
+
+/** Chaque classe est mesurée, puis comparée à la valeur de référence de l'établissement. */
+function ComparatifClasses({ t }: { t: Tableau | undefined }) {
+  const [metric, setMetric] = useState<MetricClasse>("moyenne");
+  if (!t) return <Card className="min-w-0"><Squelette className="h-40" /></Card>;
+  if (t.classes.length < 2) return null;
+
+  const mesurer = (c: ClasseTableau): number | null =>
+    metric === "moyenne" ? c.moyenne
+      : metric === "occupation" ? (c.effectif / Math.max(1, c.capacite)) * 100
+      : (c.absentsDuJour / Math.max(1, c.effectif)) * 100;
+
+  const reference = metric === "moyenne" ? t.chiffres.moyenne
+    : metric === "occupation" ? (t.chiffres.apprenants / Math.max(1, t.chiffres.capacite)) * 100
+    : (t.chiffres.absentsDuJour / Math.max(1, t.chiffres.apprenants)) * 100;
+
+  const formater = metric === "moyenne" ? (v: number) => note(v) : (v: number) => pourcent(v, 0);
+
+  // « En retrait » : sous la référence pour la moyenne, au-dessus pour l'occupation et l'absentéisme.
+  const enRetrait = (v: number) => (metric === "moyenne" ? v < (reference ?? 0) : v > (reference ?? 0));
+
+  const mesures = t.classes
+    .map((c) => ({ c, v: mesurer(c) }))
+    .sort((a, b) => {
+      const av = a.v, bv = b.v;
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      // Le plus digne d'attention en tête : moyenne la plus basse, ou occupation/absentéisme la plus haute.
+      return metric === "moyenne" ? av - bv : bv - av;
+    });
+
+  const barres: Barre[] = mesures.map((m) => ({
+    cle: m.c.id,
+    libelle: `${m.c.libelle} · ${m.c.effectif}/${m.c.capacite}`,
+    valeur: m.v,
+    masquee: m.v == null,
+    effectif: m.c.effectif,
+    accent: m.v != null && enRetrait(m.v),
+  }));
+
+  const valide = mesures.filter((m): m is { c: ClasseTableau; v: number } => m.v != null);
+  const retraits = valide.filter((m) => enRetrait(m.v));
+  const pire = valide[0];
+  const ecartPire = pire && reference != null ? pire.v - reference : null;
+
+  return (
+    <Card data-guide="etab-comparatif" className="min-w-0">
+      <CardHeader
+        icon={Scale}
+        title="Comparatif des classes"
+        subtitle="Chaque division mesurée, puis replacée face à la valeur de l'établissement — la barre verticale est votre référence."
+        action={<div className="-mx-1 overflow-x-auto px-1"><Segmente label="Indicateur" valeur={metric} onChange={setMetric} options={METRIQUES} /></div>}
+      />
+      <BarresClassees
+        barres={barres}
+        formater={formater}
+        reference={reference != null ? { valeur: reference, libelle: "Établissement" } : undefined}
+        couleur={SERIES[metric === "moyenne" ? 0 : metric === "occupation" ? 1 : 2]}
+        max={metric === "moyenne" ? 20 : 100}
+      />
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Référence de l'établissement</p><p className="text-[15px] font-semibold tabular text-ink">{reference != null ? formater(reference) : "—"}</p></div>
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Classes en retrait</p><p className={cn("text-[15px] font-semibold tabular", retraits.length ? "text-warning" : "text-ink")}>{entier(retraits.length)}<span className="ml-1 text-[12px] font-normal text-ink-muted">sur {entier(valide.length)}</span></p></div>
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Écart le plus marqué</p><p className={cn("text-[15px] font-semibold tabular", pire && enRetrait(pire.v) ? "text-critical" : "text-ink")}>{pire && ecartPire != null ? <>{ecartPire > 0 ? "+" : ""}{metric === "moyenne" ? nombre(ecartPire, 2) : `${nombre(ecartPire, 0)} pt`} <span className="text-[12px] font-normal text-ink-muted">{pire.c.libelle}</span></> : "—"}</p></div>
+      </div>
+      <p className="mt-3 text-[12px] text-ink-muted">
+        {metric === "moyenne" ? "Moyenne générale du trimestre, toutes matières ; une classe sans moyenne renseignée apparaît hachurée."
+          : metric === "occupation" ? "Élèves accueillis rapportés à la capacité : au-delà de la référence, la division est en tension d'accueil."
+          : "Part d'élèves absents aujourd'hui dans chaque classe, face au taux de l'établissement."}
+      </p>
+    </Card>
   );
 }
 

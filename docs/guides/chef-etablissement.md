@@ -64,6 +64,7 @@
 - « Ce que le système vous signale » : alertes et actions proposées.
 - « Élèves en baisse en mathématiques » et proposition d'accompagnement.
 - Absences du jour en direct, classes, demandes en circuit.
+- « Comparatif des classes » : chaque division replacée face à la moyenne, l'occupation ou l'absentéisme de l'établissement.
 - Dans le tableau des classes : « Gérer » (capacité, professeur principal) et « Passage » (conseil de fin d'année).
 
 ### Inscrire un apprenant
@@ -127,6 +128,16 @@
 2. Réglez la « Capacité (places) » (nombre entier entre 1 et 2000).
 3. Désignez le « Professeur principal » : la liste ne propose que les enseignants rattachés à l'établissement.
 4. Touchez « Enregistrer ». Le tableau est recalculé immédiatement.
+
+### Situer une classe par rapport à l'établissement
+
+> Une moyenne de 11 n'a pas le même sens si l'établissement est à 9 ou à 13 : le comparatif montre l'écart, pas seulement la valeur.
+
+1. Sur le tableau de bord, repérez « Comparatif des classes » sous la liste des classes.
+2. Choisissez l'indicateur : Moyenne, Occupation ou Absents du jour.
+3. La barre verticale est la valeur de votre établissement ; les classes en retrait apparaissent en surbrillance.
+4. Lisez les trois repères : référence, nombre de classes en retrait, écart le plus marqué.
+5. Ouvrez « Gérer » sur une classe en tension d'accueil pour ajuster sa capacité.
 
 ### Faire tenir un conseil de passage
 
