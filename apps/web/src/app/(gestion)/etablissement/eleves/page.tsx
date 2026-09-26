@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownAZ, ArrowRight, Fingerprint, TrendingDown, UserPlus, Users } from "lucide-react";
+import { ArrowDownAZ, ArrowRight, Download, Fingerprint, TrendingDown, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
@@ -8,7 +8,8 @@ import { EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { useEleves, type EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
-import { entier, nombre } from "@/lib/format";
+import { exporterCsv, type Colonne } from "@/lib/export";
+import { date, entier, nombre, note } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
 import { Avatar, ChampRecherche, classeSelect, EtatErreur, HorsPerimetre, LienBouton, normaliser, Statut } from "../_composants";
 
@@ -24,6 +25,25 @@ const TRIS: { valeur: Tri; libelle: string }[] = [
 ];
 const PAS = 60;
 const fr = new Intl.Collator("fr");
+
+const LIBELLE_IDENTITE: Record<EleveLigne["statutIdentite"], string> = {
+  verifiee: "Vérifiée",
+  regularisation_en_cours: "Régularisation en cours",
+};
+
+/** Colonnes exportées : le même contenu que l'écran, mis en forme pour Excel (locale fr). */
+const COLONNES: Colonne<EleveLigne>[] = [
+  { entete: "Identifiant", valeur: (e) => e.id },
+  { entete: "Nom", valeur: (e) => e.nom },
+  { entete: "Prénoms", valeur: (e) => e.prenoms },
+  { entete: "Sexe", valeur: (e) => e.sexe },
+  { entete: "Date de naissance", valeur: (e) => date(e.dateNaissance) },
+  { entete: "Classe", valeur: (e) => e.classe },
+  { entete: "Moyenne", valeur: (e) => note(e.moyenne) },
+  { entete: "Absences", valeur: (e) => e.absences },
+  { entete: "Identité", valeur: (e) => LIBELLE_IDENTITE[e.statutIdentite] },
+  { entete: "Baisse en mathématiques", valeur: (e) => (e.baisseMaths ? e.baisseMaths.map((n) => nombre(n, 1)).join(" → ") : "") },
+];
 
 export default function Page() {
   return (
@@ -89,7 +109,12 @@ function Liste() {
         surtitre="Processus P7 · P9"
         titre="Apprenants"
         sousTitre={donnees ? `${entier(donnees.length)} apprenants scolarisés. Chaque dossier s'ouvre au titre de la gestion de l'établissement ; chaque ouverture est journalisée.` : "Apprenants scolarisés dans votre établissement."}
-        actions={<LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, COLONNES)} title={`Exporter les ${liste.length} lignes affichées au format CSV`}>Exporter</Button>
+            <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
+          </div>
+        }
       />
 
       <div data-guide="eleves-filtres" className="-mx-1 overflow-x-auto px-1 pb-1">
