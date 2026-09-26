@@ -76,8 +76,10 @@
 
 `/apprenant/orientation` — Des pistes lues dans vos résultats réels.
 
-- Indice de compatibilité et critères visibles.
-- Les pistes éclairent votre choix, elles ne le font pas.
+- Six pistes : séries C, D, A1, A2 et deux filières techniques, pondérées sur vos moyennes de l'année.
+- Chaque piste affiche son indice /20, l'écart à la piste de tête et la part de vos matières qui jouent en sa faveur.
+- Un bandeau teste la sensibilité : il dit si la piste de tête tient quand on retire le barème officiel (matières pondérées à égalité).
+- Rien n'est inventé : une matière non évaluée n'est pas remplacée, elle réduit la couverture affichée. Les pistes éclairent votre choix, elles ne le font pas.
 
 ## Tâches pas à pas
 
@@ -92,8 +94,10 @@
 ### Explorer une orientation
 
 1. Ouvrez « Orientation ».
-2. Lisez l'indice de compatibilité de chaque piste et les matières qui le fondent.
-3. Parlez-en avec vos enseignants et votre famille : les pistes évoluent avec vos résultats.
+2. Lisez d'abord le bandeau : il dit si la piste de tête est robuste ou si elle dépend du poids des matières.
+3. Comparez les pistes : indice /20, écart à la tête, et les matières (et leur coefficient) qui fondent chaque score.
+4. Repérez un badge « Quasi équivalente » : deux pistes à moins d'un demi-point se discutent autant l'une que l'autre.
+5. Parlez-en avec vos enseignants, votre famille et le conseiller d'orientation : les pistes évoluent avec vos résultats.
 
 ## Questions fréquentes
 

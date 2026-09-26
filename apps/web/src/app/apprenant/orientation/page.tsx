@@ -1,10 +1,10 @@
 "use client";
 
-import { Compass, Info, NotebookPen, RefreshCw, ShieldAlert, UserCheck } from "lucide-react";
+import { Compass, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, UserCheck } from "lucide-react";
 import { useMemo } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
-import { anneeCourante, notesEffectives, pistesOrientation, usePasseport, type Dossier } from "@/lib/api/parcours";
+import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePasseport, type Dossier } from "@/lib/api/parcours";
 import { cn } from "@/lib/cn";
 import { nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
@@ -44,18 +44,43 @@ function Pistes({ d }: { d: Dossier }) {
   if (!notes.length) {
     return <Card><EtatVide icone={NotebookPen} titre="Pas encore assez de résultats" texte="Les pistes apparaîtront dès que des notes auront été saisies cette année. Rien n'est calculé sans données." /></Card>;
   }
-  const meilleure = pistes.find((p) => p.score != null && p.couverture >= 0.99);
+
+  const tete = pistes.find((p) => p.score != null);
+  const valide = tete != null && estTeteValide(tete);
 
   return (
     <>
       <p className="text-xs text-ink-muted">Base de calcul : {notes.length} note{notes.length > 1 ? "s" : ""} de l&apos;année {annee}{d.situation.classe ? `, en ${d.situation.classe.libelle}` : ""}. Les séries du second cycle se choisissent en fin de 3e : ces pistes évolueront avec vos résultats.</p>
+
+      {tete && (
+        <div className={cn("flex items-start gap-3 rounded-lg px-4 py-3 text-[13px]", valide ? "bg-success-bg text-success" : "bg-warning-bg text-warning")}>
+          <Scale size={17} className="mt-0.5 shrink-0" aria-hidden />
+          <p>
+            <strong>{valide ? (tete.teteRobuste ? "Tête stable." : "Tête à prendre avec prudence.") : "Pas encore de tête nette."}</strong>{" "}
+            {!valide
+              ? "Aucune piste ne se détache assez (ou n'est assez évaluée) pour être présentée comme un choix évident : les pistes ci-dessous se valent, discutez-en plutôt que de lire un classement."
+              : tete.teteRobuste
+                ? `« ${tete.nom.split(" — ")[0]} » reste en tête même si l'on pondère toutes vos matières évaluées de façon égale : ce n'est pas le barème qui fabrique ce classement.`
+                : "Si l'on retire le barème officiel pour peser vos matières de façon égale, le classement bouge : la tête actuelle dépend du poids des matières, un point à discuter avec le conseiller d'orientation."}
+          </p>
+        </div>
+      )}
+
       <Cascade data-guide="orientation-pistes" className="space-y-4">
         {pistes.map((p) => (
           <Element key={p.code}>
-            <Card className={cn("min-w-0", p === meilleure && "ring-2 ring-[color:var(--acc)]")}>
+            <Card className={cn("min-w-0", valide && p === tete && "ring-2 ring-[color:var(--acc)]")}>
               <CardHeader icon={Compass} title={p.nom}
-                subtitle={p.score != null ? `Indice de compatibilité : ${nombre(p.score, 1)}/20` : "Aucune des matières de référence n'est encore évaluée"}
-                action={p === meilleure ? <Badge ton="succes">La plus compatible</Badge> : p.couverture < 0.99 && p.score != null ? <Badge ton="avertissement">Partielle</Badge> : undefined} />
+                subtitle={p.score != null
+                  ? `Indice de compatibilité : ${nombre(p.score, 1)}/20${p.ecartTete != null ? ` · ${nombre(p.ecartTete, 1)} pt sous la tête` : ""}`
+                  : "Aucune des matières de référence n'est encore évaluée"}
+                action={
+                  valide && p === tete ? <Badge ton="succes">La plus compatible</Badge>
+                  : p.score != null && p.ecartTete != null && p.ecartTete < 0.5 ? <Badge ton="neutre">Quasi équivalente</Badge>
+                  : p.score != null && p.couverture < 0.6 ? <Badge ton="avertissement">Peu évaluée</Badge>
+                  : p.score != null && p.deltaSansBareme != null && p.deltaSansBareme > 0 ? <Badge ton="avertissement">Le barème l&apos;avantage</Badge>
+                  : undefined
+                } />
               <ul className="space-y-2.5">
                 {p.criteres.map((c, i) => (
                   <li key={c.matiere} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-[13px] sm:grid-cols-[10rem_minmax(0,1fr)_7rem]">
@@ -67,14 +92,17 @@ function Pistes({ d }: { d: Dossier }) {
                   </li>
                 ))}
               </ul>
-              {p.couverture < 0.99 && p.score != null && <p className="mt-3 text-xs text-warning">Seuls {Math.round(p.couverture * 100)} % des critères sont évalués : l&apos;indice est calculé sur ces seules matières, sans valeur de remplacement.</p>}
+              {p.solidite != null && p.score != null && (
+                <p className="mt-3 text-xs text-ink-muted">Vos matières évaluées jouent pour cette piste à {Math.round(p.solidite * 100)} % (part d&apos;entre elles au-dessus de l&apos;indice de la piste).</p>
+              )}
+              {p.couverture < 0.99 && p.score != null && <p className="mt-1.5 text-xs text-warning">Seuls {Math.round(p.couverture * 100)} % des critères sont évalués : l&apos;indice est calculé sur ces seules matières, sans valeur de remplacement.</p>}
             </Card>
           </Element>
         ))}
       </Cascade>
       <Card className="flex items-start gap-3">
         <UserCheck size={20} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
-        <p className="text-[13.5px] text-ink-2">Prochaine étape : un entretien avec le conseiller d&apos;orientation, qui voit exactement les mêmes critères que vous.</p>
+        <p className="text-[13.5px] text-ink-2">Prochaine étape : un entretien avec le conseiller d&apos;orientation, qui voit exactement les mêmes critères et les mêmes pondérations que vous.</p>
       </Card>
     </>
   );

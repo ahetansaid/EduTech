@@ -247,28 +247,70 @@ export function jalonsParcours(d: Dossier): Jalon[] {
 
 /**
  * Pistes d'orientation INDICATIVES : l'API ne fournit aucun modèle d'orientation. On se limite à une lecture
- * transparente des moyennes réelles, avec des pondérations affichées. Une matière non évaluée n'est jamais
- * remplacée par une valeur arbitraire : elle réduit la « couverture » de la piste, affichée à côté du score.
+ * transparente des moyennes réelles, avec des pondérations affichées (chaque filière somme à 1, donc la
+ * « couverture » est directement la part des critères réellement évalués). Une matière non évaluée n'est
+ * jamais remplacée par une valeur arbitraire : elle réduit la couverture, affichée à côté du score.
+ * Les matières référencées sont exactement celles du référentiel `MATIERES` — rien d'inventé.
  */
 export const FILIERES = [
-  { code: "C", nom: "Série C — mathématiques et sciences physiques", poids: { Mathématiques: 0.5, "Sciences physiques": 0.5 } },
-  { code: "D", nom: "Série D — sciences de la vie et de la Terre", poids: { SVT: 0.5, Mathématiques: 0.25, "Sciences physiques": 0.25 } },
-  { code: "A", nom: "Série A — lettres et langues", poids: { Français: 0.5, Anglais: 0.3, "Histoire-Géographie": 0.2 } },
-  { code: "T", nom: "Enseignement technique et professionnel", poids: { Mathématiques: 0.4, "Sciences physiques": 0.3, Français: 0.3 } },
+  { code: "C", nom: "Série C — mathématiques et sciences physiques", poids: { Mathématiques: 0.5, "Sciences physiques": 0.3, SVT: 0.2 } },
+  { code: "D", nom: "Série D — sciences expérimentales", poids: { SVT: 0.4, Mathématiques: 0.3, "Sciences physiques": 0.3 } },
+  { code: "A1", nom: "Série A1 — lettres et sciences humaines", poids: { Français: 0.5, "Histoire-Géographie": 0.3, "Éducation civique": 0.2 } },
+  { code: "A2", nom: "Série A2 — langues étrangères", poids: { Anglais: 0.5, Français: 0.3, "Histoire-Géographie": 0.2 } },
+  { code: "T1", nom: "Filière technique — tertiaire et gestion", poids: { Mathématiques: 0.35, Français: 0.3, "Histoire-Géographie": 0.35 } },
+  { code: "T2", nom: "Filière technique — industriel et génie", poids: { Mathématiques: 0.4, "Sciences physiques": 0.4, SVT: 0.2 } },
 ] as const;
 
 export interface PisteOrientation {
   code: string; nom: string; score: number | null; couverture: number;
   criteres: { matiere: string; poids: number; moyenne: number | null; nb: number }[];
+  /** Part des critères qui jouent en faveur de cette piste (moyenne ≥ score de la piste), sur les matières évaluées. */
+  solidite: number | null;
+  /** Écart (en points /20) avec la piste de tête du classement ; null pour la piste de tête. */
+  ecartTete: number | null;
+  /** La tête est-elle robuste : même 1ʳᵉ piste avec une pondération égale (sans barème) et assez évaluée ? */
+  teteRobuste: boolean;
+  /** La piste gagne (+) ou perd (−) des places quand on retire le barème officiel (pondération égale). */
+  deltaSansBareme: number | null;
 }
 
+/** Une piste « fiable » à montrer en tête : couverte à ≥ 0,6 et nettement devant (≥ 0,5 point). */
+export function estTeteValide(p: PisteOrientation): boolean {
+  return p.couverture >= 0.6 && (p.ecartTete == null || p.ecartTete >= 0.5);
+}
+
+/**
+ * Calcule les pistes avec le barème officiel, puis une passe à pondération égale entre matières évaluées.
+ * La comparaison des deux classements révèle si le barème *fabrique* la tête (deltaSansBareme / teteRobuste) :
+ * une tête qui saute à une pondération neutre mérite d'être présentée avec prudence.
+ */
 export function pistesOrientation(notes: NoteEffective[], annee: string | null): PisteOrientation[] {
   const moyennes = new Map(moyennesParMatiere(notes, annee).map((m) => [m.matiere as string, m]));
-  return FILIERES.map((f) => {
+  const unePiste = (f: (typeof FILIERES)[number], bareme: boolean): Omit<PisteOrientation, "ecartTete" | "teteRobuste" | "deltaSansBareme"> => {
     const criteres = Object.entries(f.poids).map(([matiere, poids]) => ({ matiere, poids, moyenne: moyennes.get(matiere)?.moyenne ?? null, nb: moyennes.get(matiere)?.nb ?? 0 }));
     const evalues = criteres.filter((c) => c.moyenne != null);
     const couverture = evalues.reduce((s, c) => s + c.poids, 0);
-    const score = couverture > 0 ? evalues.reduce((s, c) => s + c.moyenne! * c.poids, 0) / couverture : null;
-    return { code: f.code, nom: f.nom, score, couverture, criteres };
-  }).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    const w = bareme ? (c: (typeof criteres)[number]) => c.poids : () => 1;
+    const sommePoids = evalues.reduce((s, c) => s + w(c), 0);
+    const score = sommePoids > 0 ? evalues.reduce((s, c) => s + c.moyenne! * w(c), 0) / sommePoids : null;
+    const solidite = evalues.length ? evalues.filter((c) => score != null && c.moyenne! >= score).length / evalues.length : null;
+    return { code: f.code, nom: f.nom, score, couverture, criteres, solidite };
+  };
+
+  const avecBarème = FILIERES.map((f) => unePiste(f, true)).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const sansBarème = FILIERES.map((f) => unePiste(f, false)).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const rangSans = new Map(sansBarème.map((p, i) => [p.code, i]));
+  const tete = avecBarème[0];
+  const teteCode = tete?.score != null ? tete.code : null;
+
+  return avecBarème.map((p, i) => {
+    const teteRobuste = i === 0 ? teteCode != null && sansBarème[0]?.code === teteCode && p.couverture >= 0.6 && p.score != null : false;
+    const rang = rangSans.get(p.code);
+    return {
+      ...p,
+      ecartTete: i === 0 ? null : (tete?.score ?? null) != null && p.score != null ? (tete!.score ?? 0) - p.score : null,
+      teteRobuste,
+      deltaSansBareme: rang != null ? rang - i : null,
+    };
+  });
 }
