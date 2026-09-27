@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Examen } from "./evenements";
+import { Mention } from "./referentiels";
 
 /**
  * Examens nationaux, façon e-résultat : une session (examen + session), des centres,
@@ -13,10 +14,6 @@ export type StatutSession = z.infer<typeof StatutSession>;
 
 export const Decision = z.enum(["admis", "non_admis"]);
 export type Decision = z.infer<typeof Decision>;
-
-/** Mention du jury, alignée sur le barème déjà en usage (ne s'applique qu'aux admis). */
-export const Mention = z.enum(["Très bien", "Bien", "Assez bien", "Passable"]);
-export type Mention = z.infer<typeof Mention>;
 
 export const CentreExamen = z.object({
   id: z.string(),

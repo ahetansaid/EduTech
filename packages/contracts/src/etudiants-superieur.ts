@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { Mention } from "./examens";
 import { Composante, Diplome, TypeParcours, Tutelle } from "./enseignement-superieur";
-import { Examen } from "./evenements";
+import { Mention } from "./referentiels";
 
 /**
  * Gestion des étudiants du supérieur — formes du contrat pédagogique LMD/EFTP.
@@ -55,6 +54,12 @@ export type TypePeriode = z.infer<typeof TypePeriode>;
 export const Periode = z.object({
   id: z.string(),
   filiereId: z.string(),
+  /**
+   * Année d'étude à laquelle la période s'applique : une filière LMD déroule un S1 en L1 ET un S1 en
+   * L2 la même année — sans ce champ, les deux porteraient le même nom. null pour une filière EFTP
+   * hors LMD, dont une année universitaire ne déroule qu'une seule cohorte.
+   */
+  composante: Composante.nullable(),
   type: TypePeriode,
   /** Rang de la période dans l'année universitaire. */
   numero: z.number().int().min(1),
@@ -509,15 +514,22 @@ export const ETAGE_PAR_DIPLOME: Readonly<Partial<Record<Diplome, EtageDiplome>>>
 
 /**
  * Examens nationaux dont le jury est une autorité de l'État (session, centre, numéro de table).
- * `Examen` (CEP/BEPC/BAC) reste inchangé pour ne rien casser du volet K-12 ; cette union l'étend
- * aux diplômes techniques et professionnels attestés au Bénin.
+ * `Examen` (CEP/BEPC/BAC) reste inchangé pour ne rien casser du volet K-12 ; cette union l'étend aux
+ * diplômes techniques, professionnels et supérieurs attestés au Bénin. La licence a bien un examen
+ * national : la démarche du portail officiel se nomme « Diplôme de licence des examens nationaux »
+ * (Direction des Examens et Concours Supérieurs). Le doctorat, lui, n'en connaît pas.
  */
 export const ExamenNational = z.enum([
-  "CEP", "BEPC", "BAC", "BAC_TECHNIQUE", "CAP", "BEP", "BT", "BTS", "CQP", "DES",
+  "CEP", "BEPC", "BAC", "BAC_TECHNIQUE", "CAP", "BEP", "BT", "BTS", "CQP",
+  "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DES",
 ]);
 export type ExamenNational = z.infer<typeof ExamenNational>;
 
-export const EXAMEN_NATIONAL_PAR_DIPLOME: Readonly<Partial<Record<Diplome, ExamenNational>>> = {
+/**
+ * Examen national ouvert à un diplôme. Total sauf pour les diplômes que `MODES_CERTIFICATION` ne
+ * laisse qu'au jury d'établissement (doctorat) : les deux tables doivent se lire ensemble.
+ */
+export const EXAMEN_NATIONAL_PAR_DIPLOME: Readonly<Record<Exclude<Diplome, "DOCTORAT">, ExamenNational>> = {
   CAP: "CAP",
   BEP: "BEP",
   BAC: "BAC",
@@ -525,13 +537,17 @@ export const EXAMEN_NATIONAL_PAR_DIPLOME: Readonly<Partial<Record<Diplome, Exame
   BT: "BT",
   BTS: "BTS",
   CQP: "CQP",
+  LICENCE: "LICENCE",
+  LICENCE_PRO: "LICENCE_PRO",
+  MASTER: "MASTER",
+  MASTER_PRO: "MASTER_PRO",
   DES: "DES",
 };
 
 /**
  * Code court du diplôme, pour l'identifiant de certificat. Nécessaire parce que le format en
  * vigueur `^CERT-[A-Z]+-\d{4}-\d{6}$` n'admet ni underscore ni chiffre : `LICENCE_PRO` ne peut
- * pas s'y écrire tel quel.
+ * pas s'y écrire tel quel. Clé : tout diplôme BEILE et tout examen national, `CEP`/`BEPC` inclus.
  */
 export const CodeCertificat = z.enum([
   "CEP", "BEPC", "BAC", "BACT", "CAP", "BEP", "BT", "BTS", "CQP",
@@ -539,7 +555,7 @@ export const CodeCertificat = z.enum([
 ]);
 export type CodeCertificat = z.infer<typeof CodeCertificat>;
 
-export const CODE_CERTIFICAT: Readonly<Record<Diplome | Examen, CodeCertificat>> = {
+export const CODE_CERTIFICAT: Readonly<Record<Diplome | ExamenNational, CodeCertificat>> = {
   CEP: "CEP",
   BEPC: "BEPC",
   BAC: "BAC",
