@@ -243,7 +243,7 @@ export const RegleValidation = z.object({
   seuilMoyennePeriode: z.number().min(0).max(20).nullable().default(null),
   /** 7. Durée de validité d'un acquis, en années. Au-delà, l'acquis doit être revalidé. */
   dureeValiditeAcquis: z.number().int().min(0).max(20).default(5),
-  /** 8. Report des crédits acquis vers un autre établissement accrédité. */
+  /** 8. Report des crédits acquis vers une autre filière homologuée. */
   reportCreditsInterEtab: z.boolean().default(true),
   /**
    * Matérialisation du paramètre 3 quand `compensation = "par_bloc"` : des listes de codes d'UE.
@@ -328,23 +328,57 @@ export const Equivalence = z.object({
 );
 export type Equivalence = z.infer<typeof Equivalence>;
 
-/* ================================================================== Agrément et accréditation (privé compris) */
+/* ================================================================== Cycle d'un établissement privé et homologation d'une filière */
 
 export const StatutAgrement = z.enum(["instruit", "accorde", "refuse", "suspendu", "retire", "expire"]);
 export type StatutAgrement = z.infer<typeof StatutAgrement>;
 
-/** Autorisation d'ouvrir et d'exploiter un établissement d'enseignement supérieur. */
-export const Agrement = z.object({
+/**
+ * Cycle officiel d'un établissement privé d'enseignement supérieur (EPES), tel que le catalogue des
+ * services publics de l'État le décrit lui-même : le promoteur obtient une **autorisation de
+ * création**, puis une **autorisation d'ouverture** délivrée par arrêté du ministre *après avis du
+ * Conseil Consultatif National de l'Enseignement Supérieur*, valable **deux ans et renouvelable une
+ * fois**, « après quoi il faudra passer à l'agrément ». Un seul booléen « privé = agréé » serait faux :
+ * selon l'étape du cycle, l'établissement n'a pas le même droit d'inscrire des étudiants.
+ * Décret 2008-818 du 31 décembre 2008 ; arrêté 2014 n°350/MESRS/CAB/DC/SGM/DGES/DEPES/SA.
+ */
+export const PhaseEpes = z.enum([
+  "creation_sollicitee", "autorisation_de_creation", "autorisation_ouverture", "agrement",
+  "refuse", "suspendu", "retire",
+]);
+export type PhaseEpes = z.infer<typeof PhaseEpes>;
+
+/** Deux ans, renouvelables une fois : ce sont les nombres énoncés par la fiche du service public. */
+export const DUREE_AUTORISATION_OUVERTURE_ANS = 2;
+export const RENOUVELLEMENTS_AUTORISATION_OUVERTURE_MAX = 1;
+
+/** Avis de l'instance consultative : obligatoire pour autoriser l'ouverture, jamais implicite. */
+export const AvisConseil = z.enum(["favorable", "defavorable", "non_demande"]);
+export type AvisConseil = z.infer<typeof AvisConseil>;
+
+export const CycleEpes = z.object({
   id: z.string(),
   etablissementId: z.string(),
-  /** Un établissement privé peut relever des deux ministères : une ligne par autorité. */
+  /** Un EPES peut relever de deux tutelles : une ligne par autorité. */
   autorite: Tutelle,
+  phase: PhaseEpes,
+  /** À `instruit` correspond une demande en cours ; les autres statuts qualifient la phase courante. */
   statut: StatutAgrement,
+  avisConseil: AvisConseil.default("non_demande"),
+  /** Référence de l'acte (arrêté), telle qu'elle doit pouvoir être opposée à un tiers. */
+  acteReference: z.string().nullable(),
   accordeLe: z.string().nullable(),
   echeanceLe: z.string().nullable(),
+  renouvellements: z.number().int().nonnegative(),
   motif: z.string().nullable(),
-});
-export type Agrement = z.infer<typeof Agrement>;
+}).refine(
+  (a) => a.phase !== "autorisation_ouverture" || a.avisConseil === "favorable",
+  { message: "Une autorisation d'ouverture d'EPES suppose un avis favorable du conseil consultatif." },
+).refine(
+  (a) => a.phase !== "autorisation_ouverture" || a.renouvellements <= RENOUVELLEMENTS_AUTORISATION_OUVERTURE_MAX,
+  { message: "L'autorisation d'ouverture n'est renouvelable qu'une fois, avant l'agrément." },
+);
+export type CycleEpes = z.infer<typeof CycleEpes>;
 
 export const StatutAccreditation = z.enum(["instruite", "accordee", "refusee", "suspendue", "retiree", "expiree"]);
 export type StatutAccreditation = z.infer<typeof StatutAccreditation>;
@@ -353,11 +387,13 @@ export const ConclusionControle = z.enum(["conforme", "reserve", "non_conforme",
 export type ConclusionControle = z.infer<typeof ConclusionControle>;
 
 /**
- * Habilitation d'un couple (établissement, filière) à délivrer un diplôme national. C'est le
- * principal contrôle anti-fraude : sans accréditation en cours, le diplôme délivré n'est pas
- * opposable, et BEILE ne doit pas le certifier.
+ * Homologation d'un couple (établissement, filière) à délivrer un diplôme national. Le terme
+ * officiel béninois est l'**homologation** des filières (décret n° 2020-551 relatif aux filières de
+ * formation non homologuées), distinct de l'agrément de l'établissement : une école agréée peut
+ * ouvrir une filière qui ne l'est pas. C'est le principal contrôle anti-fraude — sans homologation
+ * en cours, le diplôme délivré n'est pas opposable et BEILE ne doit pas le certifier.
  */
-export const Accreditation = z.object({
+export const HomologationFiliere = z.object({
   id: z.string(),
   etablissementId: z.string(),
   filiereId: z.string(),
@@ -371,22 +407,22 @@ export const Accreditation = z.object({
   conclusionControle: ConclusionControle.default("non_controle"),
   motif: z.string().nullable(),
 });
-export type Accreditation = z.infer<typeof Accreditation>;
+export type HomologationFiliere = z.infer<typeof HomologationFiliere>;
 
 /**
- * Porte de certification : BEILE ne certifie pas un diplôme national porté par une accréditation
- * qui n'est pas en cours. Fonction pure sur la FORME — aucune donnée d'étudiant, aucun accès au
- * registre, aucune valeur inventée.
+ * Porte de certification : BEILE ne certifie pas un diplôme national porté par une filière dont
+ * l'homologation n'est pas en cours. Fonction pure sur la FORME — aucune donnée d'étudiant, aucun
+ * accès au registre, aucune valeur inventée.
  */
-export function accreditationOperante(
-  a: Pick<Accreditation, "statut" | "echeanceLe" | "conclusionControle">,
+export function homologationOperante(
+  a: Pick<HomologationFiliere, "statut" | "echeanceLe" | "conclusionControle">,
   aujourdhuiIso: string,
 ): { operante: boolean; motif: string | null } {
-  if (a.statut !== "accordee") return { operante: false, motif: `Accréditation ${a.statut}.` };
-  if (a.echeanceLe && a.echeanceLe < aujourdhuiIso) return { operante: false, motif: "Accréditation échue." };
+  if (a.statut !== "accordee") return { operante: false, motif: `Homologation ${a.statut}.` };
+  if (a.echeanceLe && a.echeanceLe < aujourdhuiIso) return { operante: false, motif: "Homologation échue." };
   if (a.conclusionControle === "non_conforme") return { operante: false, motif: "Contrôle pédagogique non conforme." };
   if (a.conclusionControle === "non_controle") {
-    return { operante: true, motif: "Accréditation en cours, sans contrôle pédagogique enregistré." };
+    return { operante: true, motif: "Homologation en cours, sans contrôle pédagogique enregistré." };
   }
   return { operante: true, motif: null };
 }
