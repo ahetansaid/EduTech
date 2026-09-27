@@ -103,6 +103,17 @@
 - Qui a transmis, depuis quand, avec quelle confiance.
 - Définition officielle de chaque indicateur et de ses versions.
 
+### Enseignement supérieur
+
+`/enseignement-superieur` — Le référentiel national des filières, concours, écoles et stages du supérieur.
+
+- « Filières et parcours » : chaque filière par voie (universitaire, technologique, professionnelle, apprentissage), avec le cycle LMD ouvert, le diplôme visé, les ECTS, la capacité annuelle, l'accès par concours et la durée de stage obligatoire.
+- « Concours » : les sessions avec leur statut, les places offertes et les coefficients des épreuves ; filtre par statut et export CSV.
+- « Écoles et établissements » : le réseau (universités, écoles nationales, instituts), ses tutelles MESRS / MESTFP / Emploi-PME et ses rattachements.
+- « Stages » : le cycle de vie d'une convention et les durées obligatoires par filière — aucun suivi nominatif d'apprenant.
+- « Formations pro » : l'échelle des diplômes EFTP (CAP → BEP → Bac technique → BT → BTS/CQP) et la passerelle vers la licence professionnelle.
+- Le bandeau « indicatif » rappelle que ces listes ne remplacent pas les arrêtés publiés.
+
 ## Tâches pas à pas
 
 ### Prioriser ses décisions du jour
@@ -143,6 +154,18 @@
 2. Écrivez votre question (400 caractères au plus) ou touchez un exemple.
 3. Lisez le chiffre, puis sa définition, sa source et son indice de confiance avant de le citer.
 
+### Préparer une rentrée dans le supérieur
+
+> Le catalogue est qualifié d'indicatif : il sert à repérer les trous de l'offre et à préparer une décision, pas à publier une liste officielle.
+
+1. Ouvrez « Enseignement supérieur » dans le menu.
+2. Sur « Filières et parcours », filtrez par voie pour ne regarder qu'une seule file à la fois (universitaire, ou EFTP).
+3. Repérez les filières marquées « accès par concours » et leur capacité annuelle : c'est là que l'offre est limitée.
+4. Ouvrez « Concours » et filtrez sur le statut « Annoncé » pour la campagne à venir ; les coefficients des épreuves s'affichent par session.
+5. Consultez « Écoles et établissements » pour vérifier quelle tutelle couvre telle école, et ce qu'elle dessert.
+6. Touchez « Exporter (CSV) » sur l'onglet concerné : le fichier reprend uniquement les lignes affichées, avec sa ligne de provenance.
+7. Confrontez ce portrait aux arrêtés publiés du MESRS et du MESTFP avant toute communication : BEILE ne les contient pas encore.
+
 ## Questions fréquentes
 
 **Pourquoi un chiffre du cockpit diffère-t-il d'un rapport papier ?**  
@@ -153,6 +176,12 @@ Non. Le cockpit ne reçoit que des faits anonymes et des agrégats. C'est voulu 
 
 **À quelle fréquence les données se mettent-elles à jour ?**  
 Le flux des faits du jour toutes les 15 secondes ; les indicateurs à chaque ouverture, à partir du registre.
+
+**La liste des filières, écoles et concours est-elle officielle ?**  
+Non, et l'écran le dit : elle est indicative. Elle couvre le modèle LMD et la voie EFTP du Bénin pour préparer vos arbitrages. Le jour où les arrêtés du MESRS et du MESTFP seront versés au référentiel, le bandeau disparaîtra et ces listes feront foi.
+
+**Pourquoi aucun élève n'apparaît dans les volets Stages et Vœux ?**  
+Par conception. Un stage ou un vœu est une donnée nominative : elle ne se montre qu'à son titulaire, à son enseignant encadrant et à son établissement. Le pilotage ne reçoit que des effectifs.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.

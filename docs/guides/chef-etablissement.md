@@ -102,6 +102,15 @@
 - La note affichée est la moyenne annuelle de l'apprenant : une base provisoire tant que le centre d'examen n'a pas transmis les notes officielles.
 - Délibération définitive ; chaque admis reçoit un diplôme au QR code vérifiable par un tiers.
 
+### Enseignement supérieur
+
+`/enseignement-superieur` — L'après-bac de vos élèves, pour préparer les conseils d'orientation.
+
+- « Filières et parcours » : série de BAC requise, cycle ouvert, matières attendues, accès par concours et durée de stage.
+- « Concours » : le calendrier des sessions (inscriptions, écrits, oraux), pour poser les dates limites de vos classes de Terminale.
+- « Écoles et établissements » : le réseau, ses tutelles et ses rattachements.
+- Catalogue indicatif et aucune donnée nominative : un vœu se dépose par l'élève lui-même, jamais par l'établissement.
+
 ## Tâches pas à pas
 
 ### Ouvrir sa journée au poste de pilotage

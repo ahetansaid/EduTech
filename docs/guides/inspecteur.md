@@ -87,6 +87,15 @@
 - Accompagnements à valider et demandes relevant de votre rôle et de votre circonscription.
 - « Statuer » pour rendre une décision motivée ; l'étape suivante du circuit est alors déclenchée.
 
+### Enseignement supérieur
+
+`/enseignement-superieur` — L'offre post-bac à connaître pour vos conseils de classe et vos visites.
+
+- « Filières et parcours » : série de BAC requise, cycle ouvert, accès par concours, durée de stage obligatoire — les critères à rappeler en conseil d'orientation.
+- « Formations pro » : l'échelle CAP → BEP → Bac technique → BT → BTS/CQP et la passerelle vers la licence professionnelle, pour les lycées techniques de votre circonscription.
+- « Stages » : les durées obligatoires par filière et le cycle de vie d'une convention, pour juger si un établissement peut les tenir.
+- Catalogue indicatif, lecture seule : rien qui concerne un élève identifié.
+
 ## Tâches pas à pas
 
 ### Prioriser ses décisions du jour

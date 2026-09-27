@@ -92,6 +92,15 @@
 
 - Qualité des données : complétude par commune, suivi des relances.
 
+### Enseignement supérieur
+
+`/enseignement-superieur` — L'offre post-bac, en lecture, pour préparer les départs de vos lycées.
+
+- Le même catalogue que l'administration centrale : filières par voie, sessions de concours avec places et coefficients, annuaire des établissements du supérieur et de leurs tutelles.
+- Utile pour objectiver où vont réellement les bacheliers de votre département et quelle filière fait défaut à proximité.
+- « Formations pro » : l'échelle des diplômes EFTP et la passerelle vers la licence professionnelle.
+- Lecture seule et catalogue indicatif : aucune donnée nominative dans ces écrans.
+
 ## Tâches pas à pas
 
 ### Prioriser ses décisions du jour

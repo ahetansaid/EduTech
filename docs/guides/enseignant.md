@@ -80,6 +80,15 @@
 - Catalogue de formation continue : « S'inscrire ».
 - « Exporter le parcours » : recrutement, affectations et formations en CSV, à joindre à une demande de mutation.
 
+### Enseignement supérieur
+
+`/enseignement-superieur` — Préparer l'orientation post-bac de vos classes.
+
+- « Filières et parcours » : critères d'entrée (série de BAC, cycle, ECTS) et stage obligatoire, pour argumenter un conseil d'orientation.
+- « Concours » : les sessions, leurs places et les coefficients des épreuves — utile pour un lycéen qui vise une école nationale.
+- « Formations pro » : les débouchés EFTP et la passerelle CQP/BTS → licence professionnelle.
+- Ici aucun élève n'est visible : vous préparez des conseils, vous ne déposez pas les vœux à leur place.
+
 ## Tâches pas à pas
 
 ### Faire l'appel
