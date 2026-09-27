@@ -516,7 +516,7 @@ export const filiereSuperieure = core.table("filiere_superieure", {
   voie: text("voie", { enum: ["scolaire", "technique", "professionnel", "universitaire", "apprentissage", "formation_courte", "alphabetisation"] }).notNull(),
   /** null pour une filière EFTP hors LMD (CAP, BT, BTS…). */
   cycle: text("cycle", { enum: ["licence", "master", "doctorat"] }),
-  diplomeVise: text("diplome_vise", { enum: ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES", "DNSV"] }).notNull(),
+  diplomeVise: text("diplome_vise", { enum: ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES"] }).notNull(),
   /** Composantes effectivement ouvertes (L1…Dr). Liste ouverte, verrouillée à l'arrêté au seed. */
   composantes: text("composantes").array().notNull().default(sql`'{}'::text[]`),
   creditsEcts: integer("credits_ects").notNull().default(0),
@@ -535,7 +535,7 @@ export const concoursSession = core.table("concours_session", {
   filiereId: text("filiere_id").notNull().references(() => filiereSuperieure.id),
   session: text("session").notNull(),
   statut: text("statut", { enum: ["annonce", "inscriptions", "admissibilite", "ecrits", "oraux", "resultats", "clos"] }).notNull().default("annonce"),
-  diplomeRequis: text("diplome_requis", { enum: ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES", "DNSV"] }).notNull(),
+  diplomeRequis: text("diplome_requis", { enum: ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES"] }).notNull(),
   serieRequise: text("serie_requise").array().notNull().default(sql`'{}'::text[]`),
   places: integer("places"),
   epreuves: jsonb("epreuves").$type<{ matiere: string; coef: number }[]>().notNull().default(sql`'[]'::jsonb`),

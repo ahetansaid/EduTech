@@ -34,7 +34,7 @@ export type CycleLMD = z.infer<typeof CycleLMD>;
  */
 export const Diplome = z.enum([
   "CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP",
-  "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES", "DNSV",
+  "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES",
 ]);
 export type Diplome = z.infer<typeof Diplome>;
 

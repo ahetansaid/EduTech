@@ -117,7 +117,7 @@ function Pistes({ d }: { d: Dossier }) {
 
 const LIBELLE_DIPLOME: Record<string, string> = {
   LICENCE: "Licence", LICENCE_PRO: "Licence professionnelle", MASTER: "Master", MASTER_PRO: "Master professionnel", DOCTORAT: "Doctorat",
-  DES: "DES (santé)", DNSV: "DNSV (vétérinaire)", BTS: "BTS", BT: "Brevet de Technicien", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
+  DES: "DES (études approfondies)", BTS: "BTS", BT: "Brevet de Technicien", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
 };
 
 /** Prolongement post-bac, indicatif : mêmes données du passeport, autres horizons. */

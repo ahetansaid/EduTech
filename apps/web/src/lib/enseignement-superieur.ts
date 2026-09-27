@@ -227,7 +227,7 @@ export const LIBELLE_TYPE_PARCOURS: Record<TypeParcours, string> = {
 export const LIBELLE_DIPLOME: Record<Diplome, string> = {
   CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique", BT: "BT", BTS: "BTS", CQP: "CQP",
   BAC: "Bac", LICENCE: "Licence", LICENCE_PRO: "Licence pro", MASTER: "Master", MASTER_PRO: "Master pro",
-  DOCTORAT: "Doctorat", DES: "DES", DNSV: "DNSV",
+  DOCTORAT: "Doctorat", DES: "DES",
 };
 
 /** Nom lisible du cursus : un cycle LMD, sinon le diplôme visé (filière EFTP hors LMD). */
