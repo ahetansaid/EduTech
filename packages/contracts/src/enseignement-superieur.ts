@@ -95,6 +95,11 @@ export const Filiere = z.object({
   composantes: z.array(Composante),
   creditsECTS: z.number().int().nonnegative(),
   capaciteAnnuelle: z.number().int().nonnegative().nullable(),
+  /**
+   * Places déclarées composante par composante. Une filière dont seule la L1 est pleine doit se lire
+   * comme telle : `capaciteAnnuelle` reste le total déclaré, cette ventilation ne le remplace pas.
+   */
+  capaciteParComposante: z.array(z.object({ composante: Composante, places: z.number().int().nonnegative() })),
   /** Liste ouverte, verrouillée à l'arrêté MESRS/MESTFP au seed. */
   serieBacRequise: z.array(z.string()),
   /** Le cycle d'entrée est sélectif par concours ; le calendrier et les épreuves vivent dans `Concours`. */
@@ -138,7 +143,11 @@ export type Concours = z.infer<typeof Concours>;
 export const StatutVoeu = z.enum(["brouillon", "soumis", "admissible", "admis", "refuse", "desiste"]);
 export type StatutVoeu = z.infer<typeof StatutVoeu>;
 
-/** Vœu d'orientation supérieur déposé par un apprenant. Un vœu ≠ une inscription. */
+/**
+ * Vœu d'orientation supérieur déposé par un apprenant. Un vœu ≠ une inscription.
+ * Une décision d'admission est datée ET attribuée : « admis » sans auteur ni date ne peut être
+ * ni contesté par la famille, ni audité par la tutelle.
+ */
 export const Voeu = z.object({
   id: z.string(),
   apprenantId: z.string(),
@@ -148,6 +157,8 @@ export const Voeu = z.object({
   rang: z.number().int().min(1),
   statut: StatutVoeu,
   anneeScolaire: z.string(),
+  decidePar: z.string().nullable(),
+  decideLe: z.string().nullable(),
 });
 export type Voeu = z.infer<typeof Voeu>;
 
@@ -167,6 +178,8 @@ export const Stage = z.object({
   id: z.string(),
   apprenantId: z.string(),
   etablissementId: z.string().nullable(),
+  /** Filière d'origine : sans elle, aucune statistique de stage par filière n'est possible. */
+  filiereId: z.string().nullable(),
   entreprise: z.string(),
   tuteurPro: z.string().nullable(),
   /** Enseignant BEILE (rôle `enseignant` + relation pédagogique) assurant l'encadrement académique. */
