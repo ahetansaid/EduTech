@@ -28,14 +28,15 @@ import { perimetrePilotage } from "./pilotage";
 export const superieur = new Hono<{ Variables: Variables }>();
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const ID_ETAB = z.string().regex(/^ETB-[A-Za-z0-9-]+$/);
+export const ID_ETAB = z.string().regex(/^ETB-[A-Za-z0-9-]+$/);
 const ID_STAGE = z.string().regex(/^STG-[A-Za-z0-9-]+$/);
 /** Un apprenant ne peut que préparer puis soumettre : les statuts d'autorité
  *  (`admissible`, `admis`, `refuse`, `desiste`) ne sont pas posables depuis le client. */
 const STATUT_POSEABLE = z.enum(["brouillon", "soumis"]);
 
-/** Autorité du bureau du supérieur : administration centrale siégeant au niveau national. Refus journalisé. */
-async function bureauSup(c: Context<{ Variables: Variables }>, action: string) {
+/** Autorité du bureau du supérieur : administration centrale siégeant au niveau national. Refus journalisé.
+ *  Partagée avec la scolarité du supérieur (`etudiants-superieur.ts`) : une seule porte d'entrée du bureau. */
+export async function bureauSup(c: Context<{ Variables: Variables }>, action: string) {
   const profil = c.get("profil");
   const hab = profil.habilitations.some((x) => x.role === "administration_centrale" && x.perimetre.niveau === "national");
   if (!hab) {
@@ -46,14 +47,14 @@ async function bureauSup(c: Context<{ Variables: Variables }>, action: string) {
 }
 
 /** L'apprenant connecté, ou refus — même résolution que le passeport (`perimetre.apprenantId`). */
-function monApprenant(profil: Profil) {
+export function monApprenant(profil: Profil) {
   const h = profil.habilitations.find((x) => x.role === "apprenant" && x.perimetre.niveau === "personnel");
   if (h?.perimetre.niveau !== "personnel") return refuser("Aucune habilitation « apprenant »");
   return h.perimetre.apprenantId;
 }
 
 /** L'enseignant connecté, par son identifiant national (même résolution que pour la saisie d'appel). */
-async function monEnseignant(profil: Profil) {
+export async function monEnseignant(profil: Profil) {
   if (!profil.npi) return refuser("Aucune identité d'enseignant rattachée à ce compte");
   const [e] = await base().select({ id: schema.enseignants.id }).from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi));
   if (!e) return refuser("Aucune identité d'enseignant rattachée à ce compte");
@@ -67,8 +68,9 @@ async function etablissementDe(apprenantId: string) {
 }
 
 /** Accès à un établissement : chef de CET établissement (lecture et écriture) ou inspecteur de sa
- *  circonscription (lecture seule, contrôle). Refus journalisé ; aucun rôle élargi. */
-async function accesEtablissement(c: Context<{ Variables: Variables }>, etablissementId: string, ecriture = false) {
+ *  circonscription (lecture seule, contrôle). Refus journalisé ; aucun rôle élargi.
+ *  Partagée avec la scolarité du supérieur : le supérieur n'ajoute aucun rôle, il réutilise ceux-là. */
+export async function accesEtablissement(c: Context<{ Variables: Variables }>, etablissementId: string, ecriture = false) {
   const profil = c.get("profil");
   const [etab] = await base().select().from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId));
   if (!etab) throw new HTTPException(404, { message: "Établissement inconnu" });

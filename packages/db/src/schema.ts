@@ -776,14 +776,17 @@ export const notesUe = core.table("notes_ue", {
 /**
  * Les huit paramètres de décision d'une validation, en vocabulaire fermé. C'est là que tient toute la
  * liberté d'un établissement : rien d'autre n'est paramétrable, et le JSON arbitraire est exclu.
- * Précédence `nationale < etablissement < filiere < periode`, résolue paramètre par paramètre à la
- * lecture — un établissement qui ne déclare rien hérite de la règle nationale.
+ * Précédence `nationale < etablissement < filiere < periode` : la ligne la plus précise l'emporte EN
+ * BLOC (toute colonne porte un défaut, « hérité » et « déclaré à la valeur par défaut » seraient
+ * indistinguibles en base). Un établissement qui ne déclare rien hérite de la règle nationale.
  */
 export const reglesValidation = core.table("regles_validation", {
   id: text("id").primaryKey(),
   portee: text("portee", { enum: ["nationale", "etablissement", "filiere", "periode"] }).notNull(),
   etablissementId: text("etablissement_id").references(() => etablissements.id),
   filiereId: text("filiere_id").references(() => filiereSuperieure.id),
+  /** Portée `periode` : sans cette clé, une règle « de période » ne se distinguerait pas d'une règle de filière. */
+  periodeId: text("periode_id").references(() => periodes.id),
   /** null = tous les régimes de la portée. */
   regime: text("regime", { enum: REGIMES }),
   /** 1. Seuil d'acquisition d'une UE, sur 20. */
@@ -804,7 +807,7 @@ export const reglesValidation = core.table("regles_validation", {
   reportCreditsInterEtab: boolean("report_credits_inter_etab").notNull().default(true),
   /** Forme du paramètre 3 quand la compensation est « par bloc » : des listes de codes d'UE. */
   blocs: jsonb("blocs").$type<{ code: string; ue: string[] }[]>().notNull().default(sql`'[]'::jsonb`),
-}, (t) => [index("regles_validation_portee_idx").on(t.portee, t.etablissementId, t.filiereId)]);
+}, (t) => [index("regles_validation_portee_idx").on(t.portee, t.etablissementId, t.filiereId, t.periodeId)]);
 
 /**
  * Crédit ECTS acquis : la ligne qui répond à « pourquoi cette UE est-elle acquise ? ». Un crédit

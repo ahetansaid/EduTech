@@ -25,7 +25,8 @@ const ID_SESSION = z.string().regex(/^SES-[A-Za-z0-9-]+$/);
 const ID_CENTRE = z.string().regex(/^CEN-[A-Za-z0-9-]+$/);
 const ID_CERTIF = z.string().regex(/^CERT-[A-Z]+-\d{4}-\d{6}$/);
 const anneeDe = (session: string) => session.match(/\d{4}/)?.[0] ?? aujourdhui().slice(0, 4);
-const mentionDe = (m: number): Mention => (m >= 16 ? "Très bien" : m >= 14 ? "Bien" : m >= 12 ? "Assez bien" : "Passable");
+/** Barème national de la mention : partagé avec la délibération du supérieur pour que les deux volets ne dérivent pas. */
+export const mentionDe = (m: number): Mention => (m >= 16 ? "Très bien" : m >= 14 ? "Bien" : m >= 12 ? "Assez bien" : "Passable");
 const NOM_COMPLET = sql<string>`${schema.apprenants.prenoms} || ' ' || ${schema.apprenants.nom}`;
 
 /**

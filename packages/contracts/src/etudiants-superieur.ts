@@ -211,9 +211,12 @@ export type InscriptionUE = z.infer<typeof InscriptionUE>;
  * Les HUIT paramètres de décision d'une validation. Toute la liberté d'un établissement tient
  * dans ces huit curseurs ; rien d'autre n'est paramétrable.
  *
- * Précédence : `nationale` < `etablissement` < `filiere` < `periode`. La règle la plus précise
- * l'emporte, paramètre par paramètre. Un établissement qui ne déclare rien hérite de la règle
- * nationale — il n'est jamais bloqué par l'absence de saisie.
+ * Précédence : `nationale` < `etablissement` < `filiere` < `periode`. La ligne la plus précise
+ * l'emporte EN BLOC, et non paramètre par paramètre : toute colonne portant un défaut, rien ne
+ * distingue en base « hérité » de « déclaré à la valeur par défaut ». Fusionner deux lignes
+ * produirait une règle que l'on ne peut plus montrer à l'étudiant ; la règle appliquée est donc
+ * UNIQUE et enregistrée sous `regleValidationId`. Un établissement qui ne déclare rien hérite de la
+ * règle nationale — il n'est jamais bloqué par l'absence de saisie.
  */
 export const PorteeRegle = z.enum(["nationale", "etablissement", "filiere", "periode"]);
 export type PorteeRegle = z.infer<typeof PorteeRegle>;
@@ -232,6 +235,8 @@ export const RegleValidation = z.object({
   portee: PorteeRegle,
   etablissementId: z.string().nullable(),
   filiereId: z.string().nullable(),
+  /** Portée `periode` : la période visée. Sans cette clé, une règle « de période » ne dirait rien de plus qu'une règle de filière. */
+  periodeId: z.string().nullable(),
   /** null = tous les régimes de la portée. */
   regime: RegimePedagogique.nullable(),
   /** 1. Seuil d'acquisition d'une UE, sur 20. */

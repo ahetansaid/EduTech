@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Composante, Diplome } from "./enseignement-superieur";
 import {
-  DecisionDiplome, ModeDeliberation, RegimePedagogique, SessionEvaluation,
+  DecisionDiplome, ModeDeliberation, OfficeDeliberant, RegimePedagogique, SessionEvaluation,
   StatutCompte, StatutInscriptionUE, StatutJury, VoieAcquisition,
 } from "./etudiants-superieur";
 import { Matiere, Mention, Niveau } from "./referentiels";
@@ -166,6 +166,8 @@ export const Evenement = z.discriminatedUnion("type", [
     filiereId: z.string(),
     /** null pour une filière EFTP hors LMD. */
     composante: Composante.nullable(),
+    /** Le numéro d'étudiant est un fait de l'inscription : absent du registre, il ne serait pas reconstructible. */
+    numeroEtudiant: z.string().nullable(),
     anneeUniversitaire: z.string(),
     /** Le régime choisi par l'établissement est un fait enregistré, pas une déduction. */
     regimePedagogique: RegimePedagogique,
@@ -181,6 +183,8 @@ export const Evenement = z.discriminatedUnion("type", [
     offreUeId: z.string(),
     groupeId: z.string().nullable(),
     statut: StatutInscriptionUE,
+    /** Un contrat refusé ou abandonné se justifie : sinon le motif n'existerait que dans l'écran. */
+    motifRefus: z.string().nullable(),
   }),
   /** Note d'une UE à une session. Une UE peut être notée sans être acquise : la note ne suffit pas. */
   Base.extend({
@@ -216,8 +220,12 @@ export const Evenement = z.discriminatedUnion("type", [
     type: z.literal("JURY_PERIODE"),
     juryId: z.string(),
     autorite: ModeDeliberation,
+    /** Office qui tient la session : un jury national sans office nommé ne serait pas opposable. */
+    office: OfficeDeliberant.nullable(),
     diplome: Diplome,
     periodeId: z.string().nullable(),
+    /** Filière jugée : sans elle, un jury de capitalisation ne serait rattachable à aucun cursus. */
+    filiereId: z.string().nullable(),
     sessionExamenId: z.string().nullable(),
     statut: StatutJury,
     /** Le jury se prouve par ses membres : sans eux, la composition ne serait pas reconstructible. */
@@ -234,6 +242,8 @@ export const Evenement = z.discriminatedUnion("type", [
     deliberationId: z.string(),
     juryId: z.string(),
     filiereId: z.string(),
+    /** Repris de la ligne du jury par le serveur, jamais du client : la délibération se relit seule. */
+    diplome: Diplome,
     decision: DecisionDiplome,
     creditsValides: z.number().int().nonnegative(),
     creditsRequis: z.number().int().nonnegative(),
