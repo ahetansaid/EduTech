@@ -1,4 +1,4 @@
-import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash } from "node:crypto";
+import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash, createHmac } from "node:crypto";
 import { promisify } from "node:util";
 
 /**
@@ -42,8 +42,13 @@ export const empreinteJeton = (jeton: string) => createHash("sha256").update(jet
  * Empreinte d'un contenu d'acte : la signature du document, non d'un jeton. Les champs sont ordonnés
  * une fois pour toutes côté émission et côté vérification — sinon deux services honnêtes produiraient
  * deux empreintes d'un même document.
+ *
+ * Avec une `cle`, le sceau est un MAC : quiconque écrit dans la ligne sans la clef ne peut pas le
+ * recalculer, donc retarde une date ou change un type d'acte en base se voit. Sans clef, le hash reste
+ * un condensé d'intégrité — utile contre une corruption, inutile contre une falsification : les champs
+ * scellés sont publics, et celui qui peut écrire dans la rangée peut refaire le hash.
  */
-export const empreinteContenu = (champs: readonly (string | number | null | undefined)[]) =>
-  createHash("sha256").update(champs.map((x) => x ?? "").join("|")).digest("hex");
+export const empreinteContenu = (champs: readonly (string | number | null | undefined)[], cle?: string) =>
+  (cle ? createHmac("sha256", cle) : createHash("sha256")).update(champs.map((x) => x ?? "").join("|")).digest("hex");
 
 export const nouveauJeton = () => randomBytes(32).toString("base64url");

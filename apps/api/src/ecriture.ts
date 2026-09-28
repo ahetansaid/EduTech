@@ -270,7 +270,9 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
     }
     for (const l of lignes.filter((x) => x.type === "ACTE_REFUSE")) {
       const d = vue<FaitActeRefuse>(l.donnees);
-      await tx.update(schema.demandesActe).set({ statut: "refusee", motifRefus: d.motif, disponibleLe: null }).where(and(
+      // Un refus retire l'acte du circuit : la date de mise à disposition ET son sceau disparaissent,
+      // sinon le service public vérifierait un document que l'administration a pourtant retiré.
+      await tx.update(schema.demandesActe).set({ statut: "refusee", motifRefus: d.motif, disponibleLe: null, empreinte: null }).where(and(
         eq(schema.demandesActe.id, d.demandeId),
         eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
         sql`${schema.demandesActe.statut} in ('demandee', 'en_instruction', 'disponible')`,
@@ -288,24 +290,31 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
 
     /* -- Allocations : une échéance déclarée, une décision datée. Aucun montant ne passe par ici. */
 
+    /** Conflit jugé sur la CLÉ NATURELLE et non sur l'identifiant : un fait dont l'identifiant aurait
+     *  été choisi par le client ne doit jamais pouvoir réécrire la ligne d'un autre. La ligne déjà
+     *  ouverte garde son identité — c'est elle qu'une allocation cite par `echeance_id`. */
     for (const l of lignes.filter((x) => x.type === "ECHEANCE_DEPOT")) {
       const d = vue<FaitEcheance>(l.donnees);
-      const valeurs = {
-        anneeUniversitaire: d.anneeUniversitaire, typeDecision: d.typeDecision, dateLimite: d.dateLimite,
-        actesExiges: d.actesExiges, autorite: d.autorite, intitule: d.intitule,
-      };
-      await tx.insert(schema.echeancesDepot).values({ id: d.echeanceId, ...valeurs })
-        .onConflictDoUpdate({ target: schema.echeancesDepot.id, set: valeurs });
+      const cles = { anneeUniversitaire: d.anneeUniversitaire, typeDecision: d.typeDecision };
+      const valeurs = { dateLimite: d.dateLimite, actesExiges: d.actesExiges, autorite: d.autorite, intitule: d.intitule };
+      await tx.insert(schema.echeancesDepot).values({ id: d.echeanceId, ...cles, ...valeurs })
+        .onConflictDoUpdate({
+          target: [schema.echeancesDepot.anneeUniversitaire, schema.echeancesDepot.typeDecision],
+          set: valeurs,
+        });
     }
     for (const l of lignes.filter((x) => x.type === "ALLOCATION_DECIDEE" && x.apprenantId)) {
       const d = vue<FaitAllocation>(l.donnees);
+      const cles = { apprenantId: l.apprenantId!, anneeUniversitaire: d.anneeUniversitaire, typeDecision: d.typeDecision };
       const valeurs = {
-        apprenantId: l.apprenantId!, etablissementId: l.etablissementId, anneeUniversitaire: d.anneeUniversitaire,
-        typeDecision: d.typeDecision, statut: d.statutCompte, autorite: d.autorite, referenceActe: d.referenceActe,
+        etablissementId: l.etablissementId, statut: d.statutCompte, autorite: d.autorite, referenceActe: d.referenceActe,
         decideLe: d.decideLe, echeanceId: d.echeanceId, motif: d.motif,
       };
-      await tx.insert(schema.allocationsEtudiantes).values({ id: d.allocationId, ...valeurs })
-        .onConflictDoUpdate({ target: schema.allocationsEtudiantes.id, set: valeurs });
+      await tx.insert(schema.allocationsEtudiantes).values({ id: d.allocationId, ...cles, ...valeurs })
+        .onConflictDoUpdate({
+          target: [schema.allocationsEtudiantes.apprenantId, schema.allocationsEtudiantes.anneeUniversitaire, schema.allocationsEtudiantes.typeDecision],
+          set: valeurs,
+        });
       // Le décompte national d'une promotion suit la décision : c'est la projection de `statut_compte`,
       // et rien d'autre — la ligne d'allocation garde l'autorité et la référence du texte.
       await tx.update(schema.inscriptionsSuperieures).set({ statutCompte: d.statutCompte }).where(and(
