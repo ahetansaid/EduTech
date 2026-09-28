@@ -12,7 +12,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       onglets={[
         { href: "/enseignant", libelle: "Mes classes", icone: CalendarCheck },
         { href: "/enseignant/carriere", libelle: "Parcours pro", icone: GraduationCap },
-        { href: "/famille", libelle: "Mon enfant", icone: BookUser },
+        { href: "/famille", libelle: "Mon enfant", icone: BookUser, roles: ["parent"] },
       ]}
     >
       {children}

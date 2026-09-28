@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
 import { parcours } from "./parcours";
 import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { auth } from "./auth";
 import { perimetrePilotage, pilotage } from "./pilotage";
 import { etablissement } from "./etablissement";
+import { examens } from "./examens";
+import { superieur } from "./superieur";
+import { scolariteSuperieure } from "./etudiants-superieur";
+import { guichet } from "./guichet";
 import { enseignant } from "./enseignant";
 import { plateforme } from "./plateforme";
 import { complementsPilotage } from "./complements-pilotage";
@@ -14,14 +18,15 @@ import { complementsFamille } from "./complements-famille";
 import { complementsGouvernance } from "./complements-gouvernance";
 import { administration } from "./administration";
 import { publique } from "./public";
+import { interop } from "./interop";
+import { empreintePresentee, sceauCorrespond, sceauxAdmis } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { decider } from "@beile/simulation/abac";
 import { repondre } from "@beile/simulation/ask";
-import { empreinteCertificat } from "@beile/simulation/micro";
 import { indexer, notesApprenant, situationApprenant } from "@beile/simulation/projections";
-import { calculer, DICTIONNAIRE, priorites } from "@beile/simulation/semantique";
+import { calculer, DICTIONNAIRE, estCalculeParLeRegistre, priorites } from "@beile/simulation/semantique";
 import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -43,15 +48,26 @@ export const app = new Hono<{ Variables: Variables }>().basePath("/api/v1");
 
 app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site", xFrameOptions: "DENY" }));
 app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "X-CSRF-Token"], credentials: true, maxAge: 600 }));
-app.use("*", bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) }));
+// 16 Ko partout, sauf le report des verdicts d'un examen national (lots de 5 000 lignes, ≈ 250 Ko).
+const corpsCourant = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) });
+const corpsVerdicts = bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ erreur: "Lot de verdicts trop volumineux : 5 000 lignes au plus" }, 413) });
+app.use("*", (c, next) => (/\/examens\/sessions\/[^/]+\/deliberation$|\/interop\//.test(c.req.path) ? corpsVerdicts : corpsCourant)(c, next));
 // Deux plafonds : par IP (large — un établissement entier peut partager une IP publique) et par utilisateur.
 app.use("*", limiteDebit(1500, 60_000));
 app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return c.json({ erreur: err.message }, err.status);
-  // Doublon de saisie détecté par l'index d'idempotence (deux rejeux simultanés) : déjà enregistré.
-  if ((err as { code?: string; cause?: { code?: string } }).code === "23505" || (err as { cause?: { code?: string } }).cause?.code === "23505") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
+  // Contraintes de la base, lues sur l'erreur PostgreSQL (directe ou enveloppée par Drizzle) : seul
+  // l'index d'idempotence signifie « déjà enregistré » ; toute autre unicité est un vrai conflit, et une
+  // clé étrangère violée désigne une référence inconnue (erreur du client, jamais un 500).
+  const pg = (err as { cause?: { code?: string; constraint_name?: string } }).cause ?? (err as { code?: string; constraint_name?: string });
+  if (pg?.code === "23505") {
+    if (pg.constraint_name === "evenements_id_saisie_idx") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
+    if (pg.constraint_name === "evenements_decision_justification_uq") return c.json({ erreur: "Ce justificatif a déjà été tranché" }, 409);
+    return c.json({ erreur: "Conflit : cet enregistrement existe déjà" }, 409);
+  }
+  if (pg?.code === "23503") return c.json({ erreur: "Référence inconnue : un identifiant fourni ne désigne rien d'existant" }, 422);
   // Paramètre d'URL ou de requête invalide (validation zod) : erreur du client, jamais un 500.
   if (err instanceof z.ZodError) return c.json({ erreur: "Paramètre invalide", champs: err.issues.map((i) => i.path.join(".") || "valeur") }, 422);
   // Journal minimal : jamais la requête SQL ni ses paramètres (identifiants d'élèves) dans les journaux de l'hébergeur.
@@ -88,18 +104,53 @@ app.get("/dictionnaire/:code", (c) => {
   return c.json(d);
 });
 
-/** Service public de vérification : aucune authentification, réponse minimale. */
-app.get("/certificats/:id/verification", limiteDebit(30, 60_000), async (c) => {
+/**
+ * Service public de vérification : aucune authentification, réponse minimale.
+ *
+ * Deux régimes, et c'est ce qui rend le service utilisable sans être un annuaire. L'empreinte du document
+ * présenté (portée par son QR code) ouvre le dossier complet ; sans elle, le registre dit seulement que
+ * l'identifiant existe — ni nom, ni mention. La fin d'un identifiant de certificat reprend le numéro
+ * d'apprenant : livrer l'identité sur l'identifiant seul revaudrait à parcourir une promotion entière.
+ */
+app.get("/certificats/:id/verification", limiteDebitPartage("verification-diplome", 30, 60_000), async (c) => {
   const id = c.req.param("id");
   if (!/^CERT-[A-Z]+-\d{4}-\d{6}$/.test(id)) throw new HTTPException(400, { message: "Identifiant de diplôme mal formé" });
-  const presente = (c.req.query("e") ?? "").toLowerCase().replace(/[^0-9a-f]/g, "").slice(0, 64);
+  const presente = empreintePresentee(c.req.query("e"));
   const [cert] = await base().select().from(schema.certificats).where(eq(schema.certificats.id, id));
   const [titulaire] = cert ? await base().select().from(schema.apprenants).where(eq(schema.apprenants.id, cert.apprenantId)) : [];
+  const [etablissement] = cert?.etablissementId ? await base().select({ nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, cert.etablissementId)) : [];
+  const [filiere] = cert?.filiereId ? await base().select({ nom: schema.filiereSuperieure.nom }).from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, cert.filiereId)) : [];
+  const nom = titulaire ? `${titulaire.prenoms} ${titulaire.nom}` : "";
   let r: ResultatVerification;
+  // Deux contrôles distincts. (1) La LIGNE est-elle intègre ? Son sceau stocké doit être l'un de ceux
+  // que ses champs signés produisent (clef active ou ancienne). (2) Le DOCUMENT correspond-il ? Le
+  // préfixe présenté se compare au sceau STOCKÉ, jamais à un recalcul : un curieux qui ferait varier la
+  // moyenne supposée n'obtient plus aucun indice, puisque rien de ce qu'il envoie n'est recalculé.
+  const integre = !!cert && !!titulaire && sceauxAdmis(cert, nom).includes(cert.empreinte);
   if (!cert || !titulaire) r = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant." };
   else if (cert.revoque) r = { statut: "revoque", certificatId: id, explication: "Diplôme révoqué par l'autorité de certification." };
-  else if (presente && !empreinteCertificat(cert, `${titulaire.prenoms} ${titulaire.nom}`).startsWith(presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
-  else r = { statut: "authentique", certificatId: id, titulaire: `${titulaire.prenoms} ${titulaire.nom}`, examen: cert.examen, session: cert.session, mention: cert.mention, delivreLe: cert.delivreLe };
+  else if (!integre) r = { statut: "altere", certificatId: id, explication: "Le registre ne concorde pas avec le diplôme émis. Ne l'acceptez pas en l'état et saisissez l'autorité de certification." };
+  else if (presente && !sceauCorrespond(cert.empreinte, presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
+  else if (!presente) r = {
+    statut: "sans_empreinte",
+    certificatId: id,
+    examen: cert.examen,
+    session: cert.session,
+    delivreLe: cert.delivreLe,
+    explication: "Ce diplôme existe au registre. Son titulaire n'est pas révélé : l'identité se contrôle sur le document, en scannant son QR code.",
+  };
+  else r = {
+    statut: "authentique",
+    certificatId: id,
+    titulaire: nom,
+    examen: cert.examen,
+    filiere: filiere?.nom ?? null,
+    etablissement: etablissement?.nom ?? null,
+    office: cert.office,
+    session: cert.session,
+    mention: cert.mention,
+    delivreLe: cert.delivreLe,
+  };
   // Chaque vérification publique est tracée (sans donnée sur le demandeur) : volume et tentatives de fraude.
   await journaliser({ id: "public", nomAffiche: "Vérification publique" }, "Vérification de diplôme", `${id} · ${r.statut}`, "controle", true, null);
   return c.json(r);
@@ -112,6 +163,13 @@ app.post("/indicateurs", authentifie, async (c) => {
   const requete = await corps(c, RequeteSemantique);
   const profil = c.get("profil");
   const perimetre = perimetrePilotage(profil);
+  // Le dictionnaire publie aussi des définitions rendues par le registre du supérieur. Les demander ici
+  // renverrait une série vide sous un nom officiel : refus explicite, la donnée nominative n'est pas
+  // agrégée par cette couche et ne se calcule que sous le périmètre d'un établissement.
+  if (estCalculeParLeRegistre(requete.indicateur)) {
+    await journaliser(profil, "Calcul d'indicateur refusé — moteur registre", DICTIONNAIRE[requete.indicateur].nom, "statistique", false, "moteur");
+    throw new HTTPException(422, { message: `« ${DICTIONNAIRE[requete.indicateur].nom} » est rendu par le registre du supérieur (/enseignement-superieur/scolarite/credits-ects), pas par la couche statistique.` });
+  }
   const couches = await chargerCouches(base());
   const resultat = memo(couches, `indicateur:${JSON.stringify(perimetre)}:${JSON.stringify(requete)}`, () => calculer(couches, requete, perimetre));
   await journaliser(profil, "Calcul d'indicateur", resultat.definition.nom, "statistique", true, null);
@@ -226,6 +284,10 @@ app.get("/audit", authentifie, async (c) => {
 app.route("/", parcours);
 app.route("/", pilotage);
 app.route("/", etablissement);
+app.route("/", examens);
+app.route("/", superieur);
+app.route("/", scolariteSuperieure);
+app.route("/", guichet);
 app.route("/", enseignant);
 app.route("/", plateforme);
 app.route("/", complementsPilotage);
@@ -235,3 +297,4 @@ app.route("/", complementsFamille);
 app.route("/", complementsGouvernance);
 app.route("/", administration);
 app.route("/", publique);
+app.route("/", interop);

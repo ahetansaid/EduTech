@@ -40,6 +40,13 @@ jobs:
         run: npm audit --audit-level=high
       - name: Cohérence du moteur de simulation
         run: npm run verifier --workspace=@beile/simulation
+      - name: Schéma et migrations alignés (aucune table « déclarée seulement »)
+        run: |
+          npm run generer --workspace=@beile/db
+          if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
+            echo "::error::schema.ts déclare des changements sans migration : lancer « npm run generer -w @beile/db » et commiter le SQL."
+            git status --porcelain packages/db/drizzle; exit 1
+          fi
 
   recette:
     name: Recette de bout en bout (PostgreSQL + PostGIS jetable)
@@ -73,6 +80,8 @@ jobs:
         run: npm run migrer --workspace=@beile/db
       - name: Peuplement (registre, cube national, référentiels)
         run: npm run peupler --workspace=@beile/db
+      - name: Référentiel du supérieur (établissements, filières, homologations, étudiants)
+        run: npm run superieur --workspace=@beile/db
       - name: Rôle de connexion de l'API (beile_api ⊂ beile_app, sans BYPASSRLS)
         run: |
           MDP=$(openssl rand -hex 24)
@@ -86,11 +95,28 @@ jobs:
           npm run calendrier --workspace=@beile/db
       - name: Vérification de la base (ajout seul, droits, RLS, témoins)
         run: npm run verifier --workspace=@beile/db
+      - name: Clé de sceau éphémère (MAC des diplômes et actes du supérieur)
+        run: |
+          CLE=$(openssl rand -hex 32)
+          echo "::add-mask::$CLE"
+          echo "BEILE_CLE_SEAU=$CLE" >> "$GITHUB_ENV"
+          # Secrets éphémères des systèmes partenaires (connecteurs signés d'interopérabilité).
+          P=""
+          for id in educmaster eresultats uac dbau; do S=$(openssl rand -hex 32); echo "::add-mask::$S"; P="${P:+$P,}$id:$S"; done
+          echo "BEILE_PARTENAIRES=$P" >> "$GITHUB_ENV"
       - name: Démarrer l'API
         run: |
           npm run start --workspace=@beile/api > api.log 2>&1 &
           for i in $(seq 1 40); do curl -sf http://localhost:4000/api/v1/sante > /dev/null && exit 0; sleep 1; done
           cat api.log; exit 1
+      - name: Année universitaire jouée par l'API (inscriptions, notes, jury, diplômes, guichet)
+        run: npm run scenario:superieur --workspace=@beile/api
+      - name: "Rejeu du scénario (idempotence : rien ne se double)"
+        run: npm run scenario:superieur --workspace=@beile/api
+      - name: Couche nationale — EducMaster, eRESULTATS, université, DBAU par connecteurs signés
+        run: npm run interop:demo --workspace=@beile/api
+      - name: Rejeu des lots partenaires (idempotence)
+        run: npm run interop:demo --workspace=@beile/api
       - name: Recette complète, écritures multi-utilisateurs comprises
         run: npm run recette:ecritures --workspace=@beile/api
       - name: Test de charge (100 utilisateurs, 30 s)

@@ -1,7 +1,7 @@
 "use client";
 
-import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification, SourceDonnee } from "@beile/contracts";
-import { MATIERES } from "@beile/contracts";
+import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification } from "@beile/contracts";
+import { MATIERES, NOM_DIPLOME_ATTESTE } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire, requete } from "@/lib/http";
 
@@ -14,13 +14,8 @@ import { ecrire, lire, requete } from "@/lib/http";
 
 /* ================================================================== Types de réponse */
 
-/** Fait ajouté par un responsable légal (POST /famille/absences/justification) : référence les absences d'origine. */
-export interface JustificationAbsence {
-  type: "JUSTIFICATION_ABSENCE";
-  id: string; survenuLe: string; enregistreLe: string; auteurId: string; source: SourceDonnee; etablissementId: string | null;
-  apprenantId: string; absenceIds: string[]; dates: string[]; classeId: string | null; motif: string;
-}
-export type EvenementDossier = Evenement | JustificationAbsence;
+/** Les faits du dossier — dont le justificatif d'absence et la décision de l'établissement — sont typés par le contrat partagé. */
+export type EvenementDossier = Evenement;
 
 export interface Dossier {
   apprenant: Apprenant;
@@ -78,8 +73,12 @@ export function lireSaisieVerification(brut: string): { id: string; empreinte: s
 
 /* ================================================================== Libellés */
 
-export const NOM_EXAMEN: Record<string, string> = { CEP: "Certificat d'études primaires", BEPC: "Brevet d'études du premier cycle", BAC: "Baccalauréat" };
-export const NOM_SOURCE: Record<string, string> = { beile: "BEILE", educmaster: "EducMaster", examens: "Office du Bac et des examens", registre_national: "Registre national" };
+/** Intitulé lisible de tout diplôme attesté (K-12, EFTP, supérieur) : source unique, le contrat. */
+export const NOM_EXAMEN: Record<string, string> = NOM_DIPLOME_ATTESTE;
+export const NOM_SOURCE: Record<string, string> = {
+  beile: "Saisi dans BEILE", educmaster: "EducMaster", examens: "Autorité d'examen (eRESULTATS)", registre_national: "Registre national",
+  universite: "Université (SI de scolarité)", dbau: "DBAU",
+};
 export const nomComplet = (a: Pick<Apprenant, "prenoms" | "nom">) => `${a.prenoms} ${a.nom}`;
 export const initiales = (a: Pick<Apprenant, "prenoms" | "nom">) => `${a.prenoms[0] ?? ""}${a.nom[0] ?? ""}`.toUpperCase();
 export const libelleTrimestre = (t: number) => (t === 1 ? "1er trimestre" : `${t}e trimestre`);
@@ -160,24 +159,39 @@ export function syntheseScolaire(d: Dossier) {
 
 export interface JourAbsence {
   date: string; ids: string[]; classeId: string;
-  statut: "justifiee" | "transmise" | "a_justifier";
-  motif: string | null; transmiseLe: string | null;
+  statut: "justifiee" | "transmise" | "refusee" | "a_justifier";
+  motif: string | null; transmiseLe: string | null; decisionMotif: string | null;
 }
 
-/** Absences regroupées par jour, avec leur état : justifiée par l'établissement, justificatif transmis par la famille, ou à justifier. */
+/**
+ * Absences regroupées par jour, avec leur état : justifiée (par l'établissement ou après validation d'un
+ * justificatif), justificatif transmis en attente, justificatif refusé, ou à justifier.
+ * Le registre est en ajout seul : une DECISION_JUSTIFICATION référence le justificatif d'origine.
+ */
 export function absencesParJour(evts: EvenementDossier[]): JourAbsence[] {
-  const justifs = new Map<string, JustificationAbsence>();
-  for (const e of evts) if (e.type === "JUSTIFICATION_ABSENCE") for (const id of e.absenceIds ?? []) justifs.set(id, e);
+  const justifs = new Map<string, Extract<Evenement, { type: "JUSTIFICATION_ABSENCE" }>>();
+  for (const e of evts) if (e.type === "JUSTIFICATION_ABSENCE") for (const id of e.absenceIds) justifs.set(id, e);
+  const decisions = new Map<string, Extract<Evenement, { type: "DECISION_JUSTIFICATION" }>>();
+  for (const e of evts) {
+    if (e.type !== "DECISION_JUSTIFICATION") continue;
+    const avant = decisions.get(e.justificationId);
+    if (!avant || avant.survenuLe <= e.survenuLe) decisions.set(e.justificationId, e);
+  }
   const jours = new Map<string, JourAbsence>();
   for (const e of evts) {
     if (e.type !== "ABSENCE") continue;
-    const j = jours.get(e.date) ?? { date: e.date, ids: [], classeId: e.classeId, statut: "justifiee" as const, motif: null, transmiseLe: null };
+    const j = jours.get(e.date) ?? { date: e.date, ids: [], classeId: e.classeId, statut: "justifiee" as const, motif: null, transmiseLe: null, decisionMotif: null };
     j.ids.push(e.id);
     const justif = justifs.get(e.id);
-    const statut: JourAbsence["statut"] = e.justifiee ? "justifiee" : justif ? "transmise" : "a_justifier";
-    const rang = { a_justifier: 0, transmise: 1, justifiee: 2 } as const;
+    const dec = justif ? decisions.get(justif.id) : undefined;
+    const statut: JourAbsence["statut"] = e.justifiee || dec?.decision === "validee" ? "justifiee"
+      : dec?.decision === "refusee" ? "refusee"
+      : justif ? "transmise"
+      : "a_justifier";
+    const rang = { a_justifier: 0, refusee: 1, transmise: 2, justifiee: 3 } as const;
     if (j.ids.length === 1 || rang[statut] < rang[j.statut]) j.statut = statut;
     if (justif) { j.motif = justif.motif; j.transmiseLe = justif.survenuLe; }
+    if (dec?.motif) j.decisionMotif = dec.motif;
     jours.set(e.date, j);
   }
   return [...jours.values()].sort((a, b) => b.date.localeCompare(a.date));
@@ -209,7 +223,7 @@ export function jalonsParcours(d: Dossier): Jalon[] {
         res.push({ id: e.id, date: e.survenuLe, type: "examen", titre: `${e.examen} ${e.admis ? "obtenu" : "non obtenu"}`, detail: `Session ${e.session} · moyenne ${e.moyenne.toLocaleString("fr-FR", { maximumFractionDigits: 2 })}/20`, source, accent: false });
         break;
       case "CERTIFICATION":
-        res.push({ id: e.id, date: e.survenuLe, type: "diplome", titre: `Diplôme délivré : ${e.examen}`, detail: `Mention ${e.mention} · vérifiable en ligne par QR code`, source, accent: true });
+        res.push({ id: e.id, date: e.survenuLe, type: "diplome", titre: `Diplôme délivré : ${NOM_EXAMEN[e.examen] ?? e.examen}`, detail: `${e.mention ? `Mention ${e.mention} · ` : "Sans mention · "}vérifiable en ligne par QR code`, source, accent: true });
         break;
       case "ABANDON":
         res.push({ id: e.id, date: e.survenuLe, type: "abandon", titre: "Interruption de scolarité", detail: `Année ${e.anneeScolaire}`, source, accent: false });
@@ -237,28 +251,71 @@ export function jalonsParcours(d: Dossier): Jalon[] {
 
 /**
  * Pistes d'orientation INDICATIVES : l'API ne fournit aucun modèle d'orientation. On se limite à une lecture
- * transparente des moyennes réelles, avec des pondérations affichées. Une matière non évaluée n'est jamais
- * remplacée par une valeur arbitraire : elle réduit la « couverture » de la piste, affichée à côté du score.
+ * transparente des moyennes réelles, avec des pondérations affichées (chaque filière somme à 1, donc la
+ * « couverture » est directement la part des critères réellement évalués). Une matière non évaluée n'est
+ * jamais remplacée par une valeur arbitraire : elle réduit la couverture, affichée à côté du score.
+ * Les matières référencées sont exactement celles du référentiel `MATIERES` — rien d'inventé.
  */
 export const FILIERES = [
-  { code: "C", nom: "Série C — mathématiques et sciences physiques", poids: { Mathématiques: 0.5, "Sciences physiques": 0.5 } },
-  { code: "D", nom: "Série D — sciences de la vie et de la Terre", poids: { SVT: 0.5, Mathématiques: 0.25, "Sciences physiques": 0.25 } },
-  { code: "A", nom: "Série A — lettres et langues", poids: { Français: 0.5, Anglais: 0.3, "Histoire-Géographie": 0.2 } },
-  { code: "T", nom: "Enseignement technique et professionnel", poids: { Mathématiques: 0.4, "Sciences physiques": 0.3, Français: 0.3 } },
+  { code: "C", nom: "Série C — mathématiques et sciences physiques", poids: { Mathématiques: 0.5, "Sciences physiques": 0.3, SVT: 0.2 } },
+  { code: "D", nom: "Série D — sciences expérimentales", poids: { SVT: 0.4, Mathématiques: 0.3, "Sciences physiques": 0.3 } },
+  { code: "A1", nom: "Série A1 — lettres et sciences humaines", poids: { Français: 0.5, "Histoire-Géographie": 0.3, "Éducation civique": 0.2 } },
+  { code: "A2", nom: "Série A2 — langues étrangères", poids: { Anglais: 0.5, Français: 0.3, "Histoire-Géographie": 0.2 } },
+  { code: "B", nom: "Série B — sciences économiques et sociales", poids: { Mathématiques: 0.4, "Histoire-Géographie": 0.35, Français: 0.25 } },
+  { code: "G", nom: "Séries G — techniques de gestion (enseignement technique)", poids: { Mathématiques: 0.4, Français: 0.3, Anglais: 0.3 } },
+  { code: "F", nom: "Séries F — techniques industrielles (enseignement technique)", poids: { Mathématiques: 0.4, "Sciences physiques": 0.45, SVT: 0.15 } },
 ] as const;
 
 export interface PisteOrientation {
   code: string; nom: string; score: number | null; couverture: number;
   criteres: { matiere: string; poids: number; moyenne: number | null; nb: number }[];
+  /** Part des critères qui jouent en faveur de cette piste (moyenne ≥ score de la piste), sur les matières évaluées. */
+  solidite: number | null;
+  /** Écart (en points /20) avec la piste de tête du classement ; null pour la piste de tête. */
+  ecartTete: number | null;
+  /** La tête est-elle robuste : même 1ʳᵉ piste avec une pondération égale (sans barème) et assez évaluée ? */
+  teteRobuste: boolean;
+  /** La piste gagne (+) ou perd (−) des places quand on retire la pondération indicative (pondération égale). */
+  deltaSansBareme: number | null;
 }
 
+/** Une piste « fiable » à montrer en tête : couverte à ≥ 0,6 et nettement devant (≥ 0,5 point). */
+export function estTeteValide(p: PisteOrientation): boolean {
+  return p.couverture >= 0.6 && (p.ecartTete == null || p.ecartTete >= 0.5);
+}
+
+/**
+ * Calcule les pistes avec la pondération indicative (non officielle), puis une passe à pondération égale entre matières évaluées.
+ * La comparaison des deux classements révèle si le barème *fabrique* la tête (deltaSansBareme / teteRobuste) :
+ * une tête qui saute à une pondération neutre mérite d'être présentée avec prudence.
+ */
 export function pistesOrientation(notes: NoteEffective[], annee: string | null): PisteOrientation[] {
   const moyennes = new Map(moyennesParMatiere(notes, annee).map((m) => [m.matiere as string, m]));
-  return FILIERES.map((f) => {
+  const unePiste = (f: (typeof FILIERES)[number], bareme: boolean): Omit<PisteOrientation, "ecartTete" | "teteRobuste" | "deltaSansBareme"> => {
     const criteres = Object.entries(f.poids).map(([matiere, poids]) => ({ matiere, poids, moyenne: moyennes.get(matiere)?.moyenne ?? null, nb: moyennes.get(matiere)?.nb ?? 0 }));
     const evalues = criteres.filter((c) => c.moyenne != null);
     const couverture = evalues.reduce((s, c) => s + c.poids, 0);
-    const score = couverture > 0 ? evalues.reduce((s, c) => s + c.moyenne! * c.poids, 0) / couverture : null;
-    return { code: f.code, nom: f.nom, score, couverture, criteres };
-  }).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    const w = bareme ? (c: (typeof criteres)[number]) => c.poids : () => 1;
+    const sommePoids = evalues.reduce((s, c) => s + w(c), 0);
+    const score = sommePoids > 0 ? evalues.reduce((s, c) => s + c.moyenne! * w(c), 0) / sommePoids : null;
+    const solidite = evalues.length ? evalues.filter((c) => score != null && c.moyenne! >= score).length / evalues.length : null;
+    return { code: f.code, nom: f.nom, score, couverture, criteres, solidite };
+  };
+
+  const avecBarème = FILIERES.map((f) => unePiste(f, true)).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const sansBarème = FILIERES.map((f) => unePiste(f, false)).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const rangSans = new Map(sansBarème.map((p, i) => [p.code, i]));
+  const tete = avecBarème[0];
+  const teteCode = tete?.score != null ? tete.code : null;
+
+  return avecBarème.map((p, i) => {
+    const teteRobuste = i === 0 ? teteCode != null && sansBarème[0]?.code === teteCode && p.couverture >= 0.6 && p.score != null : false;
+    const rang = rangSans.get(p.code);
+    return {
+      ...p,
+      ecartTete: i === 0 ? null : (tete?.score ?? null) != null && p.score != null ? (tete!.score ?? 0) - p.score : null,
+      teteRobuste,
+      deltaSansBareme: rang != null ? rang - i : null,
+    };
+  });
 }

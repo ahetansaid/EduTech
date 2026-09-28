@@ -205,11 +205,8 @@ export function Statut({ ton, children, className }: { ton: TonStatut; children:
 export const LIBELLE_STATUT_DEMANDE = { ouverte: "Ouverte", en_cours: "En cours", acceptee: "Acceptée", refusee: "Refusée", close: "Close" } as const;
 export const TON_STATUT_DEMANDE: Record<keyof typeof LIBELLE_STATUT_DEMANDE, TonStatut> = { ouverte: "info", en_cours: "avertissement", acceptee: "succes", refusee: "critique", close: "neutre" };
 
-export const ETAPES_ACCOMPAGNEMENT = [
-  { code: "PROPOSITION", libelle: "Proposition" },
-  { code: "VALIDATION_CONSEIL", libelle: "Conseil pédagogique" },
-  { code: "INFORMATION_FAMILLES", libelle: "Information des familles" },
-] as const;
+export const LIBELLE_STATUT_JUSTIF = { en_attente: "En attente", validee: "Validée", refusee: "Refusée" } as const;
+export const TON_STATUT_JUSTIF: Record<keyof typeof LIBELLE_STATUT_JUSTIF, TonStatut> = { en_attente: "avertissement", validee: "succes", refusee: "critique" };
 
 export const LIBELLE_IDENTITE = { verifiee: "Identité vérifiée", regularisation_en_cours: "Régularisation en cours" } as const;
 export const TON_IDENTITE: Record<keyof typeof LIBELLE_IDENTITE, TonStatut> = { verifiee: "succes", regularisation_en_cours: "info" };
@@ -222,6 +219,7 @@ export const LIBELLE_EVENEMENT: Record<string, string> = {
   PASSAGE: "Passage de niveau", TRANSFERT: "Transfert", ABANDON: "Abandon", REPRISE: "Reprise de scolarité",
   RESULTAT_EXAMEN: "Résultat d'examen", CERTIFICATION: "Diplôme délivré", REGULARISATION_IDENTITE_DEMANDEE: "Régularisation d'identité",
   AFFECTATION_ENSEIGNANT: "Affectation", FORMATION_ENSEIGNANT: "Formation",
+  JUSTIFICATION_ABSENCE: "Justificatif d'absence", DECISION_JUSTIFICATION: "Décision sur justificatif",
 };
 export const TON_EVENEMENT: Record<string, TonStatut> = {
   INSCRIPTION: "marque", PASSAGE: "succes", TRANSFERT: "info", ABANDON: "critique", REPRISE: "succes",

@@ -19,6 +19,21 @@ export const DIMENSION_LIBELLE: Record<Dimension, string> = {
   annee: "Année scolaire",
 };
 
+/**
+ * Ce qui calcule l'indicateur. Deux moteurs coexistent et le dire fait partie de la définition :
+ * `simulation` = la couche statistique nationale du prototype ; `registre` = les écritures nominatives
+ * du registre du supérieur, agrégées par l'API métier. Publier une définition sans moteur, ce serait
+ * promettre un chiffre que personne ne rend ; l'exiger, ce serait faire croire qu'Ask Education le
+ * calcule alors qu'il n'en a pas les données.
+ */
+export const MoteurCalcul = z.enum(["simulation", "registre"]);
+export type MoteurCalcul = z.infer<typeof MoteurCalcul>;
+
+export const MOTEUR_LIBELLE: Record<MoteurCalcul, string> = {
+  simulation: "Couche statistique nationale",
+  registre: "Registre du supérieur (écrans de scolarité)",
+};
+
 export const CodeIndicateur = z.enum([
   "effectif_apprenants",
   "taux_seuil_moyenne",
@@ -28,6 +43,8 @@ export const CodeIndicateur = z.enum([
   "taux_occupation",
   "taux_abandon",
   "taux_reussite_examen",
+  "credits_ects_acquis",
+  "taux_capitalisation_ects",
 ]);
 export type CodeIndicateur = z.infer<typeof CodeIndicateur>;
 
@@ -37,6 +54,8 @@ export const DefinitionIndicateur = z.object({
   definition: z.string(),
   formule: z.string(),
   unite: z.enum(["nombre", "pourcentage", "note", "ratio"]),
+  /** Le moteur qui rend le chiffre. Un indicateur « registre » n'est pas interrogeable par Ask Education. */
+  moteur: MoteurCalcul,
   source: z.string(),
   frequence: z.string(),
   proprietaire: z.string(),

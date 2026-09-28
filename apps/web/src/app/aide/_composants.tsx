@@ -3,8 +3,8 @@
 import type { Role } from "@beile/contracts";
 import {
   Award, BadgeCheck, Bell, BookOpen, Building2, CalendarCheck, ChartNoAxesCombined, ChevronDown, ClipboardList, Compass, Database, FileText,
-  GraduationCap, House, KeyRound, Landmark, LifeBuoy, LogIn, Map as IconeCarte, Network, PlayCircle, Route, ScrollText, Server, ShieldCheck,
-  SlidersHorizontal, Sparkles, UserPlus, Users, type LucideIcon,
+  GraduationCap, House, Inbox, KeyRound, Landmark, LifeBuoy, LogIn, Map as IconeCarte, Network, PlayCircle, Route, ScrollText, Server, ShieldCheck,
+  SlidersHorizontal, Sparkles, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,7 +23,8 @@ const ICONES: Record<string, LucideIcon> = {
   chart: ChartNoAxesCombined, map: IconeCarte, sparkles: Sparkles, sliders: SlidersHorizontal, database: Database, landmark: Landmark,
   clipboard: ClipboardList, building: Building2, "user-plus": UserPlus, users: Users, award: Award, "calendar-check": CalendarCheck,
   graduation: GraduationCap, house: House, bell: Bell, file: FileText, route: Route, compass: Compass, shield: ShieldCheck,
-  "shield-check": ShieldCheck, scroll: ScrollText, server: Server, key: KeyRound, network: Network, badge: BadgeCheck,
+  "shield-check": ShieldCheck, scroll: ScrollText, server: Server, key: KeyRound, network: Network, badge: BadgeCheck, inbox: Inbox,
+  stamp: Stamp,
 };
 /** Pictogramme nommé (contenu du centre d'aide : données pures, sans composant). */
 export function Pictogramme({ nom, size, className }: { nom: string; size: number; className?: string }) {

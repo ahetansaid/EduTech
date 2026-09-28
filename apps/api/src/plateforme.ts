@@ -8,6 +8,8 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, refuser, type Variables } from "./commun";
 import { perimetrePilotage } from "./pilotage";
+import { lireEnv } from "./env";
+import { PARTENAIRES } from "./interop";
 
 /**
  * Plateforme : état de service mesuré, qualité des remontées (complétude, fraîcheur, confiance) avec relances,
@@ -144,5 +146,12 @@ plateforme.get("/plateforme/interoperabilite", authentifie, async (c) => {
       select to_char(date_trunc('day', horodatage), 'YYYY-MM-DD') as jour, count(*)::int as n from audit.journal
       where action = 'Vérification de diplôme' and horodatage >= now() - interval '30 days' group by 1 order by 1`),
   ]);
-  return c.json({ sources, registreNational: registre, verificationsDiplomes: verifications });
+  // Partenaires du connecteur : habilitations déclarées, connecteur ouvert (secret provisionné) ou fermé,
+  // et ce qui a réellement été reçu d'eux (registre, par source). Aucun secret ne sort d'ici.
+  const secrets = lireEnv().PARTENAIRES;
+  const partenaires = Object.entries(PARTENAIRES).map(([id, p]) => {
+    const recu = sources.find((s) => s.source === p.source);
+    return { id, nom: p.nom, source: p.source, messages: p.messages, ouvert: !!secrets[id], recus: recu?.total ?? 0, dernier: recu?.derniere ?? null };
+  });
+  return c.json({ sources, registreNational: registre, verificationsDiplomes: verifications, partenaires });
 });

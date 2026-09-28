@@ -62,6 +62,7 @@
 
 - Identifiant, classe, établissement.
 - Moyenne, évaluations, absences, diplômes.
+- « Bulletin » : relevé de notes du trimestre, à imprimer ou enregistrer en PDF.
 - Points forts et frise de votre parcours.
 
 ### Mes diplômes
@@ -71,14 +72,50 @@
 - « Partager », « Copier le lien », « QR en grand ».
 - Le QR code ne contient ni nom ni note.
 
+### Mes démarches
+
+`/apprenant/demarches` — Vos actes administratifs, du dépôt à la remise.
+
+- « Déposer une demande » : relevé de notes, attestation de scolarité, attestation de scolarité et de progression, attestation de succès provisoire ou définitive, diplôme, duplicata de diplôme.
+- Le délai affiché est celui que l'administration a publié (la fiche CatIS correspondante est citée) ; BEILE ne le promet pas, il l'enregistre et le mesure.
+- Le retard affiché est calculé par le serveur à partir de votre date de dépôt : l'heure de votre téléphone n'y change rien.
+- Une demande « Prête à retirer » précise le mode de retrait et la pièce d'identité à présenter — pour vous, à un géniteur, à un mandataire (procuration), à l'autorité académique, ou en dématérialisé.
+- « Mon dossier » (allocation) : les pièces exigées par l'échéance en cours, celles déjà remises, le nombre de jours restants. Une pièce prête au guichet mais non retirée y compte comme manquante.
+- Aucun montant n'apparaît jamais : BEILE conserve le statut décidé et la référence du texte, la liquidation reste à la DBAU.
+
 ### Orientation
 
 `/apprenant/orientation` — Des pistes lues dans vos résultats réels.
 
-- Indice de compatibilité et critères visibles.
-- Les pistes éclairent votre choix, elles ne le font pas.
+- Sept pistes du second cycle béninois : séries A1, A2, B, C et D, et séries techniques F et G, pondérées sur vos moyennes de l'année.
+- Chaque piste affiche son indice /20, l'écart à la piste de tête et la part de vos matières qui jouent en sa faveur. La pondération est indicative, pas un barème officiel.
+- Un bandeau teste la sensibilité : il dit si la piste de tête tient quand on pèse toutes les matières à égalité.
+- En bas, « Et après le bac ? » prolonge ces pistes vers les filières du supérieur (Licence, Master, écoles nationales, BTS/CQP) que vos résultats et votre série envisagée rendent accessibles.
+- Rien n'est inventé : une matière non évaluée n'est pas remplacée, elle réduit la couverture affichée. Les pistes éclairent votre choix, elles ne le font pas.
 
 ## Tâches pas à pas
+
+### Demander un acte administratif et le suivre
+
+> Chaque étape est un fait daté au registre : c'est ce qui permet de dire qui a retardé, et de réclamer son droit avec une preuve.
+
+1. Ouvrez « Mes démarches », puis le volet « Déposer une demande ».
+2. Choisissez l'acte : un relevé de notes ou une attestation de scolarité se délivrent à l'établissement (3 jours ouvrés annoncés) ; une attestation de succès ou un diplôme relève de la DEC (30 à 60 jours).
+3. Précisez l'année universitaire (AAAA-AAAA). Pour un duplicata de diplôme, le motif est obligatoire — c'est lui qui déclenche la recherche de l'original.
+4. Touchez « Déposer la demande ». L'écran affiche la date à laquelle le guichet doit avoir préparé l'acte, d'après le délai publié.
+5. Suivez le statut ici même : « Déposée », « En cours de préparation », « Prête à retirer », « Remise ». Une notification arrive sur votre espace à chaque étape.
+6. Le jour du retrait, présentez la pièce d'identité annoncée. Si quelqu'un retire à votre place, la procuration notariée est exigée.
+7. En cas de refus, le motif est écrit sur la ligne : un refus ne se rouvre pas, mais vous pouvez redéposer dès que la pièce manquante est obtenue.
+
+### Ne pas perdre son allocation faute de dépôt
+
+> Une allocation se perd plus souvent pour un dossier déposé trop tard que pour un manque de résultats.
+
+1. Ouvrez « Mes démarches » et descendez jusqu'au volet de l'allocation.
+2. Lisez « Mon dossier » : le statut (complet, pièces à produire, hors délai, aucune échéance déclarée) et les jours restants avant la date limite.
+3. Comparez la liste des pièces exigées à celles déjà remises — une pièce prête au guichet mais que vous n'êtes pas allé retirer compte comme manquante.
+4. Si « aucune échéance déclarée » s'affiche, ce n'est pas une bonne nouvelle : c'est que l'autorité n'a pas encore publié de date. Déposez quand même, et gardez-en la trace.
+5. Après une décision, la nature (attribution, renouvellement, rétablissement, secours) et l'autorité qui a statué s'affichent, avec la référence du texte. Aucun montant : la liquidation se traite à la DBAU.
 
 ### Partager un diplôme
 
@@ -91,16 +128,31 @@
 ### Explorer une orientation
 
 1. Ouvrez « Orientation ».
-2. Lisez l'indice de compatibilité de chaque piste et les matières qui le fondent.
-3. Parlez-en avec vos enseignants et votre famille : les pistes évoluent avec vos résultats.
+2. Lisez d'abord le bandeau : il dit si la piste de tête est robuste ou si elle dépend du poids des matières.
+3. Comparez les pistes : indice /20, écart à la tête, et les matières (et leur coefficient) qui fondent chaque score.
+4. Repérez un badge « Quasi équivalente » : deux pistes à moins d'un demi-point se discutent autant l'une que l'autre.
+5. Descendez jusqu'à « Et après le bac ? » pour voir les filières du supérieur cohérentes avec votre profil, avec un badge « Concours » quand l'entrée est sélective.
+6. Parlez-en avec vos enseignants, votre famille et le conseiller d'orientation : les pistes évoluent avec vos résultats.
 
 ## Questions fréquentes
 
 **Un diplôme manque.**  
-Il apparaît après la délibération du jury. S'il manque ensuite, adressez-vous à votre établissement.
+Il apparaît dès la publication officielle des résultats par l'autorité d'examen. S'il manque ensuite, adressez-vous à votre établissement.
 
 **Quelqu'un peut-il modifier mon diplôme ?**  
 Toute modification du document est détectée à la vérification : le verdict devient « Document altéré ».
+
+**Mon diplôme tarde depuis des mois. Que faire ?**  
+Ouvrez « Mes démarches » : la ligne indique l'autorité qui doit signer (votre établissement, la DEC, la DGES) et le nombre de jours écoulés depuis votre dépôt. C'est cette autorité qu'il faut relancer, avec la référence de la demande — plus une pièce à charge que « je n'ai rien reçu ».
+
+**Le délai affiché est-il une promesse ?**  
+Non. Il est annoncé par l'administration (la fiche CatIS est citée) et certains barèmes restent à confirmer par arrêté. Ce que BEILE garantit, c'est la date de votre dépôt et celle de la mise à disposition — donc le retard réellement constaté.
+
+**Pourquoi je ne vois pas le montant de ma bourse ?**  
+Volontairement. Un montant, un échéancier ou un RIB sont des données bancaires et sociales qui ne se stockent pas dans un registre de scolarité. BEILE conserve le statut décidé, son autorité, sa date et la référence du texte ; le paiement se lit à la DBAU.
+
+**Puis-je retirer une demande ?**  
+Oui tant qu'elle n'est pas instruite : « Retirer » inscrit un fait en ajout seul. La demande reste visible, marquée « Retirée par vous », et un tiers qui vérifierait l'identifiant lira « retirée » — jamais un faux document.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.

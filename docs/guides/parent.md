@@ -93,6 +93,7 @@
 1. Regardez la tuile « Moyenne » et son « Évolution ».
 2. Dans « Résultats par matière », chaque barre montre la moyenne sur 20 ; le trait rappelle le trimestre précédent.
 3. « Dernières notes » liste les évaluations récentes.
+4. Touchez « Bulletin » pour ouvrir le relevé du trimestre et l'imprimer (ou l'enregistrer en PDF) ; changez de trimestre depuis l'en-tête.
 
 ### Présenter un diplôme
 

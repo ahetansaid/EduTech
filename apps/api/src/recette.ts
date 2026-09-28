@@ -72,9 +72,12 @@ verifier("Directrice → tableau de bord", tableau.statut, 200, `${(tableau.json
 verifier("Directrice → liste des élèves", (await directrice!.appel("GET", `/etablissements/${PILOTE}/eleves`)).statut, 200);
 verifier("Directrice → autre établissement", (await directrice!.appel("GET", "/etablissements/ETB-COT-PILOTE-CEG/tableau")).statut, 403);
 verifier("Inspecteur de la circonscription → tableau (contrôle)", (await inspecteur!.appel("GET", `/etablissements/${PILOTE}/tableau`)).statut, 200);
-verifier("Inspecteur → délibération (écriture interdite)", (await inspecteur!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 403);
-verifier("Enseignant → délibération", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 403);
-verifier("Directrice → examens", (await directrice!.appel("GET", `/etablissements/${PILOTE}/examens`)).statut, 200);
+// Un établissement ne délibère pas un examen national : la route n'existe plus, même pour son chef.
+verifier("Directrice → délibérer un examen national (route retirée)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 404);
+const examensEtab = await directrice!.appel("GET", `/etablissements/${PILOTE}/examens`);
+verifier("Directrice → examens nationaux (lecture seule)", examensEtab.statut, 200);
+verifier("Examens de l'établissement : sessions et diplômes", Array.isArray((examensEtab.json as { sessions?: unknown }).sessions) && Array.isArray((examensEtab.json as { diplomes?: unknown }).diplomes), true);
+verifier("Enseignant → examens de l'établissement", (await enseignant!.appel("GET", `/etablissements/${PILOTE}/examens`)).statut, 403);
 verifier("Transfert par un enseignant", (await enseignant!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: "CLS-COT-5eA-S" })).statut, 403);
 verifier("Directrice → registre national", (await directrice!.appel("GET", "/registre/personnes?nom=WOROU&prenoms=Sidonie")).statut, 200);
 verifier("Enseignant → registre national", (await enseignant!.appel("GET", "/registre/personnes?nom=WOROU")).statut, 403);
@@ -113,6 +116,15 @@ verifier("Qualité des remontées (Borgou)", (await departement!.appel("GET", "/
 verifier("Relance hors périmètre", (await departement!.appel("POST", "/plateforme/relances", { etablissementIds: ["ETB-COT-PILOTE-CEG"] })).statut, 403);
 verifier("Vérification publique d'un diplôme", (await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
 verifier("Identifiant de diplôme mal formé", (await anonyme.appel("GET", "/certificats/abc'--/verification")).statut, 400);
+// Deux régimes dans le service public : l'identifiant seul atteste l'existence du diplôme, jamais son
+// titulaire. La fin d'un identifiant reprend le numéro d'apprenant — livrer le nom sur l'identifiant
+// seul permettrait de parcourir une promotion entière sans jamais scanner un document.
+const sansSceau = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification");
+verifier("Identifiant seul → « sans_empreinte », et aucun nom rendu", (sansSceau.json as { statut?: string; titulaire?: string }).statut === "sans_empreinte" && !(sansSceau.json as { titulaire?: string }).titulaire, true);
+const prefixe = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification?e=ab12");
+verifier("Un préfixe d'empreinte (4 caractères) ne débloque aucune identité", (prefixe.json as { statut?: string }).statut === "sans_empreinte", true);
+const foreign = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification?e=0000000000000000000000000000ffff");
+verifier("Une empreinte présentée qui ne correspond pas → « altéré »", (foreign.json as { statut?: string }).statut === "altere", true);
 
 titre("Services publics (sans compte)");
 const annuaire = await anonyme.appel("GET", "/public/etablissements?niveau=secondaire&departement=borgou");
@@ -132,6 +144,38 @@ verifier("Calendrier public : année en cours et échéances", cal.statut === 20
 verifier("Calendrier : enseignant → ajout d'une échéance", (await enseignant!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai", categorie: "autre", debut: "2026-10-01", fin: "2026-10-01", statut: "provisoire" })).statut, 403);
 verifier("Calendrier : fin avant le début", (await admin!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai incohérent", categorie: "conges", debut: "2026-12-20", fin: "2026-12-10", statut: "provisoire" })).statut, 422);
 verifier("Calendrier : date hors de l'année scolaire", (await admin!.appel("POST", "/admin/calendrier", { annee: "2026-2027", titre: "Essai hors année", categorie: "conges", debut: "2029-01-10", fin: "2029-01-12", statut: "provisoire" })).statut, 422);
+
+titre("Examens nationaux — e-résultat");
+// Recherche publique (sans compte) : le verdict d'une session publiée, et rien avant publication.
+const resAdmis = await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001");
+verifier("Public : session publiée → verdict", resAdmis.statut, 200, String(resAdmis.json.statut ?? ""));
+verifier("Public : numéro de table d'un lauréat → « admis »", (resAdmis.json as { statut?: string }).statut === "admis", true);
+verifier("Public : sans date de naissance, ni nom ni moyenne", (resAdmis.json as { identite?: unknown }).identite === null && !("titulaire" in resAdmis.json), true);
+const resDateFausse = await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001&naissance=1900-01-01");
+verifier("Public : date de naissance fausse → aucune identité, signalée", (resDateFausse.json as { identite?: unknown; dateNonConcordante?: boolean }).identite === null && (resDateFausse.json as { dateNonConcordante?: boolean }).dateNonConcordante === true, true);
+const sessionsPub = await anonyme.appel("GET", "/public/resultats/sessions");
+verifier("Public : sessions publiées proposées au choix", liste(sessionsPub.json).some((x) => x.examen === "CEP" && x.session === "Juin 2024"), true);
+verifier("Public : chaque session nomme son autorité (pas d'« ONEC »)", liste(sessionsPub.json).every((x) => typeof x.autorite === "string" && !/ONEC|Office national des examens/i.test(String(x.autorite))), true);
+verifier("Public : session inconnue → « introuvable » (jamais un 500)", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Janvier%201900&table=1900000001")).statut, 200);
+verifier("Public : table absente d'une session publiée → « introuvable »", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024099999")).statut, 200);
+verifier("Paramètre d'examen invalide → 422", (await anonyme.appel("GET", "/public/resultats?examen=BREVET&session=Juin%202024&table=1")).statut, 422);
+verifier("Requête incomplète (sans numéro de table) → 422", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024")).statut, 422);
+// Bureau des examens : réservé à l'administration centrale ; toute écriture hors session est refusée.
+verifier("Administration centrale → sessions d'examen", (await central!.appel("GET", "/examens/sessions")).statut, 200);
+verifier("Sans session → bureau des examens", (await anonyme.appel("GET", "/examens/sessions")).statut, 401);
+verifier("Enseignant → ouverture d'une session (écriture interdite)", (await enseignant!.appel("POST", "/examens/sessions", { examen: "CEP", session: "Test Recette" })).statut, 403);
+verifier("Inspecteur → constitution du candidaturé (hors bureau)", (await inspecteur!.appel("POST", "/examens/sessions/SES-INEXISTANT/candidatures", { etablissementId: PILOTE, centreId: "CEN-INEXISTANT" })).statut, 403);
+
+titre("Cycle annuel, classes et autorité de certification (refus : aucune écriture)");
+// Révocation d'un diplôme : autorité de certification (administration centrale) seule ; refus journalisé sinon.
+verifier("Sans session → révocation d'un diplôme", (await anonyme.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Tentative anonyme" })).statut, 401);
+verifier("Enseignant → révocation d'un diplôme", (await enseignant!.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Tentative enseignant" })).statut, 403);
+// Édition de classe et conseil de passage : chef de l'établissement concerné uniquement.
+verifier("Enseignant → édition d'une classe d'autrui", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S`, { capacite: 40, enseignantPrincipalId: null })).statut, 403);
+verifier("Enseignant → conseil de passage d'une classe d'autrui", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] })).statut, 403);
+// Affectation d'un enseignant : initiative réservée à la direction départementale ; refus avant toute écriture.
+verifier("Sans session → demande d'affectation", (await anonyme.appel("POST", "/enseignants/ENS-00001/affectation", { versEtablissementId: PILOTE })).statut, 401);
+verifier("Enseignant → demande d'affectation (rôle insuffisant)", (await enseignant!.appel("POST", "/enseignants/ENS-00001/affectation", { versEtablissementId: PILOTE })).statut, 403);
 
 titre("Administration des utilisateurs et assistance (refus : aucune écriture)");
 const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
@@ -213,6 +257,118 @@ if (ECRITURES) {
   verifier("Administrateur : passage en « officiel »", (await admin!.appel("POST", `/admin/calendrier/${idCal}`, { ...echeance, statut: "officiel" })).statut, 200);
   verifier("Public : statut officiel visible", liste((await anonyme.appel("GET", "/public/calendrier?annee=2026-2027")).json.evenements).find((e) => e.id === idCal)?.statut === "officiel", true);
   verifier("Administrateur : suppression", (await admin!.appel("POST", `/admin/calendrier/${idCal}/supprimer`)).statut, 200);
+
+  titre("Examens nationaux : réception du PV, publication, diplômes (écritures)");
+  {
+    const libelle = `Recette ${Date.now()}`;
+    const ses = await central!.appel("POST", "/examens/sessions", { examen: "CEP", session: libelle });
+    verifier("Bureau : ouverture d'une session CEP", ses.statut, 201);
+    const centres = liste((await central!.appel("GET", "/examens/centres")).json);
+    const cand = await central!.appel("POST", `/examens/sessions/${ses.json.id}/candidatures`, { etablissementId: "ETB-PAR-PILOTE-EPP", centreId: centres[0]?.id });
+    verifier("Bureau : candidaturé du CM2 de l'école pilote", cand.statut, 201, `${cand.json.ajoutes} candidat(s)`);
+    const tables = liste((await central!.appel("GET", `/examens/sessions/${ses.json.id}/candidatures`)).json).map((x) => String(x.numeroTable));
+    verifier("Bureau : PV avec une moyenne pour un absent → 422", (await central!.appel("POST", `/examens/sessions/${ses.json.id}/deliberation`, { pvReference: "PV-RECETTE", decisions: [{ numeroTable: tables[0], decision: "absent", moyenne: 12 }] })).statut, 422);
+    const [premier, second, ...autres] = tables;
+    const partiel = await central!.appel("POST", `/examens/sessions/${ses.json.id}/deliberation`, { pvReference: "PV-RECETTE-1", decisions: [{ numeroTable: premier, decision: "admis", moyenne: 14.5 }] });
+    verifier("Bureau : réception d'un premier lot du PV", partiel.statut, 200, `${partiel.json.recus} verdict(s)`);
+    if (autres.length || second) verifier("Publication refusée tant que tous ne sont pas statués", (await central!.appel("POST", `/examens/sessions/${ses.json.id}/publication`, {})).statut, 409);
+    const reste = [...(second ? [{ numeroTable: second, decision: "absent", moyenne: null }] : []), ...autres.map((t) => ({ numeroTable: t, decision: "non_admis", moyenne: 8 }))];
+    if (reste.length) verifier("Bureau : réception du reste du PV", (await central!.appel("POST", `/examens/sessions/${ses.json.id}/deliberation`, { pvReference: "PV-RECETTE-2", decisions: reste })).statut, 200);
+    const pub = await central!.appel("POST", `/examens/sessions/${ses.json.id}/publication`, {});
+    verifier("Publication : diplômes délivrés au nom de la DEC du MEMP", pub.statut === 200 && pub.json.diplomes === 1 && /maternel et primaire/.test(String(pub.json.autorite)), true, `${pub.json.diplomes} diplôme(s)`);
+    const verif = await anonyme.appel("GET", `/public/resultats?examen=CEP&session=${encodeURIComponent(libelle)}&table=${premier}`);
+    verifier("Public : le lauréat voit « admis » après publication", (verif.json as { statut?: string }).statut === "admis", true);
+  }
+
+  titre("Cycle annuel et certification (écritures)");
+  // Édition de classe par le chef : capacité relevée puis visible au tableau de bord.
+  const edition = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S`, { capacite: 47, enseignantPrincipalId: null });
+  verifier("Directrice : édition de la capacité d'une classe", edition.statut, 200, `capacité ${edition.json.capacite}`);
+  // Conseil de passage : l'admis est réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
+  const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] });
+  verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
+  // Révocation d'un diplôme par l'autorité de certification, puis vérification publique qui rend « révoqué ».
+  const revo = await central!.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Fraude établie par l'ONEC (recette)" });
+  verifier("Administration centrale : révocation d'un diplôme", [200, 409].includes(revo.statut), true, `statut ${revo.statut}`);
+  const apresRevocation = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification");
+  verifier("Public : diplôme révoqué → statut « revoque »", (apresRevocation.json as { statut?: string }).statut === "revoque", true);
+}
+
+titre("Enseignement supérieur : catalogue public, portes et intégrité (lecture et refus)");
+{
+  const IFRI = "ETB-SUP-UAC-IFRI";
+  const filieres = await anonyme.appel("GET", "/public/superieur/filieres");
+  verifier("Public : catalogue des filières", filieres.statut, 200, `${liste(filieres.json).length} filière(s)`);
+  verifier("Public : chaque filière dit si elle est habilitée", liste(filieres.json).length > 0 && liste(filieres.json).every((f) => typeof f.habilitee === "boolean"), true);
+  verifier("Public : filière non habilitée signalée (établissement privé en instruction)", liste(filieres.json).some((f) => f.habilitee === false), true);
+  verifier("Public : établissements du supérieur", (await anonyme.appel("GET", "/public/superieur/etablissements")).statut, 200);
+  verifier("Public : sessions de concours", (await anonyme.appel("GET", "/public/superieur/concours")).statut, 200);
+  verifier("Public : les universités figurent dans l'annuaire", (await anonyme.appel("GET", "/public/etablissements?niveau=superieur")).json.total as number > 0, true);
+
+  const [dirIfri, etudiantIfri, enseignanteSup] = await Promise.all(["prosper.ahouandjinou", "etudiant.ifri", "sena.hounkpatin"].map(async (id) => {
+    const s = new Session();
+    verifier(`Connexion ${id}`, (await s.connexion(id)).statut, 200);
+    return s;
+  }));
+  verifier("Direction IFRI : ses inscriptions", (await dirIfri!.appel("GET", `/etablissements/${IFRI}/inscriptions`)).statut, 200);
+  verifier("Direction IFRI : inscriptions d'une autre université", (await dirIfri!.appel("GET", "/etablissements/ETB-SUP-UP/inscriptions")).statut, 403);
+  verifier("Directrice de CEG : inscriptions de l'IFRI", (await directrice!.appel("GET", `/etablissements/${IFRI}/inscriptions`)).statut, 403);
+  verifier("Bureau du supérieur : catalogue de pilotage", (await central!.appel("GET", "/enseignement-superieur/filieres")).statut, 200);
+  verifier("Étudiant·e : catalogue de pilotage refusé", (await etudiantIfri!.appel("GET", "/enseignement-superieur/filieres")).statut, 403);
+  verifier("Étudiant·e : son contrat pédagogique", (await etudiantIfri!.appel("GET", "/moi/contrat")).statut, 200);
+  verifier("Étudiant·e : ses démarches", (await etudiantIfri!.appel("GET", "/moi/actes")).statut, 200);
+  verifier("Enseignante : notes d'une offre d'une autre enseignante refusées", (await enseignanteSup!.appel("POST", "/moi/enseignements/notes-ue", { offreUeId: "OFU-inexistante", notes: [{ apprenantId: "APP-900001", note: 12 }] })).statut, 404);
+
+  // Failles corrigées : une règle ou un jury ne se réaffecte pas d'un périmètre à l'autre (refus AVANT toute écriture).
+  const regle = { regleId: "RGL-NATIONALE-LMD", portee: "etablissement", etablissementId: IFRI, seuilAcquisition: 8 };
+  verifier("Direction IFRI : reprendre la règle nationale en la redéclarant chez soi", (await dirIfri!.appel("POST", "/regles-validation", regle)).statut, 403);
+  verifier("Direction IFRI : déclarer une règle nationale", (await dirIfri!.appel("POST", "/regles-validation", { portee: "nationale" })).statut, 403);
+  const jurys = liste((await dirIfri!.appel("GET", `/etablissements/${IFRI}/jurys`)).json);
+  if (jurys[0]) {
+    const j = jurys[0];
+    verifier("Direction IFRI : réaffecter un jury à une autre filière", (await dirIfri!.appel("POST", `/etablissements/${IFRI}/jurys`, {
+      juryId: j.id, autorite: j.autorite, office: j.office, diplome: j.diplome, periodeId: null, filiereId: "FIL-UAC-IFRI-M-INFO",
+      president: "Pr Test RECETTE", membres: ["A. Un", "B. Deux"], quorum: 3, statut: j.statut,
+    })).statut, 403);
+    verifier("Direction de CEG : délibérer pour l'IFRI", (await directrice!.appel("POST", `/etablissements/${IFRI}/deliberations`, { juryId: j.id, decisions: [{ apprenantId: "APP-900001", decision: "admis" }] })).statut, 403);
+  }
+  // Diplôme du supérieur : l'identifiant seul atteste l'existence, jamais le titulaire.
+  const delib = liste((await dirIfri!.appel("GET", `/etablissements/${IFRI}/deliberations`)).json);
+  const certificat = delib.map((d) => (d.deliberation as { certificatId?: string } | undefined)?.certificatId ?? d.certificatId).find((x): x is string => typeof x === "string");
+  if (certificat) {
+    const v = await anonyme.appel("GET", `/certificats/${certificat}/verification`);
+    verifier("Licence délivrée : vérifiable, titulaire non révélé sans QR", (v.json as { statut?: string; titulaire?: string }).statut === "sans_empreinte" && !(v.json as { titulaire?: string }).titulaire, true, certificat);
+  }
+  const actes = liste((await etudiantIfri!.appel("GET", "/moi/actes")).json);
+  const pret = actes.find((a) => a.statut === "disponible" || a.statut === "remise");
+  if (pret) verifier("Acte scellé : vérification publique", (await anonyme.appel("GET", `/actes/${pret.id}/verification`)).statut, 200);
+  if (ECRITURES && pret?.statut === "disponible") {
+    // Double scellé refusé : un acte « disponible » ne se rescelle pas (le premier document deviendrait « altéré »).
+    verifier("Guichet : sceller deux fois le même acte", (await dirIfri!.appel("POST", `/etablissements/${IFRI}/actes/${pret.id}/decision`, { statut: "disponible" })).statut, 409);
+  }
+}
+
+titre("Interopérabilité : connecteurs signés des systèmes partenaires");
+if (!process.env.BEILE_PARTENAIRES) {
+  console.log("   (BEILE_PARTENAIRES absent : connecteurs non provisionnés, cas ignorés)");
+} else {
+  const { envoyer } = await import("./client-interop");
+  const absence = { etablissementId: PILOTE, classeId: "CLS-PAR-5eA-S", date: AUJOURDHUI, absents: ["0000000000"] };
+  verifier("Signature fausse → 401", (await envoyer("educmaster", "/interop/educmaster/absences", absence, { secret: "x".repeat(40) })).statut, 401);
+  verifier("Horodatage périmé (rejeu d'une requête capturée) → 401", (await envoyer("educmaster", "/interop/educmaster/absences", absence, { horodatage: Date.now() - 3_600_000 })).statut, 401);
+  verifier("Sans en-têtes de partenaire → 401", (await anonyme.appel("POST", "/interop/educmaster/absences", absence)).statut, 401);
+  verifier("EducMaster → message réservé à eRESULTATS : 403", (await envoyer("educmaster", "/interop/eresultats/publication", { examen: "CEP", session: "Juin 2024" })).statut, 403);
+  verifier("DBAU → PV de diplôme de l'université : 403", (await envoyer("dbau", "/interop/uac/pv-diplome", {})).statut, 403);
+  verifier("Message mal formé (partenaire authentifié) → 422", (await envoyer("educmaster", "/interop/educmaster/absences", { classeId: 12 })).statut, 422);
+  verifier("UAC → filière d'une autre université : 403", (await envoyer("uac", "/interop/uac/pv-diplome", { pvReference: "PV-RECETTE", filiereId: "FIL-UP-L-DROIT", anneeUniversitaire: "2025-2026", decisions: [{ npi: "0000000000", decision: "admis", creditsValides: 180, moyenne: 12 }] })).statut, 403);
+  if (ECRITURES) {
+    // NPI déterministe du premier étudiant du référentiel du supérieur (APP-900001) : aucun saut silencieux.
+    const lot = `REC-${Date.now()}`;
+    const corps = { anneeUniversitaire: "2026-2027", decisions: [{ npi: "2910900001", typeDecision: "retablissement", statutCompte: "demi_boursier", referenceActe: "Arrêté DBAU recette", decideLe: "2026-09-27" }] };
+    const premier = await envoyer("dbau", "/interop/dbau/allocations", corps, { lot });
+    verifier("DBAU → décision d'allocation reçue par le connecteur", premier.statut === 201 && premier.json.enregistres === 1, true, `HTTP ${premier.statut}`);
+    verifier("Rejeu du même lot → rien ne se double", (await envoyer("dbau", "/interop/dbau/allocations", corps, { lot })).json.deja === true, true);
+  }
 }
 
 titre("Fin de session");

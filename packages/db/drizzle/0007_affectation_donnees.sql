@@ -1,0 +1,1 @@
+ALTER TABLE "workflow"."demandes" ADD COLUMN "donnees" jsonb;

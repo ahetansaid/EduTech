@@ -46,20 +46,40 @@ export interface Demande {
   statut: "ouverte" | "en_cours" | "acceptee" | "refusee" | "close"; creeeLe: string; echeance: string | null;
 }
 
+export interface EtapeCircuit { ordre: number; code: string; role: string; delaiJours: number }
+export interface DecisionCircuit { id: string; demandeId: string; etape: string; auteurId: string; decision: "valide" | "refuse" | "renvoye"; motif: string | null; horodatage: string }
+export interface DemandeDetail {
+  demande: Demande & { demandeur: string | null; etablissement: string | null };
+  modele: { code: string; libelle: string; etapes: EtapeCircuit[] };
+  etapeCourante: EtapeCircuit | null;
+  peutStatuer: boolean;
+  decisions: DecisionCircuit[];
+}
+
+export type ExamenCertifiable = "CEP" | "BEPC" | "BAC";
+
+/** Candidat d'un examen national, vu par son établissement (verdict présent seulement après publication). */
+export interface CandidatExamen {
+  apprenantId: string; nom: string; numeroTable: string; centre: string;
+  decision: "admis" | "non_admis" | "absent" | "exclu" | null; mention: string | null; moyenne: number | null; certificatId: string | null;
+}
+export interface SessionExamenEtab {
+  sessionId: string; examen: string; session: string; statut: "ouverte" | "composition" | "deliberation" | "publiee";
+  publieeLe: string | null; autorite: string; candidats: CandidatExamen[];
+}
+/** Examens nationaux de l'établissement : LECTURE SEULE (l'autorité d'examen délibère et délivre). */
 export interface Examens {
-  session: string;
-  classes: string[];
-  candidats: { id: string; nom: string; classe: string; moyenne: number | null }[];
-  deliberee: boolean;
-  certificats: (Certificat & { titulaire: string })[];
+  sessions: SessionExamenEtab[];
+  diplomes: (Certificat & { titulaire: string })[];
 }
 
 export interface DossierGestion {
   decision: DecisionAcces;
   apprenant: { id: string; nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; statutIdentite: StatutIdentite; besoinsParticuliers: boolean };
-  situation: { statut: "scolarise" | "abandon" | "non_inscrit"; etablissementId: string | null; etablissement: string | null; classeId: string | null; classe: string | null; niveau: string | null };
+  situation: { statut: "scolarise" | "abandon" | "non_inscrit"; etablissementId: string | null; etablissement: string | null; classeId: string | null; classe: string | null; niveau: string | null; anneeScolaire: string | null };
   trimestre: number;
   moyennes: { matiere: string; moyenne: number; nombre: number }[];
+  historique: { anneeScolaire: string; trimestre: number; moyenne: number | null; matieres: { matiere: string; moyenne: number; nombre: number }[] }[];
   absences: number;
   evenements: Evenement[];
   certificats: Certificat[];
@@ -81,6 +101,27 @@ export interface PersonneRegistre {
 
 export interface ResultatInscription { apprenantId: string; statutIdentite: StatutIdentite; evenements: string[] }
 
+export interface JustificatifAbsence {
+  id: string; apprenantId: string | null; nom: string | null; dates: string[]; absenceIds: string[];
+  motif: string; classeId: string | null; declarantNpi: string | null; transmisLe: string;
+  statut: "en_attente" | "validee" | "refusee"; decisionMotif: string | null; decideLe: string | null;
+}
+
+export interface Justificatifs { enAttente: number; peutStatuer: boolean; justificatifs: JustificatifAbsence[] }
+
+/** Enseignant rattaché à l'établissement (désignation du professeur principal). */
+export interface EnseignantEtablissement { id: string; nom: string; matieres: string[] }
+
+/** Décision individuelle rendue par le conseil de passage. */
+export interface DecisionPassage { apprenantId: string; decision: "admis" | "redouble" }
+
+/** Une demande en attente de décision dans la file transversale de l'utilisateur (rôle de l'étape + périmètre). */
+export interface DemandeATraiter extends Demande {
+  etablissement: string | null;
+  modeleLibelle: string;
+  etapeRole: string;
+}
+
 export type CorpsInscription =
   | { classeId: string; npi: string }
   | { classeId: string; sansActe: { nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; responsable: string } };
@@ -91,8 +132,12 @@ export const cles = {
   tout: ["etablissement"] as const,
   tableau: (id: string) => ["etablissement", id, "tableau"] as const,
   eleves: (id: string) => ["etablissement", id, "eleves"] as const,
+  enseignants: (id: string) => ["etablissement", id, "enseignants"] as const,
   absences: (id: string, date: string) => ["etablissement", id, "absences", date] as const,
   demandes: (id: string) => ["etablissement", id, "demandes"] as const,
+  demande: (demandeId: string) => ["etablissement", "demande", demandeId] as const,
+  aTraiter: ["etablissement", "a-traiter"] as const,
+  justificatifs: (id: string) => ["etablissement", id, "justificatifs"] as const,
   examens: (id: string) => ["etablissement", id, "examens"] as const,
   dossier: (apprenantId: string) => ["etablissement", "dossier", apprenantId] as const,
   accueil: (apprenantId: string, q: string) => ["etablissement", "classes-accueil", apprenantId, q] as const,
@@ -131,6 +176,16 @@ export function useEleves(id: string | null) {
   });
 }
 
+/** Enseignants de l'établissement : désignation du professeur principal d'une classe. */
+export function useEnseignantsEtablissement(id: string | null) {
+  return useQuery({
+    queryKey: cles.enseignants(id ?? "-"),
+    queryFn: ({ signal }) => lire<EnseignantEtablissement[]>(`/etablissements/${e(id!)}/enseignants`, signal),
+    enabled: !!id,
+    staleTime: 300_000,
+  });
+}
+
 /** Absences du jour : rafraîchies toutes les 15 s — l'appel d'un enseignant apparaît ici sans rechargement. */
 export function useAbsencesDuJour(id: string | null, date = jourCourant()) {
   return useQuery({
@@ -157,6 +212,35 @@ export function useExamens(id: string | null) {
     queryKey: cles.examens(id ?? "-"),
     queryFn: ({ signal }) => lire<Examens>(`/etablissements/${e(id!)}/examens`, signal),
     enabled: !!id,
+  });
+}
+
+/** Détail d'une demande en circuit : étapes, décisions rendues, et droit d'agir de l'utilisateur courant. */
+export function useDemandeDetail(demandeId: string | null) {
+  return useQuery({
+    queryKey: cles.demande(demandeId ?? "-"),
+    queryFn: ({ signal }) => lire<DemandeDetail>(`/demandes/${e(demandeId!)}`, signal),
+    enabled: !!demandeId,
+  });
+}
+
+/** File « demandes à traiter » : toutes les demandes dont l'étape courante relève de l'utilisateur (rôle + périmètre). */
+export function useDemandesATraiter(actif: boolean) {
+  return useQuery({
+    queryKey: cles.aTraiter,
+    queryFn: ({ signal }) => lire<DemandeATraiter[]>("/demandes/a-traiter", signal),
+    enabled: actif,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Justificatifs d'absence transmis par les familles, avec leur état. Rafraîchi toutes les 30 s. */
+export function useJustificatifs(id: string | null) {
+  return useQuery({
+    queryKey: cles.justificatifs(id ?? "-"),
+    queryFn: ({ signal }) => lire<Justificatifs>(`/etablissements/${e(id!)}/justificatifs`, signal),
+    enabled: !!id,
+    refetchInterval: 30_000,
   });
 }
 
@@ -202,11 +286,22 @@ export function useAccompagnementMutation(id: string | null) {
   });
 }
 
-export function useDeliberationMutation(id: string | null) {
+export function useDecisionJustificatifMutation(id: string | null) {
   const invalider = useInvalider();
   return useMutation({
-    mutationFn: () => ecrire<{ candidats: number; diplomes: number }>(`/etablissements/${e(id!)}/examens/deliberation`),
-    onSettled: invalider,
+    mutationFn: (v: { justificationId: string; decision: "validee" | "refusee"; motif?: string }) =>
+      ecrire<{ enregistre: string; decision: string }>(`/etablissements/${e(id!)}/justificatifs/${e(v.justificationId)}/decision`, { decision: v.decision, ...(v.motif ? { motif: v.motif } : {}) }),
+    onSuccess: invalider,
+  });
+}
+
+/** Statuer sur l'étape courante d'une demande (valider / refuser / renvoyer). Invalide tout l'espace établissement. */
+export function useDecisionDemandeMutation() {
+  const invalider = useInvalider();
+  return useMutation({
+    mutationFn: (v: { demandeId: string; decision: "valide" | "refuse" | "renvoye"; motif?: string }) =>
+      ecrire<{ demandeId: string; decision: string; etape: string; statut: string }>(`/demandes/${e(v.demandeId)}/decision`, { decision: v.decision, ...(v.motif ? { motif: v.motif } : {}) }),
+    onSuccess: invalider,
   });
 }
 
@@ -230,6 +325,26 @@ export function useInscriptionMutation() {
   const invalider = useInvalider();
   return useMutation({
     mutationFn: (corps: CorpsInscription) => ecrire<ResultatInscription>("/inscriptions", corps),
+    onSuccess: invalider,
+  });
+}
+
+/** Éditer une classe (capacité, professeur principal). Le tableau de bord est invalidé après succès. */
+export function useModifierClasseMutation(id: string | null) {
+  const invalider = useInvalider();
+  return useMutation({
+    mutationFn: (v: { classeId: string; capacite: number; enseignantPrincipalId: string | null }) =>
+      ecrire<{ id: string; capacite: number }>(`/etablissements/${e(id!)}/classes/${e(v.classeId)}`, { capacite: v.capacite, enseignantPrincipalId: v.enseignantPrincipalId }),
+    onSuccess: invalider,
+  });
+}
+
+/** Conseil de passage : décisions prononcées pour la classe, réinscription dans l'année suivante. */
+export function useConseilPassageMutation(id: string | null) {
+  const invalider = useInvalider();
+  return useMutation({
+    mutationFn: (v: { classeId: string; anneeScolaire: string; decisions: DecisionPassage[] }) =>
+      ecrire<{ classeId: string; admis: number; maintenus: number; divisionsCrees: string[] }>(`/etablissements/${e(id!)}/classes/${e(v.classeId)}/conseil-passage`, { anneeScolaire: v.anneeScolaire, decisions: v.decisions }),
     onSuccess: invalider,
   });
 }

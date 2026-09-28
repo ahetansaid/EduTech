@@ -6,14 +6,14 @@ import { useMemo, useState } from "react";
 import { motion } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { navigationPour } from "@/lib/navigation";
-import { useProfil } from "@/lib/session";
+import { useSession } from "@/lib/session";
 
 interface Commande { id: string; libelle: string; detail?: string; icone: typeof Search; action: () => void }
 
 /** Palette ⌘K : naviguer dans ses espaces, poser une question à Ask Education. */
 export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
   const router = useRouter();
-  const profil = useProfil();
+  const { profil, contexte } = useSession();
   const [saisie, setSaisie] = useState("");
   const [index, setIndex] = useState(0);
 
@@ -25,11 +25,11 @@ export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
     if (q.length > 3 && peutDemander) {
       liste.push({ id: "ask", libelle: `Demander à Ask Education : « ${saisie.trim()} »`, detail: "Requête contrôlée, aucun chiffre inventé", icone: Sparkles, action: () => router.push(`/ask?q=${encodeURIComponent(saisie.trim())}`) });
     }
-    for (const n of navigationPour(roles)) {
+    for (const n of navigationPour(profil, contexte)) {
       if (!q || n.libelle.toLowerCase().includes(q)) liste.push({ id: n.href, libelle: n.libelle, detail: n.processus ? `Processus ${n.processus}` : undefined, icone: n.icone, action: () => router.push(n.href) });
     }
     return liste.slice(0, 12);
-  }, [saisie, profil, router]);
+  }, [saisie, profil, contexte, router]);
 
   const executer = (c?: Commande) => { if (c) { c.action(); onFermer(); } };
 

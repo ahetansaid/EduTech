@@ -67,7 +67,8 @@
 
 `/plateforme/dictionnaire` — La définition officielle de chaque indicateur.
 
-- Formule, source, unité, direction propriétaire.
+- Formule, source, unité, direction propriétaire et moteur de calcul.
+- Deux moteurs publiés : la couche statistique nationale, et le registre des écritures du supérieur (crédits ECTS).
 - Historique des versions : un chiffre publié se recalcule avec la définition de son année.
 
 ## Tâches pas à pas
@@ -88,6 +89,9 @@
 
 **Pourquoi certaines lignes sont-elles masquées ?**  
 Quand un groupe compte trop peu d'élèves, afficher le chiffre permettrait de reconnaître des personnes. Il est donc masqué.
+
+**Pourquoi une question sur les crédits ECTS est-elle refusée ?**  
+Les crédits ECTS ne sortent pas de la couche statistique nationale : ils se calculent à partir des écritures du registre du supérieur (contrats d'UE, décisions de validation). Le dictionnaire en publie la définition et sa version, et le refus vous dit quel service les rend.
 
 **Puis-je exporter les données brutes ?**  
 Non. L'accès chercheur porte sur des résultats agrégés. Pour un besoin particulier, adressez une demande à l'administration centrale.

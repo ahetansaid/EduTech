@@ -1,8 +1,8 @@
 "use client";
 
-import type { DefinitionIndicateur } from "@beile/contracts";
-import { DIMENSION_LIBELLE } from "@beile/contracts";
-import { BookMarked, Database, FileClock, History, Lock, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import type { DefinitionIndicateur, MoteurCalcul } from "@beile/contracts";
+import { DIMENSION_LIBELLE, MOTEUR_LIBELLE } from "@beile/contracts";
+import { BookMarked, Calculator, Database, FileStack, FileClock, History, Lock, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
@@ -28,6 +28,19 @@ const FILTRES_UNITE: { valeur: FiltreUnite; libelle: string }[] = [
   { valeur: "ratio", libelle: "Ratios" },
   { valeur: "note", libelle: "Notes" },
 ];
+
+type FiltreMoteur = "tous" | MoteurCalcul;
+const FILTRES_MOTEUR: { valeur: FiltreMoteur; libelle: string }[] = [
+  { valeur: "tous", libelle: "Les deux" },
+  { valeur: "simulation", libelle: "Couche statistique" },
+  { valeur: "registre", libelle: "Registre du supérieur" },
+];
+
+/** Ce que répond le moteur, dit sur la fiche : une définition sans moteur serait une promesse vide. */
+const MOTEUR_NOTE: Record<MoteurCalcul, { icone: typeof Database; texte: string }> = {
+  simulation: { icone: Calculator, texte: "Rendu par la couche statistique nationale : interrogeable par Ask Education et par /indicateurs." },
+  registre: { icone: FileStack, texte: "Rendu par le registre des écritures du supérieur : ni Ask Education ni /indicateurs ne le calculent — la donnée part des contrats d'UE. Le service de scolarité le agrège par période pour un établissement, par voie pour le pilotage." },
+};
 
 /** Registre des versions publiées de l'indicateur « taux_reussite_examen » (décisions du comité du dictionnaire). */
 interface VersionIndicateur {
@@ -87,6 +100,7 @@ export default function DictionnairePage() {
   const [recherche, setRecherche] = useState("");
   const [unite, setUnite] = useState<FiltreUnite>("toutes");
   const [proprietaire, setProprietaire] = useState("tous");
+  const [moteur, setMoteur] = useState<FiltreMoteur>("tous");
   const [examen, setExamen] = useState<Examen>("BEPC");
   const impact = useImpactVersion(examen);
 
@@ -97,10 +111,13 @@ export default function DictionnairePage() {
     const q = normaliser(recherche.trim());
     return indicateurs.filter((d) =>
       (unite === "toutes" || d.unite === unite) &&
+      (moteur === "tous" || d.moteur === moteur) &&
       (proprietaire === "tous" || d.proprietaire === proprietaire) &&
-      (!q || [d.nom, d.code, d.definition, d.formule, d.proprietaire].some((t) => normaliser(t).includes(q))),
+      (!q || [d.nom, d.code, d.definition, d.formule, d.proprietaire, MOTEUR_LIBELLE[d.moteur]].some((t) => normaliser(t).includes(q))),
     );
-  }, [indicateurs, recherche, unite, proprietaire]);
+  }, [indicateurs, recherche, unite, moteur, proprietaire]);
+
+  const rendusParLeRegistre = indicateurs.filter((d) => d.moteur === "registre").length;
 
   const seuilMax = indicateurs.length ? Math.max(...indicateurs.map((d) => d.effectifMinimalPublication)) : 0;
   const pret = !!dictionnaire.data;
@@ -111,7 +128,7 @@ export default function DictionnairePage() {
       <PageHeader
         surtitre="Données · P1 · P13"
         titre="Dictionnaire national des données"
-        sousTitre="La définition officielle de chaque indicateur : ce qu'il mesure, comment il se calcule, d'où viennent les données et qui en répond. Tous les écrans et Ask Education calculent à partir de ces définitions."
+        sousTitre="La définition officielle de chaque indicateur : ce qu'il mesure, comment il se calcule, quel moteur le rend, d'où viennent les données et qui en répond. Un écran ou Ask Education ne peut afficher un chiffre que si sa définition est ici — et si le moteur qu'elle nomme le calcule réellement."
       />
 
       <Cascade data-guide="dictionnaire-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -132,6 +149,7 @@ export default function DictionnairePage() {
               <li><strong className="text-ink">Aucun indicateur n'est publié avant d'avoir été défini.</strong> Un chiffre sans définition au dictionnaire ne peut être ni affiché, ni demandé à Ask Education.</li>
               <li><strong className="text-ink">Une version publiée n'est jamais modifiée : elle est remplacée.</strong> Chaque chiffre affiché renvoie à la version exacte de sa définition, et les chiffres anciens restent reproductibles.</li>
               <li><strong className="text-ink">Les petites cellules sont masquées.</strong> Sous le seuil de publication, la valeur n'est pas affichée, pour éviter qu'on reconnaisse une personne.</li>
+              <li><strong className="text-ink">Chaque définition nomme le moteur qui la rend.</strong> {entier(rendusParLeRegistre)} indicateur{rendusParLeRegistre > 1 ? "s" : ""} de cette page {rendusParLeRegistre > 1 ? "sont calculés" : "est calculé"} par le registre du supérieur : leur chiffre n'est pas interrogeable par Ask Education, qui ne connaît que la couche statistique nationale. Publier une définition sans dire d'où sort le nombre, ce serait promettre un chiffre que personne ne rend.</li>
             </ul>
           </div>
         </div>
@@ -157,6 +175,10 @@ export default function DictionnairePage() {
             <div>
               <p className="mb-1.5 text-[12px] font-semibold text-ink-2" id="lib-unite">Unité</p>
               <div className="max-w-full overflow-x-auto"><Segmente label="Filtrer par unité" options={FILTRES_UNITE} valeur={unite} onChange={setUnite} /></div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-[12px] font-semibold text-ink-2">Moteur qui rend le chiffre</p>
+              <div className="max-w-full overflow-x-auto"><Segmente label="Filtrer par moteur de calcul" options={FILTRES_MOTEUR} valeur={moteur} onChange={setMoteur} /></div>
             </div>
             <div className="min-w-0">
               <label htmlFor="filtre-proprio" className="mb-1.5 block text-[12px] font-semibold text-ink-2">Direction propriétaire</label>
@@ -196,7 +218,7 @@ export default function DictionnairePage() {
             icone={Search}
             titre="Aucun indicateur ne correspond"
             texte="Le dictionnaire ne contient que les indicateurs officiellement définis. Modifiez la recherche ou les filtres."
-            action={<button onClick={() => { setRecherche(""); setUnite("toutes"); setProprietaire("tous"); }} className="inline-flex items-center gap-1 text-[13px] font-semibold text-blue hover:underline"><X size={14} aria-hidden /> Effacer les filtres</button>}
+            action={<button onClick={() => { setRecherche(""); setUnite("toutes"); setMoteur("tous"); setProprietaire("tous"); }} className="inline-flex items-center gap-1 text-[13px] font-semibold text-blue hover:underline"><X size={14} aria-hidden /> Effacer les filtres</button>}
           />
         )}
       </Card>
@@ -271,6 +293,7 @@ export default function DictionnairePage() {
 
 function FicheIndicateur({ d }: { d: DefinitionIndicateur }) {
   const aHistorique = d.code === "taux_reussite_examen";
+  const moteur = MOTEUR_NOTE[d.moteur];
   return (
     <article className="flex h-full flex-col rounded-lg border border-line/70 bg-surface p-4 shadow-soft">
       <header className="flex flex-wrap items-start justify-between gap-2">
@@ -278,11 +301,13 @@ function FicheIndicateur({ d }: { d: DefinitionIndicateur }) {
           <h3 className="text-[15.5px] font-semibold text-ink">{d.nom}</h3>
           <p className="mt-0.5 break-all font-mono text-[12px] text-ink-muted">{d.code}</p>
         </div>
-        <span className="flex shrink-0 items-center gap-1.5">
+        <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <Badge ton="marque" icone={BookMarked}>v{d.version}</Badge>
-          <Badge ton="succes">Publiée</Badge>
+          <Badge ton={d.moteur === "registre" ? "info" : "succes"} icone={moteur.icone}>{MOTEUR_LIBELLE[d.moteur]}</Badge>
         </span>
       </header>
+
+      <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">{moteur.texte}</p>
 
       <p className="mt-3 text-[13.5px] text-ink-2">{d.definition}</p>
       <div className="mt-3">

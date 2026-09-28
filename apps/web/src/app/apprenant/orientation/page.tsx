@@ -1,11 +1,13 @@
 "use client";
 
-import { Compass, Info, NotebookPen, RefreshCw, ShieldAlert, UserCheck } from "lucide-react";
+import { Compass, GraduationCap, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, ShieldCheck, UserCheck } from "lucide-react";
 import { useMemo } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
-import { anneeCourante, notesEffectives, pistesOrientation, usePasseport, type Dossier } from "@/lib/api/parcours";
+import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePasseport, type Dossier, type NoteEffective } from "@/lib/api/parcours";
+import { useFilieresSup } from "@/lib/api/superieur-public";
 import { cn } from "@/lib/cn";
+import { adequationFilieres, estFiliereValidee, type PisteSuperieure, type SerieBac } from "@/lib/enseignement-superieur";
 import { nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
 
@@ -35,27 +37,55 @@ export default function Orientation() {
 }
 
 function Pistes({ d }: { d: Dossier }) {
-  const { notes, annee, pistes } = useMemo(() => {
-    const notes = notesEffectives(d.evenements);
-    const annee = anneeCourante(d, notes);
-    return { notes: notes.filter((n) => n.anneeScolaire === annee), annee, pistes: pistesOrientation(notes, annee) };
+  const { toutes, notes, annee, pistes, serie } = useMemo(() => {
+    const toutes = notesEffectives(d.evenements);
+    const annee = anneeCourante(d, toutes);
+    const pistes = pistesOrientation(toutes, annee);
+    const tete = pistes.find((p) => p.score != null) ?? null;
+    const serie: SerieBac | null = tete ? tete.code[0] : null;
+    return { toutes, notes: toutes.filter((n) => n.anneeScolaire === annee), annee, pistes, serie };
   }, [d]);
 
   if (!notes.length) {
     return <Card><EtatVide icone={NotebookPen} titre="Pas encore assez de résultats" texte="Les pistes apparaîtront dès que des notes auront été saisies cette année. Rien n'est calculé sans données." /></Card>;
   }
-  const meilleure = pistes.find((p) => p.score != null && p.couverture >= 0.99);
+
+  const tete = pistes.find((p) => p.score != null);
+  const valide = tete != null && estTeteValide(tete);
 
   return (
     <>
       <p className="text-xs text-ink-muted">Base de calcul : {notes.length} note{notes.length > 1 ? "s" : ""} de l&apos;année {annee}{d.situation.classe ? `, en ${d.situation.classe.libelle}` : ""}. Les séries du second cycle se choisissent en fin de 3e : ces pistes évolueront avec vos résultats.</p>
+
+      {tete && (
+        <div className={cn("flex items-start gap-3 rounded-lg px-4 py-3 text-[13px]", valide ? "bg-success-bg text-success" : "bg-warning-bg text-warning")}>
+          <Scale size={17} className="mt-0.5 shrink-0" aria-hidden />
+          <p>
+            <strong>{valide ? (tete.teteRobuste ? "Tête stable." : "Tête à prendre avec prudence.") : "Pas encore de tête nette."}</strong>{" "}
+            {!valide
+              ? "Aucune piste ne se détache assez (ou n'est assez évaluée) pour être présentée comme un choix évident : les pistes ci-dessous se valent, discutez-en plutôt que de lire un classement."
+              : tete.teteRobuste
+                ? `« ${tete.nom.split(" — ")[0]} » reste en tête même si l'on pondère toutes vos matières évaluées de façon égale : ce n'est pas le barème qui fabrique ce classement.`
+                : "Si l'on retire la pondération indicative pour peser vos matières de façon égale, le classement bouge : la tête actuelle dépend du poids des matières, un point à discuter avec le conseiller d'orientation."}
+          </p>
+        </div>
+      )}
+
       <Cascade data-guide="orientation-pistes" className="space-y-4">
         {pistes.map((p) => (
           <Element key={p.code}>
-            <Card className={cn("min-w-0", p === meilleure && "ring-2 ring-[color:var(--acc)]")}>
+            <Card className={cn("min-w-0", valide && p === tete && "ring-2 ring-[color:var(--acc)]")}>
               <CardHeader icon={Compass} title={p.nom}
-                subtitle={p.score != null ? `Indice de compatibilité : ${nombre(p.score, 1)}/20` : "Aucune des matières de référence n'est encore évaluée"}
-                action={p === meilleure ? <Badge ton="succes">La plus compatible</Badge> : p.couverture < 0.99 && p.score != null ? <Badge ton="avertissement">Partielle</Badge> : undefined} />
+                subtitle={p.score != null
+                  ? `Indice de compatibilité : ${nombre(p.score, 1)}/20${p.ecartTete != null ? ` · ${nombre(p.ecartTete, 1)} pt sous la tête` : ""}`
+                  : "Aucune des matières de référence n'est encore évaluée"}
+                action={
+                  valide && p === tete ? <Badge ton="succes">La plus compatible</Badge>
+                  : p.score != null && p.ecartTete != null && p.ecartTete < 0.5 ? <Badge ton="neutre">Quasi équivalente</Badge>
+                  : p.score != null && p.couverture < 0.6 ? <Badge ton="avertissement">Peu évaluée</Badge>
+                  : p.score != null && p.deltaSansBareme != null && p.deltaSansBareme > 0 ? <Badge ton="avertissement">Le barème l&apos;avantage</Badge>
+                  : undefined
+                } />
               <ul className="space-y-2.5">
                 {p.criteres.map((c, i) => (
                   <li key={c.matiere} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-[13px] sm:grid-cols-[10rem_minmax(0,1fr)_7rem]">
@@ -67,15 +97,74 @@ function Pistes({ d }: { d: Dossier }) {
                   </li>
                 ))}
               </ul>
-              {p.couverture < 0.99 && p.score != null && <p className="mt-3 text-xs text-warning">Seuls {Math.round(p.couverture * 100)} % des critères sont évalués : l&apos;indice est calculé sur ces seules matières, sans valeur de remplacement.</p>}
+              {p.solidite != null && p.score != null && (
+                <p className="mt-3 text-xs text-ink-muted">Vos matières évaluées jouent pour cette piste à {Math.round(p.solidite * 100)} % (part d&apos;entre elles au-dessus de l&apos;indice de la piste).</p>
+              )}
+              {p.couverture < 0.99 && p.score != null && <p className="mt-1.5 text-xs text-warning">Seuls {Math.round(p.couverture * 100)} % des critères sont évalués : l&apos;indice est calculé sur ces seules matières, sans valeur de remplacement.</p>}
             </Card>
           </Element>
         ))}
       </Cascade>
+
+      <ApresLeBac notes={toutes} annee={annee} serie={serie} />
+
       <Card className="flex items-start gap-3">
         <UserCheck size={20} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
-        <p className="text-[13.5px] text-ink-2">Prochaine étape : un entretien avec le conseiller d&apos;orientation, qui voit exactement les mêmes critères que vous.</p>
+        <p className="text-[13.5px] text-ink-2">Prochaine étape : un entretien avec le conseiller d&apos;orientation, qui voit exactement les mêmes critères et les mêmes pondérations que vous.</p>
       </Card>
     </>
+  );
+}
+
+const LIBELLE_DIPLOME: Record<string, string> = {
+  LICENCE: "Licence", LICENCE_PRO: "Licence professionnelle", MASTER: "Master", MASTER_PRO: "Master professionnel", DOCTORAT: "Doctorat",
+  DES: "DES (études approfondies)", BTS: "BTS", BT: "Brevet de Technicien", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
+};
+
+/**
+ * Prolongement post-bac, indicatif : mêmes données du passeport, autres horizons. Les filières
+ * viennent du registre ; seules les filières HABILITÉES sont proposées — orienter un élève vers
+ * un diplôme non reconnu serait l'exposer à la fraude.
+ */
+function ApresLeBac({ notes, annee, serie }: { notes: NoteEffective[]; annee: string | null; serie: SerieBac | null }) {
+  const q = useFilieresSup();
+  const pistes: PisteSuperieure[] = useMemo(
+    () => (q.data ? adequationFilieres(q.data.filter((f) => f.habilitee), notes, annee, serie) : []),
+    [q.data, notes, annee, serie],
+  );
+  if (q.isPending) return <div className="grid gap-3 sm:grid-cols-2" aria-busy>{[0, 1].map((i) => <Squelette key={i} className="h-32 rounded-xl" />)}</div>;
+  if (q.isError) {
+    return <Card><EtatVide icone={RefreshCw} titre="Filières du supérieur momentanément indisponibles" texte={`${q.error.message}. Réessayez dans un instant.`} action={<Button variante="secondaire" icone={RefreshCw} onClick={() => q.refetch()}>Réessayer</Button>} /></Card>;
+  }
+  const visibles = pistes.filter((p) => p.score != null).slice(0, 6);
+  if (!visibles.length) return null;
+  const teteValidee = estFiliereValidee(visibles[0]);
+  return (
+    <section className="space-y-3">
+      <div className="flex items-start gap-3 rounded-lg bg-surface-2 px-4 py-3 text-[13px] text-ink-2">
+        <GraduationCap size={17} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
+        <p>
+          <strong>Et après le bac ?</strong>{" "}
+          {serie ? <>Prolongement de votre série {serie} : </> : "Prolongement de vos matières : "}les filières habilitées du supérieur qui s&apos;ouvrent selon vos résultats réels, concours le cas échéant.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {visibles.map((f, i) => (
+          <Element key={f.id}>
+            <Card className={cn("h-full min-w-0", teteValidee && i === 0 && "ring-2 ring-[color:var(--acc)]")}>
+              <CardHeader icon={GraduationCap} title={f.nom}
+                subtitle={`${f.sigle ? `${f.etablissement} (${f.sigle})` : f.etablissement} · ${LIBELLE_DIPLOME[f.diplomeVise] ?? f.diplomeVise}`}
+                action={<div className="flex flex-wrap justify-end gap-1.5">
+                  <Badge ton="succes" icone={ShieldCheck}>Habilitée</Badge>
+                  {f.accesConcours && <Badge ton="critique">Concours</Badge>}
+                  {f.accessibleParSerie && <Badge ton="succes">Votre série</Badge>}
+                </div>} />
+              <p className="text-[13px] text-ink">Indice : {nombre(f.score!, 1)}/20{f.ecartTete != null && f.ecartTete > 0 ? ` · ${nombre(f.ecartTete, 1)} pt sous la tête` : ""}{f.couverture < 0.99 ? ` · ${Math.round(f.couverture * 100)} % des critères évalués` : ""}</p>
+              <p className="mt-1 text-xs text-ink-muted">{f.criteres.filter((c) => c.moyenne != null).map((c) => `${c.matiere} ${nombre(c.moyenne!, 1)}`).join(" · ") || "Aucune matière de référence encore évaluée"}</p>
+            </Card>
+          </Element>
+        ))}
+      </div>
+    </section>
   );
 }

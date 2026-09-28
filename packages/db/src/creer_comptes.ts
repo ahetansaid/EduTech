@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
@@ -26,7 +26,21 @@ const IDENTIFIANTS: Record<string, string> = {
   "p-chercheur": "landry.kouton",
   "p-dpo": "laure.zannou",
   "p-admin": "admin.beile",
+  // Volet supérieur (profils posés par `npm run superieur`).
+  "p-directeur-ifri": "prosper.ahouandjinou",
+  "p-enseignant-sup": "sena.hounkpatin",
+  "p-etudiant": "etudiant.ifri",
 };
+
+/**
+ * Mots de passe déjà consignés : relancer le script pour AJOUTER des comptes ne doit jamais effacer du
+ * fichier ceux des comptes existants (en production, ce fichier est la seule copie des mots de passe).
+ */
+const fichierComptes = process.env.BEILE_FICHIER_COMPTES ?? fileURLToPath(new URL("../../../COMPTES.local.md", import.meta.url));
+const connus = new Map<string, string>();
+if (existsSync(fichierComptes)) {
+  for (const m of readFileSync(fichierComptes, "utf8").matchAll(/\| `([^`]+)` \| `([^`]+)` \|/g)) connus.set(m[1]!, m[2]!);
+}
 
 try {
   const [admin] = await db.select().from(schema.profils).where(eq(schema.profils.id, "p-admin"));
@@ -39,7 +53,11 @@ try {
     const identifiant = IDENTIFIANTS[p.id];
     if (!identifiant) continue;
     const [existant] = await db.select().from(schema.comptes).where(eq(schema.comptes.profilId, p.id));
-    if (existant && !reinitialiser) { lignes.push(`| ${p.nomAffiche} | ${p.fonction} | \`${existant.identifiant}\` | (inchangé) |`); continue; }
+    if (existant && !reinitialiser) {
+      const mdp = connus.get(existant.identifiant);
+      lignes.push(`| ${p.nomAffiche} | ${p.fonction} | \`${existant.identifiant}\` | ${mdp ? `\`${mdp}\`` : "(inchangé)"} |`);
+      continue;
+    }
     const motDePasse = genererMotDePasse();
     const hash = await hacherMotDePasse(motDePasse);
     if (existant) await db.update(schema.comptes).set({ motDePasseHash: hash, echecsConsecutifs: 0, verrouilleJusquA: null, actif: true }).where(eq(schema.comptes.id, existant.id));
@@ -56,7 +74,7 @@ try {
     ...lignes,
     "",
   ].join("\n");
-  writeFileSync(process.env.BEILE_FICHIER_COMPTES ?? fileURLToPath(new URL("../../../COMPTES.local.md", import.meta.url)), doc);
+  writeFileSync(fichierComptes, doc);
   console.log(`${lignes.length} comptes prêts ; identifiants écrits dans COMPTES.local.md (mots de passe non affichés).`);
 } finally {
   await client.end();

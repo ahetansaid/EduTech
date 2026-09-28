@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { BarresClassees } from "@/components/charts/Graphiques";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, motion } from "@/components/motion";
 import { CarteBenin, COULEUR_ALERTE, type PointCarte } from "@/components/map/CarteBenin";
+import { StatsCirconscription } from "@/components/stats/Circonscription";
 import { notifier } from "@/components/ui/Notifications";
 import { BadgeConfiance, TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
@@ -139,6 +140,8 @@ function Console({ t }: { t: ConsoleTerritoriale }) {
           )}
         </div>
       </div>
+
+      <StatsCirconscription etabs={t.etablissements} infra={complements.data?.etablissements} inspecteur={inspecteur} />
 
       {inspecteur ? (
         <TableauCirconscription etabs={t.etablissements} infra={complements.data?.etablissements} />

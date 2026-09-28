@@ -1,18 +1,21 @@
 "use client";
 
 import { communeById } from "@beile/simulation/territoire";
-import { ArrowRight, BookOpenCheck, CalendarX2, Check, ClipboardList, Fingerprint, GraduationCap, HandHelping, Percent, School, Send, TrendingDown, UserPlus, Users, type LucideIcon } from "lucide-react";
+import { ArrowRight, BookOpenCheck, CalendarX2, Check, ClipboardList, Fingerprint, GraduationCap, HandHelping, Percent, Scale, School, Send, Settings2, TrendingDown, UserPlus, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
+import { BarresClassees, SERIES, type Barre } from "@/components/charts/Graphiques";
+import { DialogueStatuer } from "@/components/demandes/DialogueStatuer";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
-import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
-import { useAbsencesDuJour, useAccompagnementMutation, useDemandes, useEleves, useTableau, type Absence, type Demande, type Tableau } from "@/lib/api/etablissement";
+import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
+import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
+import { CIRCUIT_LIBELLE, ETAPES_ACCOMPAGNEMENT, etapesDuCircuit } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
-import { entier, nombre, pourcent } from "@/lib/format";
+import { entier, nombre, note, pourcent } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
-import { classeChamp, dateCourte, Dialogue, EtatErreur, ETAPES_ACCOMPAGNEMENT, heureLocale, heureSecondes, HorsPerimetre, Jauge, LienBouton, LIBELLE_STATUT_DEMANDE, PointDirect, Statut, TON_STATUT_DEMANDE } from "./_composants";
+import { classeChamp, classeSelect, dateCourte, Dialogue, EtatErreur, heureLocale, heureSecondes, HorsPerimetre, Jauge, LIBELLE_STATUT_DEMANDE, LienBouton, PointDirect, Statut, TON_STATUT_DEMANDE } from "./_composants";
 
 export default function MonEtablissement() {
   const id = useEtablissementCourant();
@@ -96,7 +99,10 @@ function TableauDeBord({ id }: { id: string }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 lg:col-span-2"><CarteClasses t={t} absentsParClasse={absentsParClasse} /></div>
+        <div className="min-w-0 space-y-6 lg:col-span-2">
+          <CarteClasses id={id} t={t} eleves={eleves.data} absentsParClasse={absentsParClasse} />
+          <ComparatifClasses t={t} />
+        </div>
         <div className="min-w-0"><CarteDemandes id={id} /></div>
       </div>
     </div>
@@ -335,7 +341,18 @@ function ListeAbsences({ lignes, noms, classes, enCours }: { lignes: LigneAbsenc
 
 /* ================================================================== Classes */
 
-function CarteClasses({ t, absentsParClasse }: { t: Tableau | undefined; absentsParClasse: Map<string, Set<string>> }) {
+/** Ordre des niveaux (référentiel national) — sert à annoncer le niveau visé par le conseil de passage. */
+const NIVEAUX_ORDRE = ["CI", "CP", "CE1", "CE2", "CM1", "CM2", "6e", "5e", "4e", "3e", "2nde", "1re", "Tle"];
+const niveauSuivant = (n: string) => NIVEAUX_ORDRE[NIVEAUX_ORDRE.indexOf(n) + 1] ?? null;
+/** Année scolaire suggérée : la suivante par rapport à l'année civile courante. */
+const anneeScolaireSuggeree = () => {
+  const y = new Date().getFullYear();
+  return `${y + 1}-${y + 2}`;
+};
+
+function CarteClasses({ id, t, eleves, absentsParClasse }: { id: string; t: Tableau | undefined; eleves: EleveLigne[] | undefined; absentsParClasse: Map<string, Set<string>> }) {
+  const [gerer, setGerer] = useState<ClasseTableau | null>(null);
+  const [passage, setPassage] = useState<ClasseTableau | null>(null);
   return (
     <Card data-guide="etab-classes" className="min-w-0 overflow-hidden p-0">
       <div className="px-5 pt-5"><CardHeader icon={School} title="Classes" subtitle="Effectifs issus des inscriptions et transferts enregistrés au registre" /></div>
@@ -359,6 +376,10 @@ function CarteClasses({ t, absentsParClasse }: { t: Tableau | undefined; absents
                   <div><dt className="text-ink-muted">Absents ce jour</dt><dd className="font-semibold tabular text-ink">{absentsParClasse.get(c.id)?.size ?? 0}</dd></div>
                   <div className="col-span-2"><dt className="text-ink-muted">Professeur principal</dt><dd className="truncate text-ink">{c.professeurPrincipal ?? "—"}</dd></div>
                 </dl>
+                <div className="mt-3 flex gap-2">
+                  <Button taille="sm" variante="secondaire" icone={Settings2} onClick={() => setGerer(c)}>Gérer</Button>
+                  <Button taille="sm" variante="fantome" onClick={() => setPassage(c)}>Passage</Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -372,6 +393,7 @@ function CarteClasses({ t, absentsParClasse }: { t: Tableau | undefined; absents
                   <th className="px-5 py-2.5 text-right font-semibold">Moyenne T{t.trimestre}</th>
                   <th className="px-5 py-2.5 text-right font-semibold">Absents</th>
                   <th className="hidden px-5 py-2.5 font-semibold lg:table-cell">Professeur principal</th>
+                  <th className="px-5 py-2.5 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -389,6 +411,12 @@ function CarteClasses({ t, absentsParClasse }: { t: Tableau | undefined; absents
                       <td className={cn("px-5 py-3 text-right font-medium", c.moyenne != null && c.moyenne < 10 ? "text-critical" : "text-ink")}>{nombre(c.moyenne, 2)}</td>
                       <td className="px-5 py-3 text-right">{abs ? <Badge ton="critique">{abs}</Badge> : <span className="text-ink-muted">0</span>}</td>
                       <td className="hidden px-5 py-3 text-ink-2 lg:table-cell">{c.professeurPrincipal ?? "—"}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end gap-1.5">
+                          <Button taille="sm" variante="secondaire" icone={Settings2} onClick={() => setGerer(c)}>Gérer</Button>
+                          <Button taille="sm" variante="fantome" onClick={() => setPassage(c)}>Passage</Button>
+                        </div>
+                      </td>
                     </motion.tr>
                   );
                 })}
@@ -397,43 +425,289 @@ function CarteClasses({ t, absentsParClasse }: { t: Tableau | undefined; absents
           </div>
         </>
       )}
+      {gerer && <DialogueGererClasse key={gerer.id} id={id} classe={gerer} onFermer={() => setGerer(null)} />}
+      {passage && <DialogueConseilPassage key={passage.id} id={id} classe={passage} eleves={eleves ?? []} onFermer={() => setPassage(null)} />}
     </Card>
   );
 }
 
-/* ================================================================== Demandes (circuit d'accompagnement) */
+/* ------------------------------------------------------------------ Gérer une classe (capacité, professeur principal) */
+
+function DialogueGererClasse({ id, classe, onFermer }: { id: string; classe: ClasseTableau; onFermer: () => void }) {
+  const enseignants = useEnseignantsEtablissement(id);
+  const muter = useModifierClasseMutation(id);
+  const [capacite, setCapacite] = useState(String(classe.capacite));
+  const [principal, setPrincipal] = useState("");
+  const capaciteNum = Number(capacite);
+  const capaciteValide = Number.isInteger(capaciteNum) && capaciteNum >= 1 && capaciteNum <= 2000;
+  const envoie = () => {
+    muter.mutate({ classeId: classe.id, capacite: capaciteNum, enseignantPrincipalId: principal || null }, {
+      onSuccess: () => { notifier({ ton: "succes", titre: "Classe mise à jour", texte: `${classe.libelle} · capacité ${capaciteNum}.` }); onFermer(); },
+    });
+  };
+  return (
+    <Dialogue
+      ouvert
+      onFermer={() => !muter.isPending && onFermer()}
+      icone={Settings2}
+      titre={`Gérer ${classe.libelle}`}
+      description="Capacité d'accueil et professeur principal. Abaisser la capacité sous l'effectif crée une alerte de surcharge, sans retirer d'élève."
+      pied={
+        <>
+          <Button variante="secondaire" onClick={onFermer} disabled={muter.isPending}>Annuler</Button>
+          <Button variante="valider" icone={Check} chargement={muter.isPending} disabled={!capaciteValide} onClick={envoie}>Enregistrer</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Capacité (places)</span>
+          <input type="number" inputMode="numeric" min={1} max={2000} value={capacite} onChange={(e) => setCapacite(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))} className={classeChamp} />
+          <span className={cn("mt-1 block text-xs", capaciteValide ? "text-ink-muted" : "text-critical")}>
+            {capaciteValide ? `Effectif actuel : ${classe.effectif} élève(s).` : "Nombre entier entre 1 et 2000."}
+          </span>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Professeur principal</span>
+          <select value={principal} onChange={(e) => setPrincipal(e.target.value)} className={cn(classeSelect, "w-full")}>
+            <option value="">Aucun (à désigner)</option>
+            {(enseignants.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nom} · {x.matieres.join(", ")}</option>)}
+          </select>
+          <span className="mt-1 block text-xs text-ink-muted">Seuls les enseignants rattachés à l'établissement peuvent être désignés.</span>
+        </label>
+      </div>
+    </Dialogue>
+  );
+}
+
+/* ------------------------------------------------------------------ Conseil de passage (fin d'année) */
+
+/** Niveaux qui terminent un cycle : la suite relève d'un examen national et d'une affectation. */
+const FIN_DE_CYCLE: Record<string, string> = { CM2: "CEP", "3e": "BEPC", Tle: "baccalauréat" };
+
+function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; classe: ClasseTableau; eleves: EleveLigne[]; onFermer: () => void }) {
+  const muter = useConseilPassageMutation(id);
+  const [annee, setAnnee] = useState(anneeScolaireSuggeree());
+  // Aucune décision par défaut : chaque élève est statué explicitement par le conseil.
+  const [decisions, setDecisions] = useState<Record<string, "admis" | "redouble">>({});
+  const [confirme, setConfirme] = useState(false);
+  const elevesClasse = useMemo(() => eleves.filter((e) => e.classeId === classe.id), [eleves, classe]);
+  const examenFin = FIN_DE_CYCLE[classe.niveau];
+  const versNiveau = examenFin ? undefined : niveauSuivant(classe.niveau);
+  const anneeValide = /^\d{4}-\d{4}$/.test(annee);
+  const statues = elevesClasse.filter((e) => decisions[e.id]).length;
+  const admis = elevesClasse.filter((e) => decisions[e.id] === "admis").length;
+  const complet = elevesClasse.length > 0 && statues === elevesClasse.length;
+  const choisir = (apprenantId: string, d: "admis" | "redouble") => { setDecisions((x) => ({ ...x, [apprenantId]: d })); setConfirme(false); };
+  const envoie = () => {
+    const decisionsFinales: DecisionPassage[] = elevesClasse.map((e) => ({ apprenantId: e.id, decision: decisions[e.id]! }));
+    muter.mutate({ classeId: classe.id, anneeScolaire: annee, decisions: decisionsFinales }, {
+      onSuccess: (r) => { notifier({ ton: "succes", titre: "Conseil de passage enregistré", texte: `${r.admis} admis, ${r.maintenus} maintenu(s) en ${annee}${r.divisionsCrees.length ? ` · ${r.divisionsCrees.length} division(s) créée(s)` : ""}.` }); onFermer(); },
+    });
+  };
+  return (
+    <Dialogue
+      ouvert
+      onFermer={() => !muter.isPending && onFermer()}
+      large
+      icone={GraduationCap}
+      titre={`Conseil de passage — ${classe.libelle}`}
+      description={examenFin || !versNiveau
+        ? `« ${classe.niveau} » termine un cycle : la suite relève du ${examenFin ?? "examen national"} et de l'affectation. Seul le maintien (redoublement) se décide ici.`
+        : `Statuez chaque élève : admis en ${versNiveau} ou maintenu en ${classe.niveau}, réinscrit dans sa division de l'année ${annee}. La décision est inscrite au registre et ne s'annule pas.`}
+      pied={
+        <>
+          <Button variante="secondaire" onClick={onFermer} disabled={muter.isPending}>Annuler</Button>
+          <Button variante="valider" icone={Check} chargement={muter.isPending} disabled={!complet || !anneeValide || !confirme} onClick={envoie}>
+            Enregistrer {complet ? `(${admis} admis · ${elevesClasse.length - admis} maintenus)` : `(${statues}/${elevesClasse.length} statués)`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Année scolaire de réinscription</span>
+          <input value={annee} onChange={(e) => setAnnee(e.target.value.replace(/[^0-9-]/g, "").slice(0, 9))} placeholder="2026-2027" className={classeChamp} />
+          <span className={cn("mt-1 block text-xs", anneeValide ? "text-ink-muted" : "text-critical")}>Format attendu : AAAA-AAAA.</span>
+        </label>
+        {elevesClasse.length === 0 ? (
+          <EtatVide icone={Users} titre="Aucun élève scolarisé dans cette classe" texte="Le conseil de passage s'appuie sur les élèves actuellement inscrits dans la classe." />
+        ) : (
+          <ul className="divide-y divide-line/60">
+            {elevesClasse.map((e) => {
+              const d = decisions[e.id];
+              return (
+                <li key={e.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/etablissement/eleves/${e.id}`} className="block truncate text-[13.5px] font-semibold text-ink hover:text-blue hover:underline">{e.prenoms} {e.nom}</Link>
+                    <span className="text-[12px] tabular text-ink-muted">Moyenne {nombre(e.moyenne, 2)}{e.absences ? ` · ${e.absences} absence(s) non justifiée(s)` : ""}</span>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5" role="group" aria-label={`Décision pour ${e.prenoms} ${e.nom}`}>
+                    {versNiveau && (
+                      <button type="button" onClick={() => choisir(e.id, "admis")} aria-pressed={d === "admis"}
+                        className={cn("h-8 rounded-md px-2.5 text-[12.5px] font-medium ring-1 ring-inset transition", d === "admis" ? "bg-success-bg text-success ring-success/40" : "text-ink-2 ring-line hover:bg-surface-2")}>
+                        Admis en {versNiveau}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => choisir(e.id, "redouble")} aria-pressed={d === "redouble"}
+                      className={cn("h-8 rounded-md px-2.5 text-[12.5px] font-medium ring-1 ring-inset transition", d === "redouble" ? "bg-warning-bg text-warning ring-warning/40" : "text-ink-2 ring-line hover:bg-surface-2")}>
+                      Maintien en {classe.niveau}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {complet && (
+          <label className="flex items-start gap-2.5 rounded-lg bg-surface-2/70 px-3.5 py-3 text-[13px] text-ink">
+            <input type="checkbox" checked={confirme} onChange={(e) => setConfirme(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-navy)]" />
+            <span>Je confirme que ces décisions sont celles du conseil de classe. Elles seront inscrites au registre et ne pourront pas être annulées.</span>
+          </label>
+        )}
+      </div>
+    </Dialogue>
+  );
+}
+
+/* ================================================================== Comparatif des classes (écarts à la référence de l'établissement) */
+
+type MetricClasse = "moyenne" | "occupation" | "absenteisme";
+const METRIQUES: { valeur: MetricClasse; libelle: string }[] = [
+  { valeur: "moyenne", libelle: "Moyenne" },
+  { valeur: "occupation", libelle: "Occupation" },
+  { valeur: "absenteisme", libelle: "Absents du jour" },
+];
+
+/** Chaque classe est mesurée, puis comparée à la valeur de référence de l'établissement. */
+function ComparatifClasses({ t }: { t: Tableau | undefined }) {
+  const [metric, setMetric] = useState<MetricClasse>("moyenne");
+  if (!t) return <Card className="min-w-0"><Squelette className="h-40" /></Card>;
+  if (t.classes.length < 2) return null;
+
+  const mesurer = (c: ClasseTableau): number | null =>
+    metric === "moyenne" ? c.moyenne
+      : metric === "occupation" ? (c.effectif / Math.max(1, c.capacite)) * 100
+      : (c.absentsDuJour / Math.max(1, c.effectif)) * 100;
+
+  const reference = metric === "moyenne" ? t.chiffres.moyenne
+    : metric === "occupation" ? (t.chiffres.apprenants / Math.max(1, t.chiffres.capacite)) * 100
+    : (t.chiffres.absentsDuJour / Math.max(1, t.chiffres.apprenants)) * 100;
+
+  const formater = metric === "moyenne" ? (v: number) => note(v) : (v: number) => pourcent(v, 0);
+
+  // Une 6e ne se compare pas à une terminale : pour la moyenne, la référence d'une classe est celle des
+  // classes de SON niveau (pondérée par l'effectif) dès qu'il y en a deux, sinon celle de l'établissement.
+  const parNiveau = new Map<string, { somme: number; effectif: number; classes: number }>();
+  for (const c of t.classes) {
+    if (c.moyenne == null) continue;
+    const n = parNiveau.get(c.niveau) ?? { somme: 0, effectif: 0, classes: 0 };
+    parNiveau.set(c.niveau, { somme: n.somme + c.moyenne * Math.max(1, c.effectif), effectif: n.effectif + Math.max(1, c.effectif), classes: n.classes + 1 });
+  }
+  const referenceDe = (c: ClasseTableau) => {
+    const n = parNiveau.get(c.niveau);
+    return metric === "moyenne" && n && n.classes >= 2 ? n.somme / n.effectif : reference;
+  };
+  // « En retrait » au-delà d'une marge de tolérance : 1 point de moyenne, 10 points d'occupation, 5 points
+  // d'absentéisme. Sans marge, la moitié des classes serait « en retrait » par simple construction.
+  const MARGE = { moyenne: 1, occupation: 10, absenteisme: 5 } as const;
+  const enRetrait = (c: ClasseTableau, v: number) => {
+    const ref = referenceDe(c) ?? 0;
+    return metric === "moyenne" ? v < ref - MARGE.moyenne : v > ref + MARGE[metric];
+  };
+
+  const mesures = t.classes
+    .map((c) => ({ c, v: mesurer(c) }))
+    .sort((a, b) => {
+      const av = a.v, bv = b.v;
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      // Le plus digne d'attention en tête : moyenne la plus basse, ou occupation/absentéisme la plus haute.
+      return metric === "moyenne" ? av - bv : bv - av;
+    });
+
+  const barres: Barre[] = mesures.map((m) => ({
+    cle: m.c.id,
+    libelle: `${m.c.libelle} · ${m.c.effectif}/${m.c.capacite}`,
+    valeur: m.v,
+    masquee: m.v == null,
+    effectif: m.c.effectif,
+    accent: m.v != null && enRetrait(m.c, m.v),
+  }));
+
+  const valide = mesures.filter((m): m is { c: ClasseTableau; v: number } => m.v != null);
+  const retraits = valide.filter((m) => enRetrait(m.c, m.v));
+  const pire = valide[0];
+  const refPire = pire ? referenceDe(pire.c) : null;
+  const ecartPire = pire && refPire != null ? pire.v - refPire : null;
+
+  return (
+    <Card data-guide="etab-comparatif" className="min-w-0">
+      <CardHeader
+        icon={Scale}
+        title="Comparatif des classes"
+        subtitle="Chaque division mesurée ; pour la moyenne, comparée aux classes de son niveau (à défaut, à l'établissement), avec une marge de tolérance."
+        action={<div className="-mx-1 overflow-x-auto px-1"><Segmente label="Indicateur" valeur={metric} onChange={setMetric} options={METRIQUES} /></div>}
+      />
+      <BarresClassees
+        barres={barres}
+        formater={formater}
+        reference={reference != null ? { valeur: reference, libelle: "Établissement" } : undefined}
+        couleur={SERIES[metric === "moyenne" ? 0 : metric === "occupation" ? 1 : 2]}
+        max={metric === "moyenne" ? 20 : 100}
+      />
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Référence de l'établissement</p><p className="text-[15px] font-semibold tabular text-ink">{reference != null ? formater(reference) : "—"}</p></div>
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Classes en retrait</p><p className={cn("text-[15px] font-semibold tabular", retraits.length ? "text-warning" : "text-ink")}>{entier(retraits.length)}<span className="ml-1 text-[12px] font-normal text-ink-muted">sur {entier(valide.length)}</span></p></div>
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Écart le plus marqué</p><p className={cn("text-[15px] font-semibold tabular", pire && enRetrait(pire.c, pire.v) ? "text-critical" : "text-ink")}>{pire && ecartPire != null ? <>{ecartPire > 0 ? "+" : ""}{metric === "moyenne" ? nombre(ecartPire, 2) : `${nombre(ecartPire, 0)} pt`} <span className="text-[12px] font-normal text-ink-muted">{pire.c.libelle}</span></> : "—"}</p></div>
+      </div>
+      <p className="mt-3 text-[12px] text-ink-muted">
+        {metric === "moyenne" ? "Moyenne générale du trimestre, toutes matières ; une classe sans moyenne renseignée apparaît hachurée."
+          : metric === "occupation" ? "Élèves accueillis rapportés à la capacité : au-delà de la référence, la division est en tension d'accueil."
+          : "Part d'élèves absents aujourd'hui dans chaque classe, face au taux de l'établissement."}
+      </p>
+    </Card>
+  );
+}
+
+/* ================================================================== Demandes (circuits) */
 
 function CarteDemandes({ id }: { id: string }) {
   const demandes = useDemandes(id);
   const [tout, setTout] = useState(false);
+  const [cible, setCible] = useState<string | null>(null);
   const liste = demandes.data ?? [];
   const visibles = tout ? liste : liste.slice(0, 5);
   return (
     <Card data-guide="etab-demandes" className="min-w-0">
-      <CardHeader icon={ClipboardList} title="Demandes en circuit" subtitle="Accompagnements proposés et leur étape" action={<Badge>{liste.length}</Badge>} />
+      <CardHeader icon={ClipboardList} title="Demandes en circuit" subtitle="Accompagnements pédagogiques et relances de transmission, avec leur étape" action={<Badge>{liste.length}</Badge>} />
       {demandes.isPending ? (
         <div className="space-y-2">{Array.from({ length: 3 }, (_, i) => <Squelette key={i} className="h-14" />)}</div>
       ) : demandes.isError ? (
         <EtatErreur erreur={demandes.error} reessayer={() => demandes.refetch()} />
       ) : liste.length === 0 ? (
-        <EtatVide icone={ClipboardList} titre="Aucune demande" texte="Les propositions d'accompagnement transmises au conseil pédagogique apparaîtront ici." />
+        <EtatVide icone={ClipboardList} titre="Aucune demande" texte="Les propositions d'accompagnement et les relances de transmission apparaîtront ici." />
       ) : (
         <>
           <ul className="divide-y divide-line/60">
             <AnimatePresence initial={false}>
-              {visibles.map((d) => <LigneDemande key={d.id} d={d} />)}
+              {visibles.map((d) => <LigneDemande key={d.id} d={d} onStatuer={() => setCible(d.id)} />)}
             </AnimatePresence>
           </ul>
           {liste.length > 5 && <button type="button" onClick={() => setTout((x) => !x)} className="mt-2 min-h-10 text-[13px] font-medium text-blue hover:underline">{tout ? "Réduire" : `Afficher les ${liste.length} demandes`}</button>}
         </>
       )}
+      <DialogueStatuer demandeId={cible} onFermer={() => setCible(null)} />
     </Card>
   );
 }
 
-function LigneDemande({ d }: { d: Demande }) {
-  const rang = ETAPES_ACCOMPAGNEMENT.findIndex((e) => e.code === d.etapeCourante);
-  const etape = ETAPES_ACCOMPAGNEMENT[rang]?.libelle ?? d.etapeCourante;
+function LigneDemande({ d, onStatuer }: { d: Demande; onStatuer: () => void }) {
+  const etapes = etapesDuCircuit(d.modele);
+  const rang = etapes.findIndex((e) => e.code === d.etapeCourante);
+  const etape = rang >= 0 ? etapes[rang]!.libelle : d.etapeCourante;
+  const ouverte = d.statut === "ouverte" || d.statut === "en_cours";
   return (
     <motion.li layout initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-start gap-3 py-2.5">
       <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", d.statut === "en_cours" ? "bg-warning" : d.statut === "acceptee" ? "bg-success" : d.statut === "refusee" ? "bg-critical" : "bg-info")} aria-hidden />
@@ -441,16 +715,21 @@ function LigneDemande({ d }: { d: Demande }) {
         <p className="text-sm text-ink">{d.objet}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
           <Statut ton={TON_STATUT_DEMANDE[d.statut]}>{LIBELLE_STATUT_DEMANDE[d.statut]}</Statut>
-          <span className="text-xs text-ink-muted">Étape : {etape}</span>
+          <span className="text-xs text-ink-muted">{CIRCUIT_LIBELLE[d.modele] ?? d.modele} · étape : {etape}</span>
         </div>
-        <div className="mt-1.5 flex gap-1" aria-label={`Étape ${rang + 1} sur ${ETAPES_ACCOMPAGNEMENT.length}`}>
-          {ETAPES_ACCOMPAGNEMENT.map((e, i) => <span key={e.code} className={cn("h-1 w-8 rounded-full", i < rang ? "bg-teal" : i === rang ? "bg-warning" : "bg-surface-2")} />)}
-        </div>
+        {etapes.length > 0 && (
+          <div className="mt-1.5 flex gap-1" aria-label={`Étape ${rang + 1} sur ${etapes.length}`}>
+            {etapes.map((e, i) => <span key={e.code} className={cn("h-1 w-8 rounded-full", i < rang ? "bg-teal" : i === rang ? "bg-warning" : "bg-surface-2")} />)}
+          </div>
+        )}
       </div>
-      <span className="shrink-0 text-right text-xs text-ink-muted">
-        {dateCourte(d.creeeLe)}
-        {d.echeance && <span className="block">échéance {dateCourte(d.echeance)}</span>}
-      </span>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <span className="text-right text-xs text-ink-muted">
+          {dateCourte(d.creeeLe)}
+          {d.echeance && <span className="block">échéance {dateCourte(d.echeance)}</span>}
+        </span>
+        {ouverte && <Button taille="sm" variante="secondaire" onClick={onStatuer}>Statuer</Button>}
+      </div>
     </motion.li>
   );
 }

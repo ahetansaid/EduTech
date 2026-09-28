@@ -4,3 +4,7 @@ export * from "./evenements";
 export * from "./acces";
 export * from "./semantique";
 export * from "./certification";
+export * from "./examens";
+export * from "./enseignement-superieur";
+export * from "./etudiants-superieur";
+export * from "./delivrance-actes";
