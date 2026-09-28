@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { empreinteContenu } from "@beile/db/securite";
 import { champsSignesCertificat, certificatDuSuperieur, empreinteCertificat, type CertificatBrut } from "@beile/simulation/micro";
 import { lireEnv } from "./env";
@@ -32,4 +33,16 @@ export const LONGUEUR_EMPREINTE_MINIMALE = 16;
 export const empreintePresentee = (brut: string | undefined) => {
   const e = (brut ?? "").toLowerCase().replace(/[^0-9a-f]/g, "").slice(0, 64);
   return e.length >= LONGUEUR_EMPREINTE_MINIMALE ? e : "";
+};
+
+/**
+ * Le préfixe présenté ouvre-t-il le dossier ? Comparaison en temps constant, comme le jeton CSRF et le
+ * mot de passe : sous `BEILE_CLE_SEAU`, le sceau est un MAC et `startsWith` s'arrête au premier octet
+ * différent — une comparaison qui se lit octet par octet se laisserait mesurer. Le service est public,
+ * sans compte et à haut débit : c'est exactement là que le canal se referme.
+ */
+export const sceauCorrespond = (sceau: string, presente: string) => {
+  const a = Buffer.from(sceau.slice(0, presente.length), "utf8");
+  const b = Buffer.from(presente, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
 };

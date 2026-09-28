@@ -18,7 +18,7 @@ import { complementsFamille } from "./complements-famille";
 import { complementsGouvernance } from "./complements-gouvernance";
 import { administration } from "./administration";
 import { publique } from "./public";
-import { empreintePresentee, sceauCertificat } from "./certification";
+import { empreintePresentee, sceauCertificat, sceauCorrespond } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -123,7 +123,7 @@ app.get("/certificats/:id/verification", limiteDebit(30, 60_000), async (c) => {
   let r: ResultatVerification;
   if (!cert || !titulaire) r = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant." };
   else if (cert.revoque) r = { statut: "revoque", certificatId: id, explication: "Diplôme révoqué par l'autorité de certification." };
-  else if (presente && !sceauCertificat(cert, nom).startsWith(presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
+  else if (presente && !sceauCorrespond(sceauCertificat(cert, nom), presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
   else if (!presente) r = {
     statut: "sans_empreinte",
     certificatId: id,
