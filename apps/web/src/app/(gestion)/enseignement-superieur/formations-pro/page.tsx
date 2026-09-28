@@ -3,48 +3,54 @@
 import { ArrowRight, Download, Info, Layers } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { TableauDonnees } from "@/components/charts/Graphiques";
-import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
-import { LIBELLE_DIPLOME, LIBELLE_TYPE_PARCOURS, filieresEFTP, libelleCycle, stageMois, type FiliereCatalogue } from "@/lib/enseignement-superieur";
+import { Badge, Button, Card, CardHeader, EtatVide, PageHeader } from "@/components/ui/primitives";
+import { useFilieresSup, type FiliereSup } from "@/lib/api/superieur-public";
+import { LIBELLE_DIPLOME, LIBELLE_TYPE_PARCOURS, estFiliereEFTP, libelleCycle } from "@/lib/enseignement-superieur";
 import { exporterCsv, type Colonne } from "@/lib/export";
 import type { Diplome } from "@beile/contracts";
+import { EtatErreur } from "../../etablissement/_composants";
 import { OngletsESup } from "../_Onglets";
+import { BadgeHabilitation, ChargementRegistre } from "../_Registre";
 
 /** Échelle des qualifications EFTP (MESTFP + Emploi/PME), puis la passerelle vers la licence professionnelle. */
 const ECHELLE: Diplome[] = ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP"];
 
 /** Formations professionnelles : la voie EFTP et ses passerelles vers le supérieur LMD. */
 export default function FormationsProPage() {
-  const eftp = useMemo(() => filieresEFTP(), []);
+  const q = useFilieresSup();
+  const eftp = useMemo(() => (q.data ?? []).filter(estFiliereEFTP), [q.data]);
   const represente = useMemo(() => new Set(eftp.map((f) => f.diplomeVise)), [eftp]);
 
   const stats = useMemo(() => ({
     total: eftp.length,
     horsLmd: eftp.filter((f) => f.cycle == null).length,
-    avecStage: eftp.filter((f) => stageMois(f.id) > 0).length,
+    avecStage: eftp.filter((f) => f.stageObligatoireMois > 0).length,
   }), [eftp]);
 
-  const COLONNES: Colonne<FiliereCatalogue>[] = [
+  const COLONNES: Colonne<FiliereSup>[] = [
     { entete: "Filière", valeur: (f) => f.nom },
-    { entete: "Établissement", valeur: (f) => f.etablissement },
+    { entete: "Établissement", valeur: (f) => f.etablissement.nom },
+    { entete: "Habilitation", valeur: (f) => (f.habilitee ? "habilitée" : "non habilitée") },
     { entete: "Voie", valeur: (f) => LIBELLE_TYPE_PARCOURS[f.voie] },
     { entete: "Diplôme visé", valeur: (f) => LIBELLE_DIPLOME[f.diplomeVise] },
     { entete: "Cursus", valeur: (f) => libelleCycle(f) },
-    { entete: "Stage (mois)", valeur: (f) => stageMois(f.id) },
+    { entete: "Stage (mois)", valeur: (f) => f.stageObligatoireMois },
   ];
 
-  const entetes: string[] = ["Filière", "Établissement", "Voie", "Diplôme visé", "Stage"];
+  const entetes: string[] = ["Filière", "Établissement", "Habilitation", "Voie", "Diplôme visé", "Stage"];
   const lignes: ReactNode[][] = eftp.map((f) => [
     f.nom,
-    f.etablissement,
+    f.etablissement.sigle ?? f.etablissement.nom,
+    <BadgeHabilitation key={`${f.id}-h`} habilitee={f.habilitee} />,
     LIBELLE_TYPE_PARCOURS[f.voie],
     <span key={f.id} className="flex items-center gap-2">{LIBELLE_DIPLOME[f.diplomeVise]}{f.cycle == null && <Badge ton="neutre">Hors LMD</Badge>}</span>,
-    <span key={`${f.id}-s`} className="text-xs text-ink-muted">{stageMois(f.id) > 0 ? `${stageMois(f.id)} mois` : "aucun"}</span>,
+    <span key={`${f.id}-s`} className="text-xs text-ink-muted">{f.stageObligatoireMois > 0 ? `${f.stageObligatoireMois} mois` : "aucun"}</span>,
   ]);
 
   return (
     <div className="space-y-5">
       <PageHeader titre="Formations professionnelles" sousTitre="La voie EFTP (technologique et professionnelle) : du CAP au BTS/CQP, et la passerelle qui mène à la licence professionnelle." surtitre="Enseignement supérieur"
-        actions={<Button variante="secondaire" taille="sm" icone={Download} onClick={() => exporterCsv("formations_professionnelles", eftp, COLONNES, `BEILE — ${eftp.length} filières EFTP — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+        actions={<Button variante="secondaire" disabled={!eftp.length} taille="sm" icone={Download} onClick={() => exporterCsv("formations_professionnelles", eftp, COLONNES, `BEILE — ${eftp.length} filières EFTP — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
 
       <OngletsESup />
 
@@ -53,6 +59,7 @@ export default function FormationsProPage() {
         <p><strong>Une seule échelle.</strong> Le Bénin suit le LMD pour l&apos;université (Licence-Master-Doctorat) ; les diplômes professionnels (CAP, BEP, BT, BTS, CQP) vivent sur l&apos;échelle EFTP en amont. Le <em>BTS n&apos;est pas dans le LMD</em> — c&apos;est une voie parallèle qui ouvre, par passerelle, une <strong>licence professionnelle</strong>.</p>
       </div>
 
+      {q.isPending ? <ChargementRegistre tuiles={3} /> : q.isError ? <Card><EtatErreur erreur={q.error} reessayer={() => q.refetch()} /></Card> : (<>
       <div className="grid grid-cols-3 gap-3">
         {[[stats.total, "filières EFTP"], [stats.horsLmd, "hors LMD (diplômes pro)"], [stats.avecStage, "avec stage obligatoire"]].map(([v, l]) => (
           <Card key={String(l)} className="p-3.5">
@@ -78,9 +85,12 @@ export default function FormationsProPage() {
       </Card>
 
       <Card>
-        <CardHeader icon={Layers} title="Filières professionnelles" subtitle={`${stats.total} filières de la voie technologique / professionnelle du catalogue.`} />
-        <TableauDonnees colonnes={entetes} lignes={lignes} />
+        <CardHeader icon={Layers} title="Filières professionnelles" subtitle={`${stats.total} filières de la voie technologique / professionnelle du registre.`} />
+        {eftp.length
+          ? <TableauDonnees colonnes={entetes} lignes={lignes} />
+          : <EtatVide icone={Layers} titre="Aucune filière EFTP enregistrée" texte="Le registre ne compte encore aucune filière technologique, professionnelle ou d'apprentissage." />}
       </Card>
+      </>)}
     </div>
   );
 }

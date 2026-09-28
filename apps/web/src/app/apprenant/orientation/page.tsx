@@ -1,10 +1,11 @@
 "use client";
 
-import { Compass, GraduationCap, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, UserCheck } from "lucide-react";
+import { Compass, GraduationCap, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, ShieldCheck, UserCheck } from "lucide-react";
 import { useMemo } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
-import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePasseport, type Dossier } from "@/lib/api/parcours";
+import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePasseport, type Dossier, type NoteEffective } from "@/lib/api/parcours";
+import { useFilieresSup } from "@/lib/api/superieur-public";
 import { cn } from "@/lib/cn";
 import { adequationFilieres, estFiliereValidee, type PisteSuperieure, type SerieBac } from "@/lib/enseignement-superieur";
 import { nombre } from "@/lib/format";
@@ -36,13 +37,13 @@ export default function Orientation() {
 }
 
 function Pistes({ d }: { d: Dossier }) {
-  const { notes, annee, pistes, apres, serie } = useMemo(() => {
-    const notes = notesEffectives(d.evenements);
-    const annee = anneeCourante(d, notes);
-    const pistes = pistesOrientation(notes, annee);
+  const { toutes, notes, annee, pistes, serie } = useMemo(() => {
+    const toutes = notesEffectives(d.evenements);
+    const annee = anneeCourante(d, toutes);
+    const pistes = pistesOrientation(toutes, annee);
     const tete = pistes.find((p) => p.score != null) ?? null;
-    const serie = tete ? (tete.code[0] as SerieBac) : null;
-    return { notes: notes.filter((n) => n.anneeScolaire === annee), annee, pistes, serie, apres: adequationFilieres(notes, annee, serie) };
+    const serie: SerieBac | null = tete ? tete.code[0] : null;
+    return { toutes, notes: toutes.filter((n) => n.anneeScolaire === annee), annee, pistes, serie };
   }, [d]);
 
   if (!notes.length) {
@@ -105,7 +106,7 @@ function Pistes({ d }: { d: Dossier }) {
         ))}
       </Cascade>
 
-      <ApresLeBac pistes={apres} serie={serie} />
+      <ApresLeBac notes={toutes} annee={annee} serie={serie} />
 
       <Card className="flex items-start gap-3">
         <UserCheck size={20} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
@@ -120,8 +121,21 @@ const LIBELLE_DIPLOME: Record<string, string> = {
   DES: "DES (études approfondies)", BTS: "BTS", BT: "Brevet de Technicien", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
 };
 
-/** Prolongement post-bac, indicatif : mêmes données du passeport, autres horizons. */
-function ApresLeBac({ pistes, serie }: { pistes: PisteSuperieure[]; serie: SerieBac | null }) {
+/**
+ * Prolongement post-bac, indicatif : mêmes données du passeport, autres horizons. Les filières
+ * viennent du registre ; seules les filières HABILITÉES sont proposées — orienter un élève vers
+ * un diplôme non reconnu serait l'exposer à la fraude.
+ */
+function ApresLeBac({ notes, annee, serie }: { notes: NoteEffective[]; annee: string | null; serie: SerieBac | null }) {
+  const q = useFilieresSup();
+  const pistes: PisteSuperieure[] = useMemo(
+    () => (q.data ? adequationFilieres(q.data.filter((f) => f.habilitee), notes, annee, serie) : []),
+    [q.data, notes, annee, serie],
+  );
+  if (q.isPending) return <div className="grid gap-3 sm:grid-cols-2" aria-busy>{[0, 1].map((i) => <Squelette key={i} className="h-32 rounded-xl" />)}</div>;
+  if (q.isError) {
+    return <Card><EtatVide icone={RefreshCw} titre="Filières du supérieur momentanément indisponibles" texte={`${q.error.message}. Réessayez dans un instant.`} action={<Button variante="secondaire" icone={RefreshCw} onClick={() => q.refetch()}>Réessayer</Button>} /></Card>;
+  }
   const visibles = pistes.filter((p) => p.score != null).slice(0, 6);
   if (!visibles.length) return null;
   const teteValidee = estFiliereValidee(visibles[0]);
@@ -131,7 +145,7 @@ function ApresLeBac({ pistes, serie }: { pistes: PisteSuperieure[]; serie: Serie
         <GraduationCap size={17} className="mt-0.5 shrink-0" style={{ color: "var(--acc)" }} aria-hidden />
         <p>
           <strong>Et après le bac ?</strong>{" "}
-          {serie ? <>Prolongement de votre série {serie} : </> : "Prolongement de vos matières : "}les filières du supérieur qui s&apos;ouvrent selon vos résultats réels, concours le cas échéant. <em>Catalogue indicatif en cours de constitution — pas encore le registre national.</em>
+          {serie ? <>Prolongement de votre série {serie} : </> : "Prolongement de vos matières : "}les filières habilitées du supérieur qui s&apos;ouvrent selon vos résultats réels, concours le cas échéant.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -139,8 +153,9 @@ function ApresLeBac({ pistes, serie }: { pistes: PisteSuperieure[]; serie: Serie
           <Element key={f.id}>
             <Card className={cn("h-full min-w-0", teteValidee && i === 0 && "ring-2 ring-[color:var(--acc)]")}>
               <CardHeader icon={GraduationCap} title={f.nom}
-                subtitle={`${f.etablissement} · ${LIBELLE_DIPLOME[f.diplomeVise] ?? f.diplomeVise}`}
+                subtitle={`${f.sigle ? `${f.etablissement} (${f.sigle})` : f.etablissement} · ${LIBELLE_DIPLOME[f.diplomeVise] ?? f.diplomeVise}`}
                 action={<div className="flex flex-wrap justify-end gap-1.5">
+                  <Badge ton="succes" icone={ShieldCheck}>Habilitée</Badge>
                   {f.accesConcours && <Badge ton="critique">Concours</Badge>}
                   {f.accessibleParSerie && <Badge ton="succes">Votre série</Badge>}
                 </div>} />
