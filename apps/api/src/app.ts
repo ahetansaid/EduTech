@@ -18,6 +18,7 @@ import { complementsFamille } from "./complements-famille";
 import { complementsGouvernance } from "./complements-gouvernance";
 import { administration } from "./administration";
 import { publique } from "./public";
+import { interop } from "./interop";
 import { empreintePresentee, sceauCorrespond, sceauxAdmis } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
@@ -50,7 +51,7 @@ app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ?
 // 16 Ko partout, sauf le report des verdicts d'un examen national (lots de 5 000 lignes, ≈ 250 Ko).
 const corpsCourant = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) });
 const corpsVerdicts = bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ erreur: "Lot de verdicts trop volumineux : 5 000 lignes au plus" }, 413) });
-app.use("*", (c, next) => (/\/examens\/sessions\/[^/]+\/deliberation$/.test(c.req.path) ? corpsVerdicts : corpsCourant)(c, next));
+app.use("*", (c, next) => (/\/examens\/sessions\/[^/]+\/deliberation$|\/interop\//.test(c.req.path) ? corpsVerdicts : corpsCourant)(c, next));
 // Deux plafonds : par IP (large — un établissement entier peut partager une IP publique) et par utilisateur.
 app.use("*", limiteDebit(1500, 60_000));
 app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
@@ -296,3 +297,4 @@ app.route("/", complementsFamille);
 app.route("/", complementsGouvernance);
 app.route("/", administration);
 app.route("/", publique);
+app.route("/", interop);

@@ -27,37 +27,49 @@ interface Raccordement {
   producteurDe: string;
   contrat: string;
   frequence: string;
-  statut: "actif" | "recette";
-  etape: number;
+  /** Statut déclaré pour un raccordement sans connecteur (registre, portail) ; sinon lu sur le serveur. */
+  statut?: "demonstration" | "recette";
   icone: typeof Fingerprint;
-  /** Source correspondante dans le registre des événements, quand le raccordement y inscrit des faits. */
-  source?: SourceDonnee;
+  /** Connecteur BEILE correspondant : son statut et ses volumes sont lus en base, jamais déclarés ici. */
+  partenaire?: string;
 }
 
 const RACCORDEMENTS: Raccordement[] = [
   {
-    id: "anip", nom: "Registre national des personnes", via: "ANIP, via la plateforme nationale d'interopérabilité", sens: "entrant",
+    id: "anip", nom: "Registre national des personnes", via: "ANIP · plateforme nationale d'interopérabilité (X-Road)", sens: "entrant",
     donnees: "Numéro personnel d'identification (NPI), nom, prénoms, date et lieu de naissance, filiation",
     producteurDe: "Identité civile et filiation", contrat: "identite.personne v1.2", frequence: "À la demande (inscription, vérification d'un lien parental)",
-    statut: "actif", etape: 4, icone: Fingerprint,
+    statut: "demonstration", icone: Fingerprint,
   },
   {
-    id: "educmaster", nom: "EducMaster", via: "Échange de fichiers sécurisé, puis API", sens: "bidirectionnel",
-    donnees: "Historique scolaire antérieur, décisions de passage, établissements déjà équipés",
-    producteurDe: "Historique antérieur à BEILE", contrat: "scolarite.historique v2.0", frequence: "Quotidienne (lot de 02:00)",
-    statut: "actif", etape: 4, icone: Server, source: "educmaster",
+    id: "educmaster", nom: "EducMaster", via: "MEMP · MESTFP — connecteur signé BEILE", sens: "entrant",
+    donnees: "Vie scolaire : absences par classe, élèves désignés par leur NPI",
+    producteurDe: "Vie scolaire des collèges et lycées", contrat: "interop/educmaster/absences v1", frequence: "Quotidienne",
+    icone: Server, partenaire: "educmaster",
   },
   {
-    id: "examens", nom: "Système d'examens", via: "Direction des examens et concours, API", sens: "bidirectionnel",
-    donnees: "Candidatures (sortant, sans ressaisie) ; résultats et certifications (entrant)",
-    producteurDe: "Résultats d'examens et diplômes", contrat: "examens.resultat v1.1", frequence: "Par session (candidatures, délibérations)",
-    statut: "actif", etape: 4, icone: ScrollText, source: "examens",
+    id: "eresultats", nom: "eRESULTATS", via: "DEC du MEMP, DEC du MESTFP, Office du Baccalauréat — connecteur signé", sens: "bidirectionnel",
+    donnees: "Candidaturé (sortant) ; procès-verbal des verdicts puis publication (entrant) — BEILE délivre alors les diplômes au nom de l'autorité",
+    producteurDe: "Verdicts des examens nationaux", contrat: "interop/eresultats/pv-examen v1", frequence: "Par session",
+    icone: ScrollText, partenaire: "eresultats",
+  },
+  {
+    id: "uac", nom: "Université d'Abomey-Calavi", via: "SI de scolarité de l'université — connecteur signé", sens: "entrant",
+    donnees: "PV de délibération d'un diplôme national (décision, crédits, moyenne) ; BEILE contrôle l'homologation et scelle",
+    producteurDe: "Délibérations de ses jurys", contrat: "interop/uac/pv-diplome v1", frequence: "Par session de délibération",
+    icone: Landmark, partenaire: "uac",
+  },
+  {
+    id: "dbau", nom: "DBAU (MESRS)", via: "Plateforme des allocations — connecteur signé", sens: "entrant",
+    donnees: "Décisions d'allocation : nature, statut, référence de l'arrêté (aucun montant)",
+    producteurDe: "Statut d'allocataire", contrat: "interop/dbau/allocations v1", frequence: "Par campagne",
+    icone: Workflow, partenaire: "dbau",
   },
   {
     id: "portail", nom: "Portail national des services publics", via: "service-public.bj, API", sens: "sortant",
     donnees: "Attestations de scolarité et vérification de diplômes à la demande de l'usager",
     producteurDe: "Aucune donnée : consommateur uniquement", contrat: "attestation.scolarite v0.9", frequence: "À la demande de l'usager",
-    statut: "recette", etape: 2, icone: Landmark,
+    statut: "recette", icone: Link2,
   },
 ];
 
@@ -68,9 +80,11 @@ const SENS = {
 } as const;
 
 const SOURCE_LIBELLE: Record<SourceDonnee, { nom: string; role: string }> = {
-  beile: { nom: "BEILE", role: "Vie scolaire saisie dans les établissements : inscriptions, notes, absences, transferts" },
-  educmaster: { nom: "EducMaster", role: "Historique antérieur : décisions de passage reprises sans ressaisie" },
-  examens: { nom: "Système d'examens", role: "Résultats et certifications, seul producteur officiel" },
+  educmaster: { nom: "EducMaster", role: "Vie scolaire reçue par connecteur (absences)" },
+  examens: { nom: "eRESULTATS · autorités d'examen", role: "Verdicts des examens nationaux et diplômes délivrés en leur nom" },
+  universite: { nom: "Universités", role: "Délibérations de diplômes reçues de leur SI, contrôlées puis scellées" },
+  dbau: { nom: "DBAU", role: "Décisions d'allocation (statut, jamais de montant)" },
+  beile: { nom: "BEILE (saisie de secours)", role: "Établissements non encore raccordés : inscriptions, notes, absences saisies dans BEILE" },
   registre_national: { nom: "Registre national des personnes", role: "Identité : consultée à la demande, jamais recopiée comme événement éducatif" },
 };
 
@@ -126,7 +140,7 @@ export default function InteroperabilitePage() {
           <Card><EtatVide icone={RefreshCw} titre="Mesures indisponibles" texte={interop.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => interop.refetch()}>Réessayer</Button>} /></Card>
         ) : (
           <Cascade data-guide="interop-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Element><TuileIndicateur libelle="Raccordements" icone={Network} accent="bleu" valeur={entier(RACCORDEMENTS.length)} indice={`${RACCORDEMENTS.filter((r) => r.statut === "actif").length} en exploitation · ${RACCORDEMENTS.filter((r) => r.statut === "recette").length} en recette`} /></Element>
+            <Element><TuileIndicateur libelle="Connecteurs ouverts" icone={Network} accent="bleu" valeur={entier(d!.partenaires.filter((p) => p.ouvert).length)} indice={`sur ${d!.partenaires.length} partenaires · ${d!.partenaires.filter((p) => p.recus > 0).length} ont déjà transmis`} /></Element>
             <Element><TuileIndicateur libelle="Événements reçus aujourd'hui" icone={Workflow} accent="sarcelle" valeur={<Compteur valeur={jour} format={entier} />} indice="toutes sources confondues" /></Element>
             <Element><TuileIndicateur libelle="Événements au registre" icone={ScrollText} accent="neutre" valeur={<Compteur valeur={total} format={entier} />} indice="provenance tracée pour chacun" /></Element>
             <Element><TuileIndicateur libelle="Apprenants liés au NPI" icone={Link2} accent="bleu" valeur={liaison != null ? <Compteur valeur={liaison} format={(v) => nombre(v, 1)} /> : "—"} unite="%" indice={`${entier(d!.registreNational.lies)} sur ${entier(d!.registreNational.apprenants)} apprenants`} /></Element>
@@ -139,8 +153,9 @@ export default function InteroperabilitePage() {
             <div className="min-w-0">
               <p className="font-display text-[16px] font-bold text-ink">Un système producteur unique pour chaque donnée</p>
               <p className="mt-1.5 max-w-3xl text-sm text-ink-2">
-                L'identité civile appartient au registre national (ANIP) : BEILE la consulte, ne la crée ni ne la modifie. Les résultats d'examens appartiennent
-                au système d'examens. BEILE produit les faits de la vie scolaire. Quand deux systèmes divergent, c'est le producteur qui fait foi, et l'écart est signalé, pas arbitré localement.
+                BEILE ne remplace ni EducMaster, ni eRESULTATS, ni les SI des universités, ni la plateforme de la DBAU : il reçoit leurs faits par des connecteurs signés,
+                les rattache à la personne par son NPI, les contrôle et les scelle. L'identité appartient à l'ANIP, les verdicts à l'autorité d'examen, la délibération d'un diplôme à l'université.
+                La saisie dans BEILE n'est que le mode secours d'un établissement non raccordé. Quand deux systèmes divergent, c'est le producteur qui fait foi.
               </p>
             </div>
           </div>
@@ -178,13 +193,17 @@ export default function InteroperabilitePage() {
 function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) {
   const Sens = SENS[r.sens];
   const Icone = r.icone;
-  const src = r.source ? d?.sources.find((s) => s.source === r.source) : undefined;
+  const p = r.partenaire ? d?.partenaires.find((x) => x.id === r.partenaire) : undefined;
+  const src = p ? d?.sources.find((s) => s.source === p.source) : undefined;
   const derniere = src ? isoDepuisPg(src.derniere) : null;
+  // Statut lu en base : connecteur ouvert (secret provisionné) et, s'il a transmis, en exploitation.
+  const statut: "exploitation" | "ouvert" | "ferme" | "demonstration" | "recette" = r.statut ?? (!p ? "ferme" : !p.ouvert ? "ferme" : p.recus > 0 ? "exploitation" : "ouvert");
+  const etape = { exploitation: 4, ouvert: 3, ferme: 1, demonstration: 4, recette: 2 }[statut];
   const mesures: [string, React.ReactNode][] = !d
     ? [["Chargement", "…"]]
     : r.id === "anip"
       ? [["Personnes référencées", entier(d.registreNational.personnes)], ["Apprenants liés", entier(d.registreNational.lies)], ["Recopies", "Aucune"]]
-      : r.statut === "recette"
+      : statut === "recette"
         ? [["Environnement", "Recette"], ["Échanges en production", "Aucun"], ["Mise en service", "Après tests"]]
         : [["Dernière réception", derniere ? dateHeure(derniere) : "—"], ["Aujourd'hui", entier(src?.jour ?? 0)], ["Total reçu", entier(src?.total ?? 0)]];
   return (
@@ -195,19 +214,20 @@ function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) 
           <h3 className="text-[15.5px] font-semibold text-ink">{r.nom}</h3>
           <p className="text-[12.5px] text-ink-muted">{r.via}</p>
         </div>
-        {r.statut === "actif"
-          ? <Badge ton="succes"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />Actif</Badge>
-          : <Badge ton="info"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />En recette</Badge>}
+        <Badge ton={statut === "exploitation" ? "succes" : statut === "ouvert" || statut === "recette" ? "info" : "neutre"}>
+          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+          {{ exploitation: "En exploitation", ouvert: "Connecteur ouvert", ferme: "Connecteur fermé", demonstration: "Jeu de démonstration", recette: "En recette" }[statut]}
+        </Badge>
       </header>
 
-      <ol className="mt-4 grid grid-cols-5 gap-1" aria-label={`Séquence de raccordement : étape ${r.etape + 1} sur 5, ${ETAPES[r.etape]}`}>
+      <ol className="mt-4 grid grid-cols-5 gap-1" aria-label={`Séquence de raccordement : étape ${etape + 1} sur 5, ${ETAPES[etape]}`}>
         {ETAPES.map((e, i) => (
           <li key={e} className="min-w-0">
             <span className="block h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden>
-              <motion.span className={cn("block h-full rounded-full", i < r.etape ? "bg-teal" : "bg-blue")} initial={{ width: 0 }} whileInView={{ width: i <= r.etape ? "100%" : "0%" }} viewport={{ once: true }} transition={{ duration: 0.4, ease: EASE, delay: i * 0.12 }} />
+              <motion.span className={cn("block h-full rounded-full", i < etape ? "bg-teal" : "bg-blue")} initial={{ width: 0 }} whileInView={{ width: i <= etape ? "100%" : "0%" }} viewport={{ once: true }} transition={{ duration: 0.4, ease: EASE, delay: i * 0.12 }} />
             </span>
-            <span className={cn("mt-1 flex items-center gap-0.5 truncate text-[10.5px]", i === r.etape ? "font-semibold text-ink" : "text-ink-muted")}>
-              {i < r.etape && <Check size={10} aria-hidden className="shrink-0" />}
+            <span className={cn("mt-1 flex items-center gap-0.5 truncate text-[10.5px]", i === etape ? "font-semibold text-ink" : "text-ink-muted")}>
+              {i < etape && <Check size={10} aria-hidden className="shrink-0" />}
               <span className="truncate">{e}</span>
             </span>
           </li>

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, GraduationCap, ScrollText, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, GraduationCap, PlugZap, ScrollText, ShieldCheck, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -30,6 +30,15 @@ export function OngletsScolarite({ chef }: { chef: boolean }) {
   const pathname = usePathname();
   const visibles = ONGLETS.filter((o) => (o.porte === "direction" ? chef : !chef));
   return (
+    <>
+    {chef && (
+      <p className="flex items-start gap-2 rounded-lg bg-info-bg px-3.5 py-2.5 text-[12.5px] text-info">
+        <PlugZap size={15} className="mt-0.5 shrink-0" aria-hidden />
+        <span>
+          <strong>Mode secours.</strong> Un établissement raccordé transmet ses inscriptions et ses procès-verbaux de délibération depuis son propre système de scolarité : BEILE les contrôle (homologation, crédits) et scelle les diplômes. Ces écrans servent à un établissement non encore raccordé.
+        </span>
+      </p>
+    )}
     <nav aria-label="Volets de la scolarité du supérieur" className="-mx-1 flex gap-1 overflow-x-auto pb-1">
       {visibles.map((o) => {
         const on = pathname === o.href || pathname.startsWith(`${o.href}/`);
@@ -55,5 +64,6 @@ export function OngletsScolarite({ chef }: { chef: boolean }) {
         </Link>
       )}
     </nav>
+    </>
   );
 }

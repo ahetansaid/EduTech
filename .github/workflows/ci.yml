@@ -100,6 +100,10 @@ jobs:
           CLE=$(openssl rand -hex 32)
           echo "::add-mask::$CLE"
           echo "BEILE_CLE_SEAU=$CLE" >> "$GITHUB_ENV"
+          # Secrets éphémères des systèmes partenaires (connecteurs signés d'interopérabilité).
+          P=""
+          for id in educmaster eresultats uac dbau; do S=$(openssl rand -hex 32); echo "::add-mask::$S"; P="${P:+$P,}$id:$S"; done
+          echo "BEILE_PARTENAIRES=$P" >> "$GITHUB_ENV"
       - name: Démarrer l'API
         run: |
           npm run start --workspace=@beile/api > api.log 2>&1 &
@@ -109,6 +113,10 @@ jobs:
         run: npm run scenario:superieur --workspace=@beile/api
       - name: Rejeu du scénario (idempotence : rien ne se double)
         run: npm run scenario:superieur --workspace=@beile/api
+      - name: Couche nationale — EducMaster, eRESULTATS, université, DBAU par connecteurs signés
+        run: npm run interop:demo --workspace=@beile/api
+      - name: Rejeu des lots partenaires (idempotence)
+        run: npm run interop:demo --workspace=@beile/api
       - name: Recette complète, écritures multi-utilisateurs comprises
         run: npm run recette:ecritures --workspace=@beile/api
       - name: Test de charge (100 utilisateurs, 30 s)

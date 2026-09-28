@@ -73,14 +73,20 @@ function Contenu({ x }: { x: Examens }) {
 
 function Sessions({ sessions }: { sessions: SessionExamenEtab[] }) {
   const [choix, setChoix] = useState<string | null>(sessions[0]?.sessionId ?? null);
+  const [q, setQ] = useState("");
+  const [nombreVisible, setNombreVisible] = useState(25);
   const s = sessions.find((x) => x.sessionId === choix) ?? sessions[0] ?? null;
+  const filtres = useMemo(() => {
+    const n = normaliser(q);
+    return (s?.candidats ?? []).filter((c) => !n || normaliser(`${c.nom} ${c.numeroTable}`).includes(n));
+  }, [s, q]);
   return (
     <Card data-guide="examens-sessions" className="min-w-0 overflow-hidden p-0">
       <div className="space-y-4 px-5 pt-5">
         <CardHeader className="mb-0" icon={Landmark} title="Sessions et verdicts officiels" subtitle="Numéro de table et centre dès l'inscription ; verdict et diplôme après publication par l'autorité" action={<Badge>{sessions.length}</Badge>} />
         {sessions.length > 1 && (
           <div className="-mx-1 overflow-x-auto px-1">
-            <Segmente label="Session" valeur={s?.sessionId ?? ""} onChange={setChoix} options={sessions.map((x) => ({ valeur: x.sessionId, libelle: `${x.examen} · ${x.session}` }))} />
+            <Segmente label="Session" valeur={s?.sessionId ?? ""} onChange={(v) => { setChoix(v); setNombreVisible(25); }} options={sessions.map((x) => ({ valeur: x.sessionId, libelle: `${x.examen} · ${x.session}` }))} />
           </div>
         )}
       </div>
@@ -98,8 +104,11 @@ function Sessions({ sessions }: { sessions: SessionExamenEtab[] }) {
               <Info size={15} className="mt-0.5 shrink-0" aria-hidden /> Les verdicts appartiennent à l&apos;autorité d&apos;examen : ils apparaîtront ici à la publication officielle de la session.
             </p>
           )}
+          <div className="border-t border-line/60 px-5 py-3">
+            <ChampRecherche valeur={q} onChange={(v) => { setQ(v); setNombreVisible(25); }} placeholder="Nom ou numéro de table" label="Rechercher un candidat" />
+          </div>
           <ul className="divide-y divide-line/60 border-t border-line/60">
-            {s.candidats.slice(0, 200).map((c, i) => (
+            {filtres.slice(0, nombreVisible).map((c, i) => (
               <motion.li key={c.apprenantId} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 12) * 0.03 }}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-3 hover:bg-surface-2/40">
                 <span className="w-24 shrink-0 font-mono text-[12.5px] text-ink-2">{c.numeroTable}</span>
@@ -112,7 +121,13 @@ function Sessions({ sessions }: { sessions: SessionExamenEtab[] }) {
               </motion.li>
             ))}
           </ul>
-          {s.candidats.length > 200 && <p className="border-t border-line/60 px-5 py-3 text-xs text-ink-muted">200 premiers candidats affichés sur {s.candidats.length}.</p>}
+          {filtres.length === 0 && <p className="border-t border-line/60 px-5 py-4 text-sm text-ink-muted">Aucun candidat ne correspond à cette recherche.</p>}
+          {filtres.length > nombreVisible && (
+            <div className="flex items-center justify-between gap-3 border-t border-line/60 px-5 py-3 text-xs text-ink-muted">
+              <span>{nombreVisible} sur {filtres.length} candidats</span>
+              <Button variante="secondaire" taille="sm" onClick={() => setNombreVisible((n) => n + 50)}>Afficher 50 de plus</Button>
+            </div>
+          )}
         </>
       )}
     </Card>

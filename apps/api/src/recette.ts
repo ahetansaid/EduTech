@@ -348,6 +348,29 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
   }
 }
 
+titre("Interopérabilité : connecteurs signés des systèmes partenaires");
+if (!process.env.BEILE_PARTENAIRES) {
+  console.log("   (BEILE_PARTENAIRES absent : connecteurs non provisionnés, cas ignorés)");
+} else {
+  const { envoyer } = await import("./client-interop");
+  const absence = { etablissementId: PILOTE, classeId: "CLS-PAR-5eA-S", date: AUJOURDHUI, absents: ["0000000000"] };
+  verifier("Signature fausse → 401", (await envoyer("educmaster", "/interop/educmaster/absences", absence, { secret: "x".repeat(40) })).statut, 401);
+  verifier("Horodatage périmé (rejeu d'une requête capturée) → 401", (await envoyer("educmaster", "/interop/educmaster/absences", absence, { horodatage: Date.now() - 3_600_000 })).statut, 401);
+  verifier("Sans en-têtes de partenaire → 401", (await anonyme.appel("POST", "/interop/educmaster/absences", absence)).statut, 401);
+  verifier("EducMaster → message réservé à eRESULTATS : 403", (await envoyer("educmaster", "/interop/eresultats/publication", { examen: "CEP", session: "Juin 2024" })).statut, 403);
+  verifier("DBAU → PV de diplôme de l'université : 403", (await envoyer("dbau", "/interop/uac/pv-diplome", {})).statut, 403);
+  verifier("Message mal formé (partenaire authentifié) → 422", (await envoyer("educmaster", "/interop/educmaster/absences", { classeId: 12 })).statut, 422);
+  verifier("UAC → filière d'une autre université : 403", (await envoyer("uac", "/interop/uac/pv-diplome", { pvReference: "PV-RECETTE", filiereId: "FIL-UP-L-DROIT", anneeUniversitaire: "2025-2026", decisions: [{ npi: "0000000000", decision: "admis", creditsValides: 180, moyenne: 12 }] })).statut, 403);
+  if (ECRITURES) {
+    // NPI déterministe du premier étudiant du référentiel du supérieur (APP-900001) : aucun saut silencieux.
+    const lot = `REC-${Date.now()}`;
+    const corps = { anneeUniversitaire: "2026-2027", decisions: [{ npi: "2910900001", typeDecision: "retablissement", statutCompte: "demi_boursier", referenceActe: "Arrêté DBAU recette", decideLe: "2026-09-27" }] };
+    const premier = await envoyer("dbau", "/interop/dbau/allocations", corps, { lot });
+    verifier("DBAU → décision d'allocation reçue par le connecteur", premier.statut === 201 && premier.json.enregistres === 1, true, `HTTP ${premier.statut}`);
+    verifier("Rejeu du même lot → rien ne se double", (await envoyer("dbau", "/interop/dbau/allocations", corps, { lot })).json.deja === true, true);
+  }
+}
+
 titre("Fin de session");
 verifier("Déconnexion", (await enseignant!.appel("POST", "/auth/deconnexion")).statut, 200);
 verifier("Session révoquée côté serveur", (await enseignant!.appel("GET", "/auth/session")).statut, 401);

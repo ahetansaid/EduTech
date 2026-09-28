@@ -75,7 +75,10 @@ export function lireSaisieVerification(brut: string): { id: string; empreinte: s
 
 /** Intitulé lisible de tout diplôme attesté (K-12, EFTP, supérieur) : source unique, le contrat. */
 export const NOM_EXAMEN: Record<string, string> = NOM_DIPLOME_ATTESTE;
-export const NOM_SOURCE: Record<string, string> = { beile: "BEILE", educmaster: "EducMaster", examens: "Office du Bac et des examens", registre_national: "Registre national" };
+export const NOM_SOURCE: Record<string, string> = {
+  beile: "Saisi dans BEILE", educmaster: "EducMaster", examens: "Autorité d'examen (eRESULTATS)", registre_national: "Registre national",
+  universite: "Université (SI de scolarité)", dbau: "DBAU",
+};
 export const nomComplet = (a: Pick<Apprenant, "prenoms" | "nom">) => `${a.prenoms} ${a.nom}`;
 export const initiales = (a: Pick<Apprenant, "prenoms" | "nom">) => `${a.prenoms[0] ?? ""}${a.nom[0] ?? ""}`.toUpperCase();
 export const libelleTrimestre = (t: number) => (t === 1 ? "1er trimestre" : `${t}e trimestre`);
@@ -258,8 +261,9 @@ export const FILIERES = [
   { code: "D", nom: "Série D — sciences expérimentales", poids: { SVT: 0.4, Mathématiques: 0.3, "Sciences physiques": 0.3 } },
   { code: "A1", nom: "Série A1 — lettres et sciences humaines", poids: { Français: 0.5, "Histoire-Géographie": 0.3, "Éducation civique": 0.2 } },
   { code: "A2", nom: "Série A2 — langues étrangères", poids: { Anglais: 0.5, Français: 0.3, "Histoire-Géographie": 0.2 } },
-  { code: "T1", nom: "Filière technique — tertiaire et gestion", poids: { Mathématiques: 0.35, Français: 0.3, "Histoire-Géographie": 0.35 } },
-  { code: "T2", nom: "Filière technique — industriel et génie", poids: { Mathématiques: 0.4, "Sciences physiques": 0.4, SVT: 0.2 } },
+  { code: "B", nom: "Série B — sciences économiques et sociales", poids: { Mathématiques: 0.4, "Histoire-Géographie": 0.35, Français: 0.25 } },
+  { code: "G", nom: "Séries G — techniques de gestion (enseignement technique)", poids: { Mathématiques: 0.4, Français: 0.3, Anglais: 0.3 } },
+  { code: "F", nom: "Séries F — techniques industrielles (enseignement technique)", poids: { Mathématiques: 0.4, "Sciences physiques": 0.45, SVT: 0.15 } },
 ] as const;
 
 export interface PisteOrientation {
@@ -271,7 +275,7 @@ export interface PisteOrientation {
   ecartTete: number | null;
   /** La tête est-elle robuste : même 1ʳᵉ piste avec une pondération égale (sans barème) et assez évaluée ? */
   teteRobuste: boolean;
-  /** La piste gagne (+) ou perd (−) des places quand on retire le barème officiel (pondération égale). */
+  /** La piste gagne (+) ou perd (−) des places quand on retire la pondération indicative (pondération égale). */
   deltaSansBareme: number | null;
 }
 
@@ -281,7 +285,7 @@ export function estTeteValide(p: PisteOrientation): boolean {
 }
 
 /**
- * Calcule les pistes avec le barème officiel, puis une passe à pondération égale entre matières évaluées.
+ * Calcule les pistes avec la pondération indicative (non officielle), puis une passe à pondération égale entre matières évaluées.
  * La comparaison des deux classements révèle si le barème *fabrique* la tête (deltaSansBareme / teteRobuste) :
  * une tête qui saute à une pondération neutre mérite d'être présentée avec prudence.
  */

@@ -596,8 +596,25 @@ function ComparatifClasses({ t }: { t: Tableau | undefined }) {
 
   const formater = metric === "moyenne" ? (v: number) => note(v) : (v: number) => pourcent(v, 0);
 
-  // « En retrait » : sous la référence pour la moyenne, au-dessus pour l'occupation et l'absentéisme.
-  const enRetrait = (v: number) => (metric === "moyenne" ? v < (reference ?? 0) : v > (reference ?? 0));
+  // Une 6e ne se compare pas à une terminale : pour la moyenne, la référence d'une classe est celle des
+  // classes de SON niveau (pondérée par l'effectif) dès qu'il y en a deux, sinon celle de l'établissement.
+  const parNiveau = new Map<string, { somme: number; effectif: number; classes: number }>();
+  for (const c of t.classes) {
+    if (c.moyenne == null) continue;
+    const n = parNiveau.get(c.niveau) ?? { somme: 0, effectif: 0, classes: 0 };
+    parNiveau.set(c.niveau, { somme: n.somme + c.moyenne * Math.max(1, c.effectif), effectif: n.effectif + Math.max(1, c.effectif), classes: n.classes + 1 });
+  }
+  const referenceDe = (c: ClasseTableau) => {
+    const n = parNiveau.get(c.niveau);
+    return metric === "moyenne" && n && n.classes >= 2 ? n.somme / n.effectif : reference;
+  };
+  // « En retrait » au-delà d'une marge de tolérance : 1 point de moyenne, 10 points d'occupation, 5 points
+  // d'absentéisme. Sans marge, la moitié des classes serait « en retrait » par simple construction.
+  const MARGE = { moyenne: 1, occupation: 10, absenteisme: 5 } as const;
+  const enRetrait = (c: ClasseTableau, v: number) => {
+    const ref = referenceDe(c) ?? 0;
+    return metric === "moyenne" ? v < ref - MARGE.moyenne : v > ref + MARGE[metric];
+  };
 
   const mesures = t.classes
     .map((c) => ({ c, v: mesurer(c) }))
@@ -616,20 +633,21 @@ function ComparatifClasses({ t }: { t: Tableau | undefined }) {
     valeur: m.v,
     masquee: m.v == null,
     effectif: m.c.effectif,
-    accent: m.v != null && enRetrait(m.v),
+    accent: m.v != null && enRetrait(m.c, m.v),
   }));
 
   const valide = mesures.filter((m): m is { c: ClasseTableau; v: number } => m.v != null);
-  const retraits = valide.filter((m) => enRetrait(m.v));
+  const retraits = valide.filter((m) => enRetrait(m.c, m.v));
   const pire = valide[0];
-  const ecartPire = pire && reference != null ? pire.v - reference : null;
+  const refPire = pire ? referenceDe(pire.c) : null;
+  const ecartPire = pire && refPire != null ? pire.v - refPire : null;
 
   return (
     <Card data-guide="etab-comparatif" className="min-w-0">
       <CardHeader
         icon={Scale}
         title="Comparatif des classes"
-        subtitle="Chaque division mesurée, puis replacée face à la valeur de l'établissement — la barre verticale est votre référence."
+        subtitle="Chaque division mesurée ; pour la moyenne, comparée aux classes de son niveau (à défaut, à l'établissement), avec une marge de tolérance."
         action={<div className="-mx-1 overflow-x-auto px-1"><Segmente label="Indicateur" valeur={metric} onChange={setMetric} options={METRIQUES} /></div>}
       />
       <BarresClassees
@@ -642,7 +660,7 @@ function ComparatifClasses({ t }: { t: Tableau | undefined }) {
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
         <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Référence de l'établissement</p><p className="text-[15px] font-semibold tabular text-ink">{reference != null ? formater(reference) : "—"}</p></div>
         <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Classes en retrait</p><p className={cn("text-[15px] font-semibold tabular", retraits.length ? "text-warning" : "text-ink")}>{entier(retraits.length)}<span className="ml-1 text-[12px] font-normal text-ink-muted">sur {entier(valide.length)}</span></p></div>
-        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Écart le plus marqué</p><p className={cn("text-[15px] font-semibold tabular", pire && enRetrait(pire.v) ? "text-critical" : "text-ink")}>{pire && ecartPire != null ? <>{ecartPire > 0 ? "+" : ""}{metric === "moyenne" ? nombre(ecartPire, 2) : `${nombre(ecartPire, 0)} pt`} <span className="text-[12px] font-normal text-ink-muted">{pire.c.libelle}</span></> : "—"}</p></div>
+        <div className="rounded-lg bg-surface-2/70 px-3 py-2"><p className="text-[11.5px] text-ink-muted">Écart le plus marqué</p><p className={cn("text-[15px] font-semibold tabular", pire && enRetrait(pire.c, pire.v) ? "text-critical" : "text-ink")}>{pire && ecartPire != null ? <>{ecartPire > 0 ? "+" : ""}{metric === "moyenne" ? nombre(ecartPire, 2) : `${nombre(ecartPire, 0)} pt`} <span className="text-[12px] font-normal text-ink-muted">{pire.c.libelle}</span></> : "—"}</p></div>
       </div>
       <p className="mt-3 text-[12px] text-ink-muted">
         {metric === "moyenne" ? "Moyenne générale du trimestre, toutes matières ; une classe sans moyenne renseignée apparaît hachurée."

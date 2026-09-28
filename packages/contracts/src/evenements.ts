@@ -14,7 +14,12 @@ import { Matiere, Mention, Niveau } from "./referentiels";
  * L'état courant et les indicateurs se calculent à partir de ce registre.
  */
 
-export const SourceDonnee = z.enum(["beile", "registre_national", "educmaster", "examens"]);
+/**
+ * D'où vient un fait. BEILE est la couche nationale : la plupart des faits sont REÇUS des systèmes qui
+ * les produisent (EducMaster pour la vie scolaire, l'autorité d'examen pour les verdicts, l'université
+ * pour ses délibérations, la DBAU pour les allocations) ; « beile » désigne la saisie de secours.
+ */
+export const SourceDonnee = z.enum(["beile", "registre_national", "educmaster", "examens", "universite", "dbau"]);
 export type SourceDonnee = z.infer<typeof SourceDonnee>;
 
 const Base = z.object({

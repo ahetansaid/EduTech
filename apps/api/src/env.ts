@@ -23,12 +23,21 @@ const Schema = z.object({
    * remis. On scelle toujours avec la clef active ; on vérifie avec la clef active PUIS les anciennes.
    */
   BEILE_CLES_SEAU_ANCIENNES: z.string().optional(),
+  /**
+   * Secrets des systèmes partenaires (interopérabilité), « id:secret » séparés par des virgules. Un
+   * partenaire absent de la liste n'est pas authentifiable : son connecteur est simplement fermé.
+   */
+  BEILE_PARTENAIRES: z.string().optional(),
   NODE_ENV: z.string().optional(),
   VERCEL_ENV: z.string().optional(),
 }).superRefine((v, ctx) => {
   const production = v.VERCEL_ENV === "production" || v.NODE_ENV === "production";
   if (production && !v.BEILE_CLE_SEAU) {
     ctx.addIssue({ code: "custom", path: ["BEILE_CLE_SEAU"], message: "obligatoire en production (diplômes et actes scellés par MAC)" });
+  }
+  for (const paire of (v.BEILE_PARTENAIRES ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
+    const [id, secret] = paire.split(":");
+    if (!id || !secret || secret.length < 32) ctx.addIssue({ code: "custom", path: ["BEILE_PARTENAIRES"], message: "format « id:secret », secret d'au moins 32 caractères" });
   }
   for (const cle of (v.BEILE_CLES_SEAU_ANCIENNES ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
     if (cle.length < 32) ctx.addIssue({ code: "custom", path: ["BEILE_CLES_SEAU_ANCIENNES"], message: "chaque clef fait au moins 32 caractères" });
@@ -58,6 +67,9 @@ return {
   DATABASE_URL_API: v.DATABASE_URL_API,
   ORIGINES: v.BEILE_ORIGINES_AUTORISEES.split(",").map((o) => o.trim()),
   CLE_SEAU: v.BEILE_CLE_SEAU,
+  /** Secrets partagés des systèmes partenaires, par identifiant. */
+  PARTENAIRES: Object.fromEntries((v.BEILE_PARTENAIRES ?? "").split(",").map((x) => x.trim()).filter(Boolean)
+    .map((paire) => [paire.slice(0, paire.indexOf(":")), paire.slice(paire.indexOf(":") + 1)])) as Record<string, string>,
   /** Clefs acceptées à la vérification : l'active d'abord, puis les anciennes (rotation). */
   CLES_VERIFICATION: [v.BEILE_CLE_SEAU, ...(v.BEILE_CLES_SEAU_ANCIENNES ?? "").split(",").map((x) => x.trim()).filter(Boolean)]
     .filter((x): x is string => !!x),

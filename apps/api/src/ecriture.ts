@@ -4,7 +4,7 @@ import type {
   OfficeDeliberant, RegimePedagogique, SessionEvaluation, StatutCompte, StatutInscriptionUE, StatutJury,
   TypeActe, TypeDecisionAllocation, VoieAcquisition,
 } from "@beile/contracts";
-import { Evenement } from "@beile/contracts";
+import { Evenement, type SourceDonnee } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
@@ -38,7 +38,7 @@ export interface NouveauFait {
   enseignantId?: string | null;
   etablissementId: string | null;
   auteurId: string;
-  source?: "beile" | "registre_national" | "educmaster" | "examens";
+  source?: SourceDonnee;
   donnees: Record<string, unknown>;
 }
 

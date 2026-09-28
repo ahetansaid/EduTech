@@ -66,7 +66,7 @@ function Pistes({ d }: { d: Dossier }) {
               ? "Aucune piste ne se détache assez (ou n'est assez évaluée) pour être présentée comme un choix évident : les pistes ci-dessous se valent, discutez-en plutôt que de lire un classement."
               : tete.teteRobuste
                 ? `« ${tete.nom.split(" — ")[0]} » reste en tête même si l'on pondère toutes vos matières évaluées de façon égale : ce n'est pas le barème qui fabrique ce classement.`
-                : "Si l'on retire le barème officiel pour peser vos matières de façon égale, le classement bouge : la tête actuelle dépend du poids des matières, un point à discuter avec le conseiller d'orientation."}
+                : "Si l'on retire la pondération indicative pour peser vos matières de façon égale, le classement bouge : la tête actuelle dépend du poids des matières, un point à discuter avec le conseiller d'orientation."}
           </p>
         </div>
       )}

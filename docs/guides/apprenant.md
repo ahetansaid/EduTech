@@ -87,9 +87,9 @@
 
 `/apprenant/orientation` — Des pistes lues dans vos résultats réels.
 
-- Six pistes : séries C, D, A1, A2 et deux filières techniques, pondérées sur vos moyennes de l'année.
-- Chaque piste affiche son indice /20, l'écart à la piste de tête et la part de vos matières qui jouent en sa faveur.
-- Un bandeau teste la sensibilité : il dit si la piste de tête tient quand on retire le barème officiel (matières pondérées à égalité).
+- Sept pistes du second cycle béninois : séries A1, A2, B, C et D, et séries techniques F et G, pondérées sur vos moyennes de l'année.
+- Chaque piste affiche son indice /20, l'écart à la piste de tête et la part de vos matières qui jouent en sa faveur. La pondération est indicative, pas un barème officiel.
+- Un bandeau teste la sensibilité : il dit si la piste de tête tient quand on pèse toutes les matières à égalité.
 - En bas, « Et après le bac ? » prolonge ces pistes vers les filières du supérieur (Licence, Master, écoles nationales, BTS/CQP) que vos résultats et votre série envisagée rendent accessibles.
 - Rien n'est inventé : une matière non évaluée n'est pas remplacée, elle réduit la couverture affichée. Les pistes éclairent votre choix, elles ne le font pas.
 

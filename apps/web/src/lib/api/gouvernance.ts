@@ -84,6 +84,8 @@ export interface Interoperabilite {
   sources: { source: SourceDonnee; total: number; jour: number; derniere: string | null; types: string[] }[];
   registreNational: { personnes: number; apprenants: number; lies: number };
   verificationsDiplomes: { jour: string; n: number }[];
+  /** Connecteurs partenaires : ouverts (secret provisionné) ou fermés, et volume réellement reçu. */
+  partenaires: { id: string; nom: string; source: SourceDonnee; messages: string[]; ouvert: boolean; recus: number; dernier: string | null }[];
 }
 
 export interface CompteAdmin {

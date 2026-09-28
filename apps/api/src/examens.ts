@@ -172,33 +172,31 @@ examens.get("/examens/sessions/:id/candidatures", authentifie, async (c) => {
 
 /* ------------------------------------------------------------------ Délibération puis publication */
 
-/**
- * Réception du procès-verbal officiel : pour chaque numéro de table, la décision que le jury a
- * prononcée (admis, non admis, absent, exclu) et la moyenne d'épreuve. Rien n'est déduit : un jury peut
- * racheter un candidat, et « absent » n'est pas un échec noté. Par lots, en une transaction chacun.
- */
-const LigneVerdict = z.object({
+/** Une ligne du procès-verbal officiel : numéro de table, décision prononcée, moyenne d'épreuve. */
+export const LigneVerdict = z.object({
   numeroTable: z.string().trim().min(1).max(20),
   decision: Decision,
   moyenne: z.coerce.number().min(0).max(20).nullable().default(null),
 }).strict().refine((l) => (l.decision === "admis" || l.decision === "non_admis") === (l.moyenne !== null), {
   message: "Une moyenne accompagne un verdict noté (admis, non admis), jamais une absence ni une exclusion",
 });
+type Verdict = z.infer<typeof LigneVerdict>;
+/** Qui agit : un profil du bureau (saisie de secours) ou un système partenaire (connecteur). */
+export type Auteur = { id: string; nomAffiche: string };
+/** Source inscrite au registre : le PV reçu de l'autorité par connecteur, ou saisi au bureau en secours. */
+type SourceExamen = "examens" | "beile";
 
-examens.post("/examens/sessions/:id/deliberation", authentifie, async (c) => {
-  const id = ID_SESSION.parse(c.req.param("id"));
-  const profil = await bureau(c, "Réception du procès-verbal d'une session d'examen");
-  const session = await sessionOuverte(id);
+/**
+ * Réception d'un lot du procès-verbal officiel. Rien n'est déduit : un jury peut racheter un candidat, et
+ * « absent » n'est pas un échec noté. Un seul UPDATE … FROM (VALUES …) dans une transaction : le lot
+ * passe entier ou pas du tout. Rejouable : réappliquer le même lot écrit les mêmes valeurs.
+ */
+export async function recevoirPv(sessionId: string, decisions: Verdict[], pvReference: string, auteur: Auteur) {
+  const session = await sessionOuverte(sessionId);
   if (session.statut === "publiee") throw new HTTPException(409, { message: "Session déjà publiée : verdicts figés." });
-  const { decisions, pvReference } = await corps(c, z.object({
-    // Par lots de 5 000 verdicts au plus (≈ 250 Ko, voir la limite de corps propre à cette route).
-    decisions: z.array(LigneVerdict).min(1).max(5000),
-    /** Référence du procès-verbal officiel : l'acte signé reste la source, BEILE en garde la trace. */
-    pvReference: z.string().trim().min(3).max(80),
-  }).strict());
   const tables = decisions.map((d) => d.numeroTable);
   const connues = await base().select({ id: schema.examensCandidatures.id, numeroTable: schema.examensCandidatures.numeroTable })
-    .from(schema.examensCandidatures).where(and(eq(schema.examensCandidatures.sessionId, id), inArray(schema.examensCandidatures.numeroTable, tables)));
+    .from(schema.examensCandidatures).where(and(eq(schema.examensCandidatures.sessionId, sessionId), inArray(schema.examensCandidatures.numeroTable, tables)));
   const parTable = new Map(connues.map((x) => [x.numeroTable, x.id]));
   const verdicts = decisions.flatMap((d) => {
     const candidatureId = parTable.get(d.numeroTable);
@@ -207,52 +205,49 @@ examens.post("/examens/sessions/:id/deliberation", authentifie, async (c) => {
     // Un admis racheté sous 10 reçoit la mention la plus basse, jamais une mention calculée sous le seuil.
     return [{ candidatureId, moyenne, decision: d.decision, mention: d.decision === "admis" && moyenne !== null ? mentionDe(Math.max(moyenne, 10)) : null }];
   });
-  // Un seul UPDATE … FROM (VALUES …) dans une transaction : le lot passe entier ou pas du tout.
   if (verdicts.length) {
     await base().transaction(async (tx) => {
       const valeurs = sql.join(verdicts.map((v) => sql`(${v.candidatureId}, ${v.decision}, ${v.moyenne}::numeric, ${v.mention})`), sql`, `);
       await tx.execute(sql`
         update core.examens_candidatures as c set decision = v.decision, moyenne = v.moyenne, mention = v.mention
         from (values ${valeurs}) as v(id, decision, moyenne, mention)
-        where c.id = v.id and c.session_id = ${id}`);
-      await tx.update(schema.examensSessions).set({ statut: "deliberation" }).where(eq(schema.examensSessions.id, id));
+        where c.id = v.id and c.session_id = ${sessionId}`);
+      await tx.update(schema.examensSessions).set({ statut: "deliberation" }).where(eq(schema.examensSessions.id, sessionId));
     });
   }
   const inconnus = decisions.filter((d) => !parTable.has(d.numeroTable)).map((d) => d.numeroTable);
-  await journaliser(profil, "Réception du procès-verbal d'une session d'examen", `${session.examen} ${session.session} · PV ${pvReference} · ${verdicts.length} verdict(s)${inconnus.length ? ` · ${inconnus.length} numéro(s) inconnu(s)` : ""}`, "gestion", true, null);
-  return c.json({ sessionId: id, recus: verdicts.length, numerosInconnus: inconnus.slice(0, 50) });
-});
+  await journaliser(auteur, "Réception du procès-verbal d'une session d'examen", `${session.examen} ${session.session} · PV ${pvReference} · ${verdicts.length} verdict(s)${inconnus.length ? ` · ${inconnus.length} numéro(s) inconnu(s)` : ""}`, "gestion", true, null);
+  return { sessionId, recus: verdicts.length, numerosInconnus: inconnus.slice(0, 50) };
+}
 
 /**
  * Publication : TOUS les candidats doivent être statués (un candidat sans verdict paraîtrait
- * « introuvable » au public). La publication inscrit au registre le résultat de chaque candidat noté et,
- * pour chaque admis, le diplôme délivré au nom de l'autorité compétente, scellé à clef. Par lots de
- * 1 000 candidats ; rejouable (ce qui est déjà inscrit est sauté), la session ne passe « publiée » qu'à la fin.
+ * « introuvable » au public). Inscrit au registre le résultat de chaque candidat noté et, pour chaque
+ * admis, le diplôme délivré au nom de l'autorité compétente, scellé à clef. Par lots de 1 000 candidats ;
+ * rejouable (ce qui est déjà inscrit est sauté) ; la session ne passe « publiée » qu'à la fin.
  */
 const LOT_PUBLICATION = 1000;
-examens.post("/examens/sessions/:id/publication", authentifie, async (c) => {
-  const id = ID_SESSION.parse(c.req.param("id"));
-  const profil = await bureau(c, "Publication des résultats d'examen");
-  const session = await sessionOuverte(id);
+export async function publierSession(sessionId: string, auteur: Auteur, source: SourceExamen) {
+  const session = await sessionOuverte(sessionId);
   if (session.statut === "publiee") throw new HTTPException(409, { message: "Session déjà publiée." });
   if (!parNiveau(session.examen)) throw new HTTPException(422, { message: `Session « ${session.examen} » : la certification d'un examen du supérieur passe par le registre du supérieur` });
   const [{ total, statues } = { total: 0, statues: 0 }] = await base().select({
     total: count(), statues: sql<number>`count(${schema.examensCandidatures.decision})::int`,
-  }).from(schema.examensCandidatures).where(eq(schema.examensCandidatures.sessionId, id));
+  }).from(schema.examensCandidatures).where(eq(schema.examensCandidatures.sessionId, sessionId));
   if (!total) throw new HTTPException(422, { message: "Aucun candidat dans cette session : rien à publier." });
   if (statues < total) throw new HTTPException(409, { message: `${total - statues} candidat(s) sans verdict du procès-verbal : la publication attend que tous soient statués.` });
 
   const autorite = AUTORITE_EXAMEN[session.examen];
   const annee = anneeDe(session.session);
   const delivreLe = aujourdhui();
-  const idSaisie = `PUB-${id.slice(4)}`;
+  const idSaisie = `PUB-${sessionId.slice(4)}`;
   const candidats = await base().select({
     apprenantId: schema.examensCandidatures.apprenantId, decision: schema.examensCandidatures.decision,
     moyenne: schema.examensCandidatures.moyenne, mention: schema.examensCandidatures.mention,
     prenoms: schema.apprenants.prenoms, nom: schema.apprenants.nom,
   }).from(schema.examensCandidatures)
     .innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.examensCandidatures.apprenantId))
-    .where(eq(schema.examensCandidatures.sessionId, id));
+    .where(eq(schema.examensCandidatures.sessionId, sessionId));
   // Déjà inscrits (rejeu d'une publication interrompue) : résultats de cette publication, diplômes existants.
   const [dejaResultat, dejaDiplome] = await Promise.all([
     base().select({ a: schema.evenements.apprenantId }).from(schema.evenements).where(and(
@@ -269,7 +264,7 @@ examens.post("/examens/sessions/:id/publication", authentifie, async (c) => {
       const admis = a.decision === "admis";
       if (!resultatFait.has(a.apprenantId)) {
         faits.push({
-          type: "RESULTAT_EXAMEN", auteurId: profil.id, etablissementId: null, apprenantId: a.apprenantId, source: "examens",
+          type: "RESULTAT_EXAMEN", auteurId: auteur.id, etablissementId: null, apprenantId: a.apprenantId, source,
           donnees: { apprenantId: a.apprenantId, examen: session.examen, session: session.session, moyenne: Number(a.moyenne ?? 0), admis, idSaisie },
         });
         resultats++;
@@ -284,7 +279,7 @@ examens.post("/examens/sessions/:id/publication", authentifie, async (c) => {
           filiereId: null, etablissementId: null, office: autorite.office,
         };
         faits.push({
-          type: "CERTIFICATION", auteurId: profil.id, etablissementId: null, apprenantId: a.apprenantId, source: "examens",
+          type: "CERTIFICATION", auteurId: auteur.id, etablissementId: null, apprenantId: a.apprenantId, source,
           donnees: { ...brut, certificatId, delivrePar: null, empreinte: sceauCertificat(brut, `${a.prenoms} ${a.nom}`) },
         });
         diplomes++;
@@ -292,9 +287,36 @@ examens.post("/examens/sessions/:id/publication", authentifie, async (c) => {
     }
     if (faits.length) await inscrireAuRegistre(faits);
   }
-  await base().update(schema.examensSessions).set({ statut: "publiee", publieeLe: delivreLe }).where(eq(schema.examensSessions.id, id));
-  await journaliser(profil, "Publication des résultats d'examen", `${session.examen} ${session.session} · ${autorite.sigle} · ${resultats} résultat(s), ${diplomes} diplôme(s)`, "gestion", true, null);
-  return c.json({ sessionId: id, publie: true, candidats: total, resultats, diplomes, autorite: autorite.libelle, publieeLe: delivreLe });
+  await base().update(schema.examensSessions).set({ statut: "publiee", publieeLe: delivreLe }).where(eq(schema.examensSessions.id, sessionId));
+  await journaliser(auteur, "Publication des résultats d'examen", `${session.examen} ${session.session} · ${autorite.sigle} · ${resultats} résultat(s), ${diplomes} diplôme(s)`, "gestion", true, null);
+  return { sessionId, publie: true, candidats: total, resultats, diplomes, autorite: autorite.libelle, publieeLe: delivreLe };
+}
+
+/** Session désignée par l'autorité comme elle la nomme : examen + libellé de session. */
+export async function sessionParLibelle(examen: string, libelle: string) {
+  const [s] = await base().select({ id: schema.examensSessions.id }).from(schema.examensSessions)
+    .where(and(eq(schema.examensSessions.examen, examen as never), eq(schema.examensSessions.session, libelle)));
+  if (!s) throw new HTTPException(404, { message: `Aucune session ${examen} « ${libelle} » : le candidaturé doit précéder le procès-verbal` });
+  return s.id;
+}
+
+/** Saisie de secours au bureau : le PV d'une autorité non encore connectée. */
+examens.post("/examens/sessions/:id/deliberation", authentifie, async (c) => {
+  const id = ID_SESSION.parse(c.req.param("id"));
+  const profil = await bureau(c, "Réception du procès-verbal d'une session d'examen");
+  const { decisions, pvReference } = await corps(c, z.object({
+    // Par lots de 5 000 verdicts au plus (≈ 250 Ko, voir la limite de corps propre à cette route).
+    decisions: z.array(LigneVerdict).min(1).max(5000),
+    /** Référence du procès-verbal officiel : l'acte signé reste la source, BEILE en garde la trace. */
+    pvReference: z.string().trim().min(3).max(80),
+  }).strict());
+  return c.json(await recevoirPv(id, decisions, pvReference, profil));
+});
+
+examens.post("/examens/sessions/:id/publication", authentifie, async (c) => {
+  const id = ID_SESSION.parse(c.req.param("id"));
+  const profil = await bureau(c, "Publication des résultats d'examen");
+  return c.json(await publierSession(id, profil, "beile"));
 });
 
 /* ------------------------------------------------------------------ Révocation de diplôme */

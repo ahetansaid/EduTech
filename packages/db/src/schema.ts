@@ -322,7 +322,7 @@ export const evenements = ledger.table("evenements", {
   survenuLe: timestamp("survenu_le", { withTimezone: true }).notNull(),
   enregistreLe: timestamp("enregistre_le", { withTimezone: true }).notNull().defaultNow(),
   auteurId: text("auteur_id").notNull(),
-  source: text("source", { enum: ["beile", "registre_national", "educmaster", "examens"] }).notNull(),
+  source: text("source", { enum: ["beile", "registre_national", "educmaster", "examens", "universite", "dbau"] }).notNull(),
   etablissementId: text("etablissement_id"),
   apprenantId: text("apprenant_id"),
   enseignantId: text("enseignant_id"),
