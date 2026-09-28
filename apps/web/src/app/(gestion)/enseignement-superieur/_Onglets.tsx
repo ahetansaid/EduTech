@@ -1,6 +1,6 @@
 "use client";
 
-import { Briefcase, Building2, GraduationCap, Inbox, Layers } from "lucide-react";
+import { Briefcase, Building2, GraduationCap, Inbox, Layers, Stamp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -20,6 +20,7 @@ const ONGLETS: Onglet[] = [
   { href: "/enseignement-superieur/concours", libelle: "Concours", icone: Inbox },
   { href: "/enseignement-superieur/stages", libelle: "Stages", icone: Briefcase },
   { href: "/enseignement-superieur/formations-pro", libelle: "Formations professionnelles", icone: Layers },
+  { href: "/enseignement-superieur/guichet", libelle: "Guichet & délais", icone: Stamp },
 ];
 
 /** Barre de volets de la console « Enseignement supérieur » — navigation par routes, style back-office. */

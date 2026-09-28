@@ -1,6 +1,6 @@
 "use client";
 
-import { Award, Compass, Route } from "lucide-react";
+import { Award, Compass, FileClock, Route } from "lucide-react";
 import { EspacePersonnel } from "@/components/shell/EspacePersonnel";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -10,6 +10,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       roles={["apprenant"]}
       onglets={[
         { href: "/apprenant", libelle: "Mon parcours", icone: Route },
+        { href: "/apprenant/demarches", libelle: "Mes démarches", icone: FileClock },
         { href: "/apprenant/preuves", libelle: "Mes diplômes", icone: Award },
         { href: "/apprenant/orientation", libelle: "Orientation", icone: Compass },
       ]}

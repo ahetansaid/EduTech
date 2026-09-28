@@ -1,7 +1,7 @@
 import type { Role } from "@beile/contracts";
 import {
   Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Database, FileSearch, GitMerge, GraduationCap,
-  Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Sparkles, UserPlus, Users, type LucideIcon,
+  Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Sparkles, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
 export interface EntreeNav {
@@ -29,6 +29,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/etablissement/eleves", libelle: "Apprenants", icone: Users, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7 · P9" },
   { href: "/etablissement/justificatifs", libelle: "Justificatifs d'absence", icone: ClipboardCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7" },
   { href: "/etablissement/examens", libelle: "Examens et certification", icone: BookOpenCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P8" },
+  { href: "/etablissement/guichet", libelle: "Guichet de l'étudiant", icone: Stamp, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6" },
 
   { href: "/enseignant", libelle: "Mes classes", icone: CalendarCheck, roles: ["enseignant"], groupe: "Enseignement", processus: "P7" },
   { href: "/enseignant/carriere", libelle: "Passeport professionnel", icone: GraduationCap, roles: ["enseignant"], groupe: "Enseignement", processus: "P10" },
