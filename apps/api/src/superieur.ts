@@ -61,8 +61,9 @@ export async function monEnseignant(profil: Profil) {
   return e.id;
 }
 
-/** Établissement d'attache actuel d'un apprenant, lu dans la projection de scolarité — jamais fourni par le client. */
-async function etablissementDe(apprenantId: string) {
+/** Établissement d'attache actuel d'un apprenant, lu dans la projection de scolarité — jamais fourni par le client.
+ *  Partagée avec le guichet : un acte se délivre depuis l'établissement où l'étudiant est inscrit. */
+export async function etablissementDe(apprenantId: string) {
   const [scolarite] = await base().select({ etablissementId: schema.scolarites.etablissementId }).from(schema.scolarites).where(eq(schema.scolarites.apprenantId, apprenantId));
   return scolarite?.etablissementId ?? null;
 }

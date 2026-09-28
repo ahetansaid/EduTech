@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
-  Composante, DecisionDiplome, Diplome, Mention, ModeDeliberation, OfficeDeliberant, RegimePedagogique,
-  SessionEvaluation, StatutCompte, StatutInscriptionUE, StatutJury, VoieAcquisition,
+  AutoriteDelivrance, Composante, DecisionDiplome, Diplome, Mention, ModeDeliberation, ModeRetrait, PieceIdentite,
+  OfficeDeliberant, RegimePedagogique, SessionEvaluation, StatutCompte, StatutInscriptionUE, StatutJury,
+  TypeActe, TypeDecisionAllocation, VoieAcquisition,
 } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -13,7 +14,8 @@ import { notifierFaits } from "./notifications";
  * Point d'écriture unique au registre d'événements.
  * Dans UNE transaction : ajout des événements (table en ajout seul) + mise à jour des projections de
  * lecture (core.scolarites et core.notes pour le K-12, les tables de scolarité du supérieur pour les
- * huit faits de gestion étudiante). Puis, hors transaction, génération des notifications aux familles.
+ * faits de gestion étudiante, `core.demandes_acte` et `core.allocations_etudiantes` pour le guichet).
+ * Puis, hors transaction, génération des notifications aux familles.
  *
  * Une projection ne prend que ce que le fait contient déjà : rejouer `ledger.evenements` doit suffire
  * à reconstruire l'état, sinon le registre n'est qu'un journal d'appoint contourné par la lecture.
@@ -52,6 +54,14 @@ interface FaitJury { juryId: string; autorite: ModeDeliberation; office: OfficeD
 interface FaitDeliberation { deliberationId: string; juryId: string; filiereId: string; diplome: Diplome; decision: DecisionDiplome; creditsValides: number; creditsRequis: number; moyenneGenerale: number | null; mention: Mention | null; ueManquantes: string[] }
 interface FaitTransfert { deInscriptionSuperieureId: string; versInscriptionSuperieureId: string; versEtablissementId: string; ueIds: string[] }
 interface FaitAbandon { inscriptionSuperieureId: string; anneeUniversitaire: string; motif: string | null }
+interface FaitDemandeActe { demandeId: string; typeActe: TypeActe; autorite: AutoriteDelivrance; anneeUniversitaire: string | null; periodeId: string | null; delaiContractuelJours: number; delaiSource: string; motifDemande: string | null; demandeeLe: string }
+interface FaitActeInstruction { demandeId: string; prisEnChargeLe: string }
+interface FaitActeDisponible { demandeId: string; disponibleLe: string; empreinte: string }
+interface FaitActeRemis { demandeId: string; remisLe: string; modeRetrait: ModeRetrait; piecePresentee: PieceIdentite | null; remisA: string | null; referenceQuittance: string | null }
+interface FaitActeRefuse { demandeId: string; motif: string; refuseLe: string }
+interface FaitActeRetire { demandeId: string; retireLe: string }
+interface FaitEcheance { echeanceId: string; anneeUniversitaire: string; typeDecision: TypeDecisionAllocation; dateLimite: string; actesExiges: string[]; autorite: "dbau" | "mesrs"; intitule: string }
+interface FaitAllocation { allocationId: string; anneeUniversitaire: string; typeDecision: TypeDecisionAllocation; statutCompte: StatutCompte; autorite: "dbau" | "mesrs" | "etablissement"; referenceActe: string | null; echeanceId: string | null; motif: string | null; decideLe: string }
 
 export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Parameters<Parameters<ReturnType<typeof base>["transaction"]>[0]>[0]) => Promise<void>) {
   const maintenant = new Date();
@@ -214,6 +224,95 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
       // Double clause : un identifiant d'inscription deviné ne peut fermer la promotion d'autrui.
       await tx.update(schema.inscriptionsSuperieures).set({ statut: "abandon" })
         .where(and(eq(schema.inscriptionsSuperieures.id, d.inscriptionSuperieureId), eq(schema.inscriptionsSuperieures.apprenantId, l.apprenantId!)));
+    }
+
+    /* -- Guichet de l'étudiant : la demande d'acte est une ligne de suivi, son cycle de vie un fait.
+       Les dates viennent du payload (`demandeeLe`, `disponibleLe`, `remisLe`) et non de `survenuLe` :
+       un guichet qui enregistre le lendemain ne doit pas fabriquer un jour de retard. */
+
+    for (const l of lignes.filter((x) => x.type === "DEMANDE_ACTE" && x.apprenantId)) {
+      const d = vue<FaitDemandeActe>(l.donnees);
+      await tx.insert(schema.demandesActe).values({
+        id: d.demandeId, apprenantId: l.apprenantId!, etablissementId: l.etablissementId, typeActe: d.typeActe,
+        autorite: d.autorite, anneeUniversitaire: d.anneeUniversitaire, periodeId: d.periodeId,
+        statut: "demandee", delaiContractuelJours: d.delaiContractuelJours, delaiSource: d.delaiSource,
+        motifDemande: d.motifDemande, demandeeLe: d.demandeeLe,
+      });
+    }
+    for (const l of lignes.filter((x) => x.type === "ACTE_EN_INSTRUCTION")) {
+      const d = vue<FaitActeInstruction>(l.donnees);
+      await tx.update(schema.demandesActe).set({ statut: "en_instruction" }).where(and(
+        eq(schema.demandesActe.id, d.demandeId),
+        eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
+        eq(schema.demandesActe.statut, "demandee"),
+      ));
+    }
+    for (const l of lignes.filter((x) => x.type === "ACTE_DISPONIBLE")) {
+      const d = vue<FaitActeDisponible>(l.donnees);
+      await tx.update(schema.demandesActe).set({ statut: "disponible", disponibleLe: d.disponibleLe, empreinte: d.empreinte }).where(and(
+        eq(schema.demandesActe.id, d.demandeId),
+        eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
+        // Un acte déjà remis ne se « redispose » pas : la remise clos le cycle.
+        sql`${schema.demandesActe.statut} in ('demandee', 'en_instruction', 'disponible')`,
+      ));
+    }
+    for (const l of lignes.filter((x) => x.type === "ACTE_REMIS")) {
+      const d = vue<FaitActeRemis>(l.donnees);
+      await tx.update(schema.demandesActe).set({
+        statut: "remise", remisLe: d.remisLe, modeRetrait: d.modeRetrait, piecePresentee: d.piecePresentee,
+        remisA: d.remisA, referenceQuittance: d.referenceQuittance,
+      }).where(and(
+        eq(schema.demandesActe.id, d.demandeId),
+        eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
+        // La remise suppose l'acte prêt : sans cette clause, on pourrait remettre un acte jamais préparé.
+        eq(schema.demandesActe.statut, "disponible"),
+      ));
+    }
+    for (const l of lignes.filter((x) => x.type === "ACTE_REFUSE")) {
+      const d = vue<FaitActeRefuse>(l.donnees);
+      await tx.update(schema.demandesActe).set({ statut: "refusee", motifRefus: d.motif, disponibleLe: null }).where(and(
+        eq(schema.demandesActe.id, d.demandeId),
+        eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
+        sql`${schema.demandesActe.statut} in ('demandee', 'en_instruction', 'disponible')`,
+      ));
+    }
+    for (const l of lignes.filter((x) => x.type === "ACTE_RETIRE")) {
+      const d = vue<FaitActeRetire>(l.donnees);
+      await tx.update(schema.demandesActe).set({ statut: "retiree" }).where(and(
+        eq(schema.demandesActe.id, d.demandeId),
+        eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
+        // Seul le dépôt n'a personne à prévenir : dès l'instruction, c'est au guichet de statuer.
+        eq(schema.demandesActe.statut, "demandee"),
+      ));
+    }
+
+    /* -- Allocations : une échéance déclarée, une décision datée. Aucun montant ne passe par ici. */
+
+    for (const l of lignes.filter((x) => x.type === "ECHEANCE_DEPOT")) {
+      const d = vue<FaitEcheance>(l.donnees);
+      const valeurs = {
+        anneeUniversitaire: d.anneeUniversitaire, typeDecision: d.typeDecision, dateLimite: d.dateLimite,
+        actesExiges: d.actesExiges, autorite: d.autorite, intitule: d.intitule,
+      };
+      await tx.insert(schema.echeancesDepot).values({ id: d.echeanceId, ...valeurs })
+        .onConflictDoUpdate({ target: schema.echeancesDepot.id, set: valeurs });
+    }
+    for (const l of lignes.filter((x) => x.type === "ALLOCATION_DECIDEE" && x.apprenantId)) {
+      const d = vue<FaitAllocation>(l.donnees);
+      const valeurs = {
+        apprenantId: l.apprenantId!, etablissementId: l.etablissementId, anneeUniversitaire: d.anneeUniversitaire,
+        typeDecision: d.typeDecision, statut: d.statutCompte, autorite: d.autorite, referenceActe: d.referenceActe,
+        decideLe: d.decideLe, echeanceId: d.echeanceId, motif: d.motif,
+      };
+      await tx.insert(schema.allocationsEtudiantes).values({ id: d.allocationId, ...valeurs })
+        .onConflictDoUpdate({ target: schema.allocationsEtudiantes.id, set: valeurs });
+      // Le décompte national d'une promotion suit la décision : c'est la projection de `statut_compte`,
+      // et rien d'autre — la ligne d'allocation garde l'autorité et la référence du texte.
+      await tx.update(schema.inscriptionsSuperieures).set({ statutCompte: d.statutCompte }).where(and(
+        eq(schema.inscriptionsSuperieures.apprenantId, l.apprenantId!),
+        eq(schema.inscriptionsSuperieures.anneeUniversitaire, d.anneeUniversitaire),
+        ...(l.etablissementId ? [eq(schema.inscriptionsSuperieures.etablissementId, l.etablissementId)] : []),
+      ));
     }
   });
   // Les notifications ne doivent jamais faire échouer l'écriture au registre.

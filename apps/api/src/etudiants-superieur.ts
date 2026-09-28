@@ -192,8 +192,9 @@ async function filiereDe(filiereId: string) {
   return f;
 }
 
-/** Inscription supérieure courante d'une personne — lue dans la projection, jamais fournie par le client. */
-async function inscriptionDe(apprenantId: string, etablissementId?: string, anneeUniversitaire?: string) {
+/** Inscription supérieure courante d'une personne — lue dans la projection, jamais fournie par le client.
+ *  Partagée avec le guichet de l'étudiant (`guichet.ts`) : un acte se délivre au titre d'une inscription. */
+export async function inscriptionDe(apprenantId: string, etablissementId?: string, anneeUniversitaire?: string) {
   const [insc] = await base().select().from(schema.inscriptionsSuperieures)
     .where(and(
       eq(schema.inscriptionsSuperieures.apprenantId, apprenantId),
