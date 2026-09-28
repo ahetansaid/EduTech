@@ -7,8 +7,11 @@ import { Mention } from "./referentiels";
  *
  * Doctrine : BEILE n'est pas un logiciel de scolarité d'université. Il tient l'IDENTITÉ de la
  * personne (apprenant), la CERTIFICATION du diplôme national, et l'AGRÉGATION qui permet au
- * MESRS/MESTFP de piloter. Tout le reste (emploi du temps, vie étudiante, bourses, logement,
- * santé) est hors périmètre et n'a pas de forme ici.
+ * MESRS/MESTFP de piloter. La vie étudiante (logement, santé) et la comptabilité publique (frais,
+ * bourses en montants) restent hors périmètre. Depuis le 2026-09-28, deux volets entrent dans ce
+ * périmètre côté PREUVE seulement : la délivrance des actes (`delivrance-actes.ts`, délais datés et
+ * imputables) et le statut d'allocataire d'une bourse (statut, autorité, référence d'arrêté, période —
+ * jamais un montant ni un RIB).
  *
  * Principe de liberté : on ne contraint pas un établissement au standard, on lui permet de s'y
  * adapter. Chaque établissement choisit son régime (semestriel, trimestriel, annuel, modulaire)
@@ -81,16 +84,20 @@ export const StatutInscriptionSuperieure = z.enum([
 export type StatutInscriptionSuperieure = z.infer<typeof StatutInscriptionSuperieure>;
 
 /**
- * Statut de compte de l'inscription, tel que le MESRS le compte dans ses effectifs et tel que les
- * plateformes officielles le nomment (boursier ; « à titre payant (non-boursier) » sur apresmonbac ;
- * sélection « à titre entièrement payant » à l'UAC). `non_precise` existe : un effectif dont le
- * statut n'est pas déclaré reste un effectif, et l'afficher vaut mieux qu'un faux « payant ».
+ * Statut de compte de l'inscription, tel que le MESRS le compte dans ses effectifs. Le vocabulaire a
+ * été élargi le 2026-09-28 aux formes que le mécanisme réel connaît : la demi-bourse (le MESRS décrit
+ * une échelle bourse entière → demi-bourse → payant, ask.gouv.bj n°7) et le secours universitaire
+ * (quota distinct, avec repêchage de non-boursiers au semestre 3). Les fondre dans un seul « boursier »
+ * fausserait le décompte national. `non_precise` reste : un effectif dont le statut n'est pas déclaré
+ * demeure un effectif, et l'afficher vaut mieux qu'un faux « payant ».
  *
- * Limite stricte : BEILE tient ce statut comme DIMENSION DE COMPTAGE. Aucun montant, aucune
- * échéance, aucune gestion de bourse — la Direction des Bourses et Secours Universitaires reste
- * hors de notre périmètre.
+ * Limite stricte, redite dans `delivrance-actes.ts` : BEILE tient ce statut comme un **fait certifié**
+ * (statut + autorité + référence d'arrêté + période), jamais comme une comptabilité. Aucun montant,
+ * aucun échéancier, aucun RIB en base — la liquidation reste à la DBAU et au Trésor public.
  */
-export const StatutCompte = z.enum(["boursier", "payant", "non_precise"]);
+export const StatutCompte = z.enum([
+  "boursier_integral", "demi_boursier", "secours", "payant", "non_precise",
+]);
 export type StatutCompte = z.infer<typeof StatutCompte>;
 
 /**

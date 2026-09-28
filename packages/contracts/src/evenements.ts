@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Composante, Diplome } from "./enseignement-superieur";
+import { AutoriteDelivrance, ModeRetrait, PieceIdentite, TypeActe, TypeDecisionAllocation } from "./delivrance-actes";
 import {
   DecisionDiplome, ModeDeliberation, OfficeDeliberant, RegimePedagogique, SessionEvaluation,
   StatutCompte, StatutInscriptionUE, StatutJury, VoieAcquisition,
@@ -171,7 +172,7 @@ export const Evenement = z.discriminatedUnion("type", [
     anneeUniversitaire: z.string(),
     /** Le régime choisi par l'établissement est un fait enregistré, pas une déduction. */
     regimePedagogique: RegimePedagogique,
-    /** Dimension de comptage national ; aucun montant, aucune bourse. */
+    /** Dimension de comptage national ; le montant de la bourse reste hors du registre. */
     statutCompte: StatutCompte,
   }),
   /** Contrat d'UE signé par l'étudiant (choix individuel, jamais une classe entière). */
@@ -268,6 +269,96 @@ export const Evenement = z.discriminatedUnion("type", [
     inscriptionSuperieureId: z.string(),
     anneeUniversitaire: z.string(),
     motif: z.string().nullable(),
+  }),
+
+  /* -------------------------------------------------- Guichet de l'étudiant et allocations
+   * L'acte administratif entre au registre comme fait daté, et non comme colonne d'un écran : c'est
+   * la date qui rend le retard imputable. Les dates légales (`demandeeLe`, `disponibleLe`, `remisLe`)
+   * sont portées par le payload et non déduites de `survenuLe` — un guichet qui enregistre le
+   * lendemain ne doit pas fabriquer un jour de retard.
+   */
+
+  /** Dépôt d'une demande d'acte. Le délai applicable y est copié : il ne se réécrira pas si le barème bouge. */
+  Base.extend({
+    type: z.literal("DEMANDE_ACTE"),
+    apprenantId: z.string(),
+    demandeId: z.string(),
+    typeActe: TypeActe,
+    autorite: AutoriteDelivrance,
+    anneeUniversitaire: z.string().nullable(),
+    periodeId: z.string().nullable(),
+    delaiContractuelJours: z.number().int().positive(),
+    delaiSource: z.string(),
+    motifDemande: z.string().nullable(),
+    demandeeLe: z.string(),
+  }),
+  /** Prise en charge par le guichet : le fait qui sépare « ma demande est tombée » de « quelqu'un la traite ». */
+  Base.extend({
+    type: z.literal("ACTE_EN_INSTRUCTION"),
+    apprenantId: z.string(),
+    demandeId: z.string(),
+    prisEnChargeLe: z.string(),
+  }),
+  /** L'acte est prêt et signé : sans empreinte, la mise à disposition ne serait pas vérifiable. */
+  Base.extend({
+    type: z.literal("ACTE_DISPONIBLE"),
+    apprenantId: z.string(),
+    demandeId: z.string(),
+    disponibleLe: z.string(),
+    empreinte: z.string(),
+  }),
+  /** Remise, avec le mode et la pièce présentée : « remis » sans réceptionnaire n'est pas une preuve. */
+  Base.extend({
+    type: z.literal("ACTE_REMIS"),
+    apprenantId: z.string(),
+    demandeId: z.string(),
+    remisLe: z.string(),
+    modeRetrait: ModeRetrait,
+    piecePresentee: PieceIdentite.nullable(),
+    remisA: z.string().nullable(),
+    /** Référence de quittance — une trace d'acquittement, jamais un montant. */
+    referenceQuittance: z.string().nullable(),
+  }),
+  /** Refus motivé : un refus sans motif ne se conteste pas, donc n'existe pas dans ce modèle. */
+  Base.extend({
+    type: z.literal("ACTE_REFUSE"),
+    apprenantId: z.string(),
+    demandeId: z.string(),
+    motif: z.string(),
+    refuseLe: z.string(),
+  }),
+  /** L'étudiant retire sa propre demande : la demande reste visible, elle n'est pas effacée. */
+  Base.extend({
+    type: z.literal("ACTE_RETIRE"),
+    apprenantId: z.string(),
+    demandeId: z.string(),
+    retireLe: z.string(),
+  }),
+  /** Décision de l'autorité sur une allocation. Aucun montant : la liquidation reste à la DBAU.
+   *  `typeDecision` et non `type` : le discriminant de l'union est déjà pris par `type`. */
+  Base.extend({
+    type: z.literal("ALLOCATION_DECIDEE"),
+    apprenantId: z.string(),
+    allocationId: z.string(),
+    anneeUniversitaire: z.string(),
+    typeDecision: TypeDecisionAllocation,
+    statutCompte: StatutCompte,
+    autorite: z.enum(["dbau", "mesrs", "etablissement"]),
+    referenceActe: z.string().nullable(),
+    echeanceId: z.string().nullable(),
+    motif: z.string().nullable(),
+    decideLe: z.string(),
+  }),
+  /** Échéance nationale de dépôt : un calendrier est une donnée déclarée par l'autorité, pas du code. */
+  Base.extend({
+    type: z.literal("ECHEANCE_DEPOT"),
+    echeanceId: z.string(),
+    anneeUniversitaire: z.string(),
+    typeDecision: TypeDecisionAllocation,
+    dateLimite: z.string(),
+    actesExiges: z.array(TypeActe),
+    autorite: z.enum(["dbau", "mesrs"]),
+    intitule: z.string(),
   }),
 ]);
 export type Evenement = z.infer<typeof Evenement>;
