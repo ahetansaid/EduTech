@@ -37,4 +37,13 @@ export function genererMotDePasse() {
 }
 
 export const empreinteJeton = (jeton: string) => createHash("sha256").update(jeton).digest("hex");
+
+/**
+ * Empreinte d'un contenu d'acte : la signature du document, non d'un jeton. Les champs sont ordonnés
+ * une fois pour toutes côté émission et côté vérification — sinon deux services honnêtes produiraient
+ * deux empreintes d'un même document.
+ */
+export const empreinteContenu = (champs: readonly (string | number | null | undefined)[]) =>
+  createHash("sha256").update(champs.map((x) => x ?? "").join("|")).digest("hex");
+
 export const nouveauJeton = () => randomBytes(32).toString("base64url");

@@ -55,6 +55,25 @@ const SESSIONS_EVALUATION = ["normale", "rattrapage", "hors_session"] as const;
 /** Tutelles du supérieur : la double tutelle MESTFP + Emploi/PME est fréquente en EFTP. */
 const TUTELLES = ["MESRS", "MESTFP", "EMPLOI_PME"] as const;
 
+/** Vocabulaires du guichet et des allocations — miroirs de `packages/contracts/src/delivrance-actes.ts`. */
+const TYPES_ACTE = [
+  "releve_de_notes", "attestation_de_scolarite", "attestation_de_progression",
+  "attestation_reussite_provisoire", "attestation_reussite_definitive", "diplome", "duplicata_de_diplome",
+] as const;
+const AUTORITES_DELIVRANCE = ["etablissement", "dec_sup", "dges", "dbau"] as const;
+const STATUTS_DEMANDE = ["demandee", "en_instruction", "disponible", "remise", "refusee", "retiree"] as const;
+const MODES_RETRAIT = ["titulaire", "geniteur", "mandataire", "autorite_academique", "dematerialise"] as const;
+const PIECES_IDENTITE = [
+  "carte_nationale_identite", "passeport", "acte_naissance", "procuration_notariee", "procuration_tribunal",
+] as const;
+const TYPES_DECISION_ALLOCATION = ["attribution", "renouvellement", "retablissement", "secours"] as const;
+/**
+ * Statut de compte, tel que le MESRS le compte dans ses effectifs. La demi-bourse et le secours sont des
+ * formes distinctes du mécanisme réel (ask.gouv.bj n°7) : les confondre en un seul « boursier » fausserait
+ * le décompte national. Aucun montant n'est attaché à ce vocabulaire.
+ */
+const STATUTS_COMPTE = ["boursier_integral", "demi_boursier", "secours", "payant", "non_precise"] as const;
+
 /** Géométries PostGIS (SRID 4326). Écriture par ST_GeomFromGeoJSON, lecture par ST_AsGeoJSON. */
 const multipolygone = customType<{ data: string; driverData: string }>({ dataType: () => "geometry(MultiPolygon, 4326)" });
 const point = customType<{ data: string; driverData: string }>({ dataType: () => "geometry(Point, 4326)" });
@@ -688,8 +707,8 @@ export const inscriptionsSuperieures = core.table("inscriptions_superieures", {
   regimePedagogique: text("regime_pedagogique", { enum: REGIMES }).notNull(),
   numeroEtudiant: text("numero_etudiant"),
   statut: text("statut", { enum: ["inscrit", "cesure", "redoublement_partiel", "abandon", "transfere_sorti", "diplome"] }).notNull(),
-  /** Dimension de comptage national seule : aucun montant, aucune échéance, aucune gestion de bourse. */
-  statutCompte: text("statut_compte", { enum: ["boursier", "payant", "non_precise"] }).notNull().default("non_precise"),
+  /** Dimension de comptage national : un statut certifié, jamais un montant ni un échéancier. */
+  statutCompte: text("statut_compte", { enum: STATUTS_COMPTE }).notNull().default("non_precise"),
   /** L'année n'est pas un bloc : en redoublement partiel on ne repasse que ces UE. Vide sinon. */
   ueNonAcquises: text("ue_non_acquises").array().notNull().default(sql`'{}'::text[]`),
   creditsAcquisCumules: integer("credits_acquis_cumules").notNull().default(0),
@@ -966,4 +985,93 @@ export const deliberationsDiplome = core.table("deliberations_diplome", {
   uniqueIndex("deliberations_diplome_apprenant_jury_uq").on(t.apprenantId, t.juryId),
   index("deliberations_diplome_apprenant_idx").on(t.apprenantId, t.delibereLe),
   index("deliberations_diplome_decision_idx").on(t.decision, t.delibereLe),
+]);
+
+/* ------------------------------------------------------------------ Guichet de l'étudiant et allocations
+ * La délivrance d'un acte est un processus daté, pas une case d'un écran : sans demande, sans mise à
+ * disposition et sans remise horodatées, personne ne peut dire qui retarde. Les délais contractuels
+ * sont copiés à la demande (`delaiContractuelJours`, `delaiSource`) : un barème qui bouge ne doit pas
+ * réécrire l'historique jugé.
+ *
+ * Frontière acceptée le 2026-09-28 : le volet allocation tient un STATUT certifié (autorité, référence
+ * d'arrêté, période), jamais une comptabilité. Aucune colonne de montant, d'échéancier ou de RIB — la
+ * liquidation reste à la DBAU et au Trésor public.
+ */
+
+/**
+ * Une demande d'acte, de bout en bout. Trois dates portent trois responsabilités distinctes :
+ * `demandeeLe` (l'étudiant), `disponibleLe` (le guichet), `remisLe` (les deux). Les supprimer ou les
+ * confondre rendrait tout contentieux impossible — et c'est le contentieux qui est la douleur.
+ */
+export const demandesActe = core.table("demandes_acte", {
+  id: text("id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  etablissementId: text("etablissement_id").references(() => etablissements.id),
+  typeActe: text("type_acte", { enum: TYPES_ACTE }).notNull(),
+  autorite: text("autorite", { enum: AUTORITES_DELIVRANCE }).notNull(),
+  anneeUniversitaire: text("annee_universitaire"),
+  periodeId: text("periode_id").references(() => periodes.id),
+  statut: text("statut", { enum: STATUTS_DEMANDE }).notNull().default("demandee"),
+  /** Délai publié applicable au jour du dépôt, copié — pas une déduction du statut. */
+  delaiContractuelJours: integer("delai_contractuel_jours").notNull(),
+  delaiSource: text("delai_source").notNull(),
+  /** Motif du demandeur. Exigée pour un duplicata : sans trace de perte, le duplicata est un second original. */
+  motifDemande: text("motif_demande"),
+  /** Un refus sans motif ne se conteste pas : il n'existe donc pas dans ce modèle. */
+  motifRefus: text("motif_refus"),
+  demandeeLe: date("demandee_le").notNull(),
+  disponibleLe: date("disponible_le"),
+  remisLe: date("remis_le"),
+  modeRetrait: text("mode_retrait", { enum: MODES_RETRAIT }),
+  piecePresentee: text("piece_presentee", { enum: PIECES_IDENTITE }),
+  /** Nom du réceptionnaire quand ce n'est pas le titulaire (géniteur, mandataire, autorité académique). */
+  remisA: text("remis_a"),
+  /** Référence de quittance : une trace d'acquittement, jamais un montant. */
+  referenceQuittance: text("reference_quittance"),
+  /** Empreinte des champs signés : un tiers peut vérifier le document sans avoir de compte. */
+  empreinte: text("empreinte"),
+}, (t) => [
+  index("demandes_acte_apprenant_idx").on(t.apprenantId, t.statut),
+  index("demandes_acte_guichet_idx").on(t.etablissementId, t.typeActe, t.statut),
+  index("demandes_acte_annee_idx").on(t.anneeUniversitaire, t.typeActe),
+]);
+
+/**
+ * Échéance nationale de dépôt d'un dossier d'allocation. Une date d'administration est une donnée
+ * déclarée par l'autorité, pas une constante de code : elle bouge chaque année.
+ */
+export const echeancesDepot = core.table("echeances_depot", {
+  id: text("id").primaryKey(),
+  anneeUniversitaire: text("annee_universitaire").notNull(),
+  typeDecision: text("type_decision", { enum: TYPES_DECISION_ALLOCATION }).notNull(),
+  dateLimite: date("date_limite").notNull(),
+  /** Vocabulaire `TYPES_ACTE`, contrôlé par le contrat : le tableau reste un `text[]` simple. */
+  actesExiges: text("actes_exiges").array().notNull().default(sql`'{}'::text[]`),
+  autorite: text("autorite", { enum: ["dbau", "mesrs"] }).notNull(),
+  intitule: text("intitule").notNull(),
+}, (t) => [
+  uniqueIndex("echeances_depot_annee_type_uq").on(t.anneeUniversitaire, t.typeDecision),
+  index("echeances_depot_date_idx").on(t.dateLimite),
+]);
+
+/**
+ * Décision de l'autorité sur une allocation, par année universitaire. La clé d'unicité porte le type de
+ * décision : un rétablissement après une attribution retirée est un autre acte, pas un doublon.
+ */
+export const allocationsEtudiantes = core.table("allocations_etudiantes", {
+  id: text("id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  etablissementId: text("etablissement_id").references(() => etablissements.id),
+  anneeUniversitaire: text("annee_universitaire").notNull(),
+  typeDecision: text("type_decision", { enum: TYPES_DECISION_ALLOCATION }).notNull(),
+  statut: text("statut", { enum: STATUTS_COMPTE }).notNull(),
+  autorite: text("autorite", { enum: ["dbau", "mesrs", "etablissement"] }).notNull(),
+  referenceActe: text("reference_acte"),
+  decideLe: date("decide_le").notNull(),
+  echeanceId: text("echeance_id").references(() => echeancesDepot.id),
+  motif: text("motif"),
+}, (t) => [
+  uniqueIndex("allocations_etudiantes_apprenant_annee_type_uq").on(t.apprenantId, t.anneeUniversitaire, t.typeDecision),
+  index("allocations_etudiantes_annee_idx").on(t.anneeUniversitaire, t.statut),
+  index("allocations_etudiantes_apprenant_idx").on(t.apprenantId, t.decideLe),
 ]);
