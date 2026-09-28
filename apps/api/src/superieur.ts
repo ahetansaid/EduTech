@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Concours, StatutConcours, StatutStage, type Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
-import { and, asc, count, eq, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -198,10 +198,17 @@ superieur.post("/moi/stages", authentifie, async (c) => {
     au: DATE.nullable().default(null),
   }).strict());
   if (du && au && au < du) throw new HTTPException(422, { message: "Date de fin antérieure à la date de début" });
-  const etablissementId = await etablissementDe(apprenantId);
+  // Un stage du supérieur s'attache à l'inscription en cours (établissement ET filière : sans filière,
+  // aucune statistique de stage par filière). La scolarité du K-12 ne sert qu'à défaut, pour un stage
+  // de lycée technique.
+  const [insc] = await base().select({ etablissementId: schema.inscriptionsSuperieures.etablissementId, filiereId: schema.inscriptionsSuperieures.filiereId })
+    .from(schema.inscriptionsSuperieures)
+    .where(and(eq(schema.inscriptionsSuperieures.apprenantId, apprenantId), eq(schema.inscriptionsSuperieures.statut, "inscrit")))
+    .orderBy(desc(schema.inscriptionsSuperieures.anneeUniversitaire)).limit(1);
+  const etablissementId = insc?.etablissementId ?? await etablissementDe(apprenantId);
   if (!etablissementId) throw new HTTPException(422, { message: "Aucune scolarité rattachée à un établissement : stage non déclarable" });
   const id = `STG-${randomUUID()}`;
-  const [declare] = await base().insert(schema.stage).values({ id, apprenantId, etablissementId, entreprise, tuteurPro, du, au }).returning();
+  const [declare] = await base().insert(schema.stage).values({ id, apprenantId, etablissementId, filiereId: insc?.filiereId ?? null, entreprise, tuteurPro, du, au }).returning();
   await journaliser(profil, "Déclaration d'un stage", entreprise, "consultation_personnelle", true, null);
   return c.json(declare, 201);
 });

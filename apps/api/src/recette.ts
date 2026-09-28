@@ -268,6 +268,60 @@ if (ECRITURES) {
   verifier("Public : diplôme révoqué → statut « revoque »", (apresRevocation.json as { statut?: string }).statut === "revoque", true);
 }
 
+titre("Enseignement supérieur : catalogue public, portes et intégrité (lecture et refus)");
+{
+  const IFRI = "ETB-SUP-UAC-IFRI";
+  const filieres = await anonyme.appel("GET", "/public/superieur/filieres");
+  verifier("Public : catalogue des filières", filieres.statut, 200, `${liste(filieres.json).length} filière(s)`);
+  verifier("Public : chaque filière dit si elle est habilitée", liste(filieres.json).length > 0 && liste(filieres.json).every((f) => typeof f.habilitee === "boolean"), true);
+  verifier("Public : filière non habilitée signalée (établissement privé en instruction)", liste(filieres.json).some((f) => f.habilitee === false), true);
+  verifier("Public : établissements du supérieur", (await anonyme.appel("GET", "/public/superieur/etablissements")).statut, 200);
+  verifier("Public : sessions de concours", (await anonyme.appel("GET", "/public/superieur/concours")).statut, 200);
+  verifier("Public : les universités figurent dans l'annuaire", (await anonyme.appel("GET", "/public/etablissements?niveau=superieur")).json.total as number > 0, true);
+
+  const [dirIfri, etudiantIfri, enseignanteSup] = await Promise.all(["prosper.ahouandjinou", "etudiant.ifri", "sena.hounkpatin"].map(async (id) => {
+    const s = new Session();
+    verifier(`Connexion ${id}`, (await s.connexion(id)).statut, 200);
+    return s;
+  }));
+  verifier("Direction IFRI : ses inscriptions", (await dirIfri!.appel("GET", `/etablissements/${IFRI}/inscriptions`)).statut, 200);
+  verifier("Direction IFRI : inscriptions d'une autre université", (await dirIfri!.appel("GET", "/etablissements/ETB-SUP-UP/inscriptions")).statut, 403);
+  verifier("Directrice de CEG : inscriptions de l'IFRI", (await directrice!.appel("GET", `/etablissements/${IFRI}/inscriptions`)).statut, 403);
+  verifier("Bureau du supérieur : catalogue de pilotage", (await central!.appel("GET", "/enseignement-superieur/filieres")).statut, 200);
+  verifier("Étudiant·e : catalogue de pilotage refusé", (await etudiantIfri!.appel("GET", "/enseignement-superieur/filieres")).statut, 403);
+  verifier("Étudiant·e : son contrat pédagogique", (await etudiantIfri!.appel("GET", "/moi/contrat")).statut, 200);
+  verifier("Étudiant·e : ses démarches", (await etudiantIfri!.appel("GET", "/moi/actes")).statut, 200);
+  verifier("Enseignante : notes d'une offre d'une autre enseignante refusées", (await enseignanteSup!.appel("POST", "/moi/enseignements/notes-ue", { offreUeId: "OFU-inexistante", notes: [{ apprenantId: "APP-900001", note: 12 }] })).statut, 404);
+
+  // Failles corrigées : une règle ou un jury ne se réaffecte pas d'un périmètre à l'autre (refus AVANT toute écriture).
+  const regle = { regleId: "RGL-NATIONALE-LMD", portee: "etablissement", etablissementId: IFRI, seuilAcquisition: 8 };
+  verifier("Direction IFRI : reprendre la règle nationale en la redéclarant chez soi", (await dirIfri!.appel("POST", "/regles-validation", regle)).statut, 403);
+  verifier("Direction IFRI : déclarer une règle nationale", (await dirIfri!.appel("POST", "/regles-validation", { portee: "nationale" })).statut, 403);
+  const jurys = liste((await dirIfri!.appel("GET", `/etablissements/${IFRI}/jurys`)).json);
+  if (jurys[0]) {
+    const j = jurys[0];
+    verifier("Direction IFRI : réaffecter un jury à une autre filière", (await dirIfri!.appel("POST", `/etablissements/${IFRI}/jurys`, {
+      juryId: j.id, autorite: j.autorite, office: j.office, diplome: j.diplome, periodeId: null, filiereId: "FIL-UAC-IFRI-M-INFO",
+      president: "Pr Test RECETTE", membres: ["A. Un", "B. Deux"], quorum: 3, statut: j.statut,
+    })).statut, 403);
+    verifier("Direction de CEG : délibérer pour l'IFRI", (await directrice!.appel("POST", `/etablissements/${IFRI}/deliberations`, { juryId: j.id, decisions: [{ apprenantId: "APP-900001", decision: "admis" }] })).statut, 403);
+  }
+  // Diplôme du supérieur : l'identifiant seul atteste l'existence, jamais le titulaire.
+  const delib = liste((await dirIfri!.appel("GET", `/etablissements/${IFRI}/deliberations`)).json);
+  const certificat = delib.map((d) => (d.deliberation as { certificatId?: string } | undefined)?.certificatId ?? d.certificatId).find((x): x is string => typeof x === "string");
+  if (certificat) {
+    const v = await anonyme.appel("GET", `/certificats/${certificat}/verification`);
+    verifier("Licence délivrée : vérifiable, titulaire non révélé sans QR", (v.json as { statut?: string; titulaire?: string }).statut === "sans_empreinte" && !(v.json as { titulaire?: string }).titulaire, true, certificat);
+  }
+  const actes = liste((await etudiantIfri!.appel("GET", "/moi/actes")).json);
+  const pret = actes.find((a) => a.statut === "disponible" || a.statut === "remise");
+  if (pret) verifier("Acte scellé : vérification publique", (await anonyme.appel("GET", `/actes/${pret.id}/verification`)).statut, 200);
+  if (ECRITURES && pret?.statut === "disponible") {
+    // Double scellé refusé : un acte « disponible » ne se rescelle pas (le premier document deviendrait « altéré »).
+    verifier("Guichet : sceller deux fois le même acte", (await dirIfri!.appel("POST", `/etablissements/${IFRI}/actes/${pret.id}/decision`, { statut: "disponible" })).statut, 409);
+  }
+}
+
 titre("Fin de session");
 verifier("Déconnexion", (await enseignant!.appel("POST", "/auth/deconnexion")).statut, 200);
 verifier("Session révoquée côté serveur", (await enseignant!.appel("GET", "/auth/session")).statut, 401);

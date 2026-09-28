@@ -199,7 +199,7 @@ guichet.post("/moi/actes/demande", authentifie, limiteDebit(20, 60_000, cleUtili
     motifDemande: z.string().trim().max(200).nullable().default(null),
     idSaisie: ID_SAISIE,
   }).strict());
-  const deja = await dejaSaisi(saisie.idSaisie, "DEMANDE_ACTE");
+  const deja = await dejaSaisi(saisie.idSaisie, "DEMANDE_ACTE", apprenantId);
   if (deja) return c.json({ demandeId: null, evenementId: deja[0], deja: true }, 200);
 
   const insc = await inscriptionCourante(apprenantId, saisie.anneeUniversitaire);
@@ -505,8 +505,9 @@ async function decider(c: Context<{ Variables: Variables }>, demandeId: string, 
   const [evenementId] = await inscrireAuRegistre([{
     type: FAIT_TRANSITION[decision.statut], auteurId: profil.id, etablissementId: d.etablissementId, apprenantId: d.apprenantId, donnees,
   }]);
-  // La projection porte une clause d'état : si elle n'a pas bougé, un autre agent a clos la ligne entre
-  // notre lecture et l'écriture. Le fait reste au registre (la tentative est tracée), l'état ne s'invente pas.
+  // La projection porte une clause d'état et exige une ligne touchée : si un autre agent a clos la ligne
+  // entre notre lecture et l'écriture, la transaction entière (fait compris) est annulée en 409. Ce
+  // contrôle-ci n'est plus qu'un filet si la clause venait à changer.
   const [apres] = await base().select({ statut: schema.demandesActe.statut }).from(schema.demandesActe).where(eq(schema.demandesActe.id, id));
   if (apres?.statut !== decision.statut) {
     await journaliser(profil, action, `${id} · déjà ${apres?.statut ?? "clos"} entre-temps`, "gestion", false, "concurrence");
@@ -610,8 +611,12 @@ guichet.post("/enseignement-superieur/echeances", authentifie, async (c) => {
       dateLimite: saisie.dateLimite, actesExiges: saisie.actesExiges, autorite: saisie.autorite, intitule: saisie.intitule,
     },
   }]);
+  // La projection garde l'identifiant de la ligne déjà ouverte sur cette clé naturelle : on renvoie
+  // celui-là, jamais un identifiant tiré ici qui n'existerait pas en base.
+  const [ligne] = await base().select({ id: schema.echeancesDepot.id }).from(schema.echeancesDepot)
+    .where(and(eq(schema.echeancesDepot.anneeUniversitaire, saisie.anneeUniversitaire), eq(schema.echeancesDepot.typeDecision, saisie.typeDecision)));
   await journaliser(profil, "Déclaration d'une échéance nationale de dépôt", `${saisie.anneeUniversitaire} · ${saisie.typeDecision} → ${saisie.dateLimite}`, "controle", true, null);
-  return c.json({ echeanceId, evenementId }, 201);
+  return c.json({ echeanceId: ligne?.id ?? echeanceId, evenementId }, 201);
 });
 
 /** Le calendrier tel que déclaré : une date administrative n'est pas une donnée sensible. */
@@ -665,8 +670,12 @@ guichet.post("/enseignement-superieur/allocations", authentifie, async (c) => {
       decideLe: saisie.decideLe ?? aujourdhui(),
     },
   }]);
+  const [ligne] = await base().select({ id: schema.allocationsEtudiantes.id }).from(schema.allocationsEtudiantes).where(and(
+    eq(schema.allocationsEtudiantes.apprenantId, saisie.apprenantId), eq(schema.allocationsEtudiantes.anneeUniversitaire, saisie.anneeUniversitaire),
+    eq(schema.allocationsEtudiantes.typeDecision, saisie.typeDecision),
+  ));
   await journaliser(profil, "Décision d'allocation étudiante", `${saisie.apprenantId} · ${saisie.typeDecision} ${saisie.statutCompte}`, "controle", true, null);
-  return c.json({ allocationId, statutCompte: saisie.statutCompte, etablissementId: insc?.etablissementId ?? null, evenementId }, 201);
+  return c.json({ allocationId: ligne?.id ?? allocationId, statutCompte: saisie.statutCompte, etablissementId: insc?.etablissementId ?? null, evenementId }, 201);
 });
 
 /**

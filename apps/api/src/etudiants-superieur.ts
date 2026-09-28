@@ -565,6 +565,73 @@ scolariteSuperieure.post("/moi/contrat/ue", authentifie, async (c) => {
   return c.json({ inscriptionUeId, statut: "proposee", evenementId }, 201);
 });
 
+/**
+ * Inscription pédagogique aux UE OBLIGATOIRES d'une période. En LMD, ce que la maquette impose ne se
+ * choisit pas : la scolarité l'inscrit d'office pour toute la promotion (composante et année de la
+ * période), et le contrat naît signé. Les UE optionnelles et libres restent au choix de l'étudiant
+ * (`/moi/contrat/ue`). Une UE déjà acquise n'est jamais réinscrite (redoublement partiel) ; un contrat
+ * déjà ouvert n'est pas touché. Rejouable : ce qui existe est compté, pas doublé.
+ */
+scolariteSuperieure.post("/etablissements/:id/contrats/obligatoires", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil } = await accesEtablissement(c, id, true);
+  const saisie = await corps(c, z.object({ periodeId: ID_PERIODE, idSaisie: ID_SAISIE }).strict());
+  const [periode] = await base().select().from(schema.periodes).where(eq(schema.periodes.id, saisie.periodeId));
+  if (!periode) throw new HTTPException(404, { message: "Période introuvable" });
+  if ((await filiereDe(periode.filiereId)).etablissementId !== id) throw new HTTPException(422, { message: "Période hors de cet établissement" });
+
+  const [offres, promotion] = await Promise.all([
+    base().select({ offre: schema.offresUe, ueId: schema.unitesEnseignement.id, code: schema.unitesEnseignement.code, capacite: schema.offresUe.capacite })
+      .from(schema.offresUe).innerJoin(schema.unitesEnseignement, eq(schema.unitesEnseignement.id, schema.offresUe.ueId))
+      .where(and(eq(schema.offresUe.periodeId, periode.id), eq(schema.offresUe.etablissementId, id), eq(schema.offresUe.session, "normale"), eq(schema.unitesEnseignement.type, "obligatoire"))),
+    base().select().from(schema.inscriptionsSuperieures).where(and(
+      eq(schema.inscriptionsSuperieures.etablissementId, id), eq(schema.inscriptionsSuperieures.filiereId, periode.filiereId),
+      eq(schema.inscriptionsSuperieures.anneeUniversitaire, periode.anneeUniversitaire),
+      periode.composante ? eq(schema.inscriptionsSuperieures.composante, periode.composante) : isNull(schema.inscriptionsSuperieures.composante),
+      inArray(schema.inscriptionsSuperieures.statut, ["inscrit", "redoublement_partiel"]),
+    )),
+  ]);
+  if (!offres.length) throw new HTTPException(422, { message: "Aucune UE obligatoire offerte sur cette période" });
+  if (!promotion.length) return c.json({ signes: 0, existants: 0, dejaAcquises: 0 }, 200);
+
+  const apprenantIds = promotion.map((i) => i.apprenantId);
+  const [contrats, acquis] = await Promise.all([
+    base().select({ inscriptionId: schema.inscriptionsUe.inscriptionSuperieureId, offreId: schema.inscriptionsUe.offreUeId }).from(schema.inscriptionsUe)
+      .where(and(inArray(schema.inscriptionsUe.inscriptionSuperieureId, promotion.map((i) => i.id)), inArray(schema.inscriptionsUe.offreUeId, offres.map((o) => o.offre.id)))),
+    base().select({ apprenantId: schema.validationsUe.apprenantId, ueId: schema.validationsUe.ueId }).from(schema.validationsUe)
+      .where(and(inArray(schema.validationsUe.apprenantId, apprenantIds), inArray(schema.validationsUe.ueId, offres.map((o) => o.ueId)))),
+  ]);
+  const ouverts = new Set(contrats.map((x) => `${x.inscriptionId}|${x.offreId}`));
+  const acquises = new Set(acquis.map((x) => `${x.apprenantId}|${x.ueId}`));
+  let existants = 0, dejaAcquises = 0;
+  const faits: NouveauFait[] = [];
+  for (const insc of promotion) {
+    for (const o of offres) {
+      if (ouverts.has(`${insc.id}|${o.offre.id}`)) { existants++; continue; }
+      if (acquises.has(`${insc.apprenantId}|${o.ueId}`)) { dejaAcquises++; continue; }
+      faits.push({
+        type: "INSCRIPTION_UE", auteurId: profil.id, etablissementId: id, apprenantId: insc.apprenantId,
+        donnees: {
+          inscriptionUeId: `ICU-${randomUUID()}`, inscriptionSuperieureId: insc.id, apprenantId: insc.apprenantId,
+          offreUeId: o.offre.id, groupeId: null, statut: "signee", motifRefus: null,
+          ...(saisie.idSaisie ? { idSaisie: `${saisie.idSaisie}:${o.offre.id}` } : {}),
+        },
+      });
+    }
+  }
+  // Une offre obligatoire plafonnée se remplit pour toute la promotion ou pas du tout : un étudiant
+  // laissé hors d'une UE que la maquette lui impose serait bloqué au jury sans l'avoir su.
+  for (const o of offres.filter((x) => x.capacite !== null)) {
+    const [{ n } = { n: 0 }] = await base().select({ n: count() }).from(schema.inscriptionsUe)
+      .where(and(eq(schema.inscriptionsUe.offreUeId, o.offre.id), inArray(schema.inscriptionsUe.statut, ["proposee", "signee", "validee"])));
+    const ajouts = faits.filter((f) => f.donnees.offreUeId === o.offre.id).length;
+    if (n + ajouts > o.capacite!) throw new HTTPException(409, { message: `UE ${o.code} : capacité ${o.capacite} insuffisante pour la promotion (${n} + ${ajouts})` });
+  }
+  const enregistres = faits.length ? await inscrireAuRegistre(faits) : [];
+  await journaliser(profil, "Inscription pédagogique aux UE obligatoires", `${periode.id} · ${faits.length} contrat(s) signé(s)`, "gestion", true, null);
+  return c.json({ signes: enregistres.length, existants, dejaAcquises }, 201);
+});
+
 /** Décision de la direction sur un contrat : signer, abandonner, ne pas valider. `validee` n'est pas
  *  posable ici — un contrat s'instruit par un acquis, pas par une signature rétroactive. */
 scolariteSuperieure.post("/etablissements/:id/contrat/ue", authentifie, async (c) => {
@@ -1103,7 +1170,9 @@ scolariteSuperieure.post("/etablissements/:id/deliberations", authentifie, async
       const sessionCertifiee = insc.anneeUniversitaire;
       const delivreLe = aujourdhui();
       const brut = {
-        id: `CERT-${CODE_CERTIFICAT[jury.diplome]}-${sessionCertifiee.match(/\d{4}/)?.[0] ?? delivreLe.slice(0, 4)}-${d.apprenantId.slice(4)}`,
+        // Année d'OBTENTION (fin de l'année universitaire), comme pour le K-12 : une licence de la session
+        // 2025-2026 est un diplôme de 2026 — `CERT-LIC-2026-…`, jamais 2025.
+        id: `CERT-${CODE_CERTIFICAT[jury.diplome]}-${sessionCertifiee.match(/\d{4}/g)?.at(-1) ?? delivreLe.slice(0, 4)}-${d.apprenantId.slice(4)}`,
         apprenantId: d.apprenantId, examen: jury.diplome, session: sessionCertifiee, mention, moyenne: moyenneGenerale,
         delivreLe, filiereId: filiere.id, etablissementId: id, office: jury.office,
       };

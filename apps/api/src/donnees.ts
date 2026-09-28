@@ -55,7 +55,11 @@ async function chargerCouchesDepuisBase(db: Base): Promise<CouchesNationales> {
       lng: sql<number>`ST_X(${schema.etablissements.position})`, lat: sql<number>`ST_Y(${schema.etablissements.position})`,
       capacite: schema.etablissements.capacite, sallesDeClasse: schema.etablissements.sallesDeClasse, infrastructures: schema.etablissements.infrastructures,
       effectif: schema.etablissements.effectifDeclare, enseignants: schema.etablissements.enseignantsDeclares, transmis: schema.etablissements.transmis,
-    }).from(schema.etablissements),
+    }).from(schema.etablissements)
+      // Le cube national porte les indicateurs de l'éducation de base (primaire, secondaire) : une
+      // université n'entre ni dans un taux de scolarisation ni dans un ratio élèves/salle du K-12.
+      // Le supérieur a ses propres agrégats (`/enseignement-superieur/*/effectifs`).
+      .where(inArray(schema.etablissements.cycle, ["primaire", "secondaire"])),
   ]);
 
   const stats = new Map<string, CommuneStats>();
