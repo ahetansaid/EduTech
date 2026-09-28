@@ -34,65 +34,99 @@ const fr = (v: number, d = 1) => v.toLocaleString("fr-FR", { minimumFractionDigi
  */
 
 const SOURCE = "Registre des événements BEILE, EducMaster, système d'examens (données simulées)";
+const SOURCE_REGISTRE = "Registre des écritures du supérieur (BEILE, module scolarité) — aucune donnée simulée";
 
 export const DICTIONNAIRE: Record<CodeIndicateur, DefinitionIndicateur> = {
   effectif_apprenants: {
     code: "effectif_apprenants", nom: "Effectif des apprenants",
     definition: "Nombre d'apprenants inscrits et non sortis (abandon ou transfert hors système) à la date d'observation.",
     formule: "Σ inscriptions + reprises + transferts entrants − abandons − transferts sortants",
-    unite: "nombre", source: SOURCE, frequence: "Quasi temps réel", proprietaire: "Direction de la programmation et de la prospective",
+    unite: "nombre", moteur: "simulation", source: SOURCE, frequence: "Quasi temps réel", proprietaire: "Direction de la programmation et de la prospective",
     version: "1.2", dimensions: ["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"], effectifMinimalPublication: 5,
   },
   taux_seuil_moyenne: {
     code: "taux_seuil_moyenne", nom: "Proportion d'apprenants atteignant un seuil de moyenne",
     definition: "Part des apprenants évalués dont la moyenne annuelle dans la matière est supérieure ou égale au seuil.",
     formule: "apprenants évalués avec moyenne ≥ seuil ÷ apprenants évalués × 100",
-    unite: "pourcentage", source: SOURCE, frequence: "Périodique (trimestre)", proprietaire: "Direction des examens et concours",
+    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Périodique (trimestre)", proprietaire: "Direction des examens et concours",
     version: "2.0", dimensions: ["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"], effectifMinimalPublication: 10,
   },
   moyenne_generale: {
     code: "moyenne_generale", nom: "Moyenne des apprenants",
     definition: "Moyenne arithmétique des moyennes annuelles des apprenants évalués dans la matière.",
     formule: "Σ moyennes des apprenants évalués ÷ apprenants évalués",
-    unite: "note", source: SOURCE, frequence: "Périodique (trimestre)", proprietaire: "Direction des examens et concours",
+    unite: "note", moteur: "simulation", source: SOURCE, frequence: "Périodique (trimestre)", proprietaire: "Direction des examens et concours",
     version: "1.1", dimensions: ["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"], effectifMinimalPublication: 10,
   },
   taux_absenteisme: {
     code: "taux_absenteisme", nom: "Taux d'absentéisme",
     definition: "Part des demi-journées de classe manquées, justifiées ou non, sur les demi-journées dues.",
     formule: "demi-journées d'absence ÷ demi-journées dues × 100",
-    unite: "pourcentage", source: SOURCE, frequence: "Quotidienne", proprietaire: "Direction de l'enseignement secondaire",
+    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Quotidienne", proprietaire: "Direction de l'enseignement secondaire",
     version: "1.0", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 10,
   },
   ratio_apprenants_enseignant: {
     code: "ratio_apprenants_enseignant", nom: "Ratio apprenants par enseignant",
     definition: "Nombre d'apprenants pour un enseignant en poste, tous statuts confondus.",
     formule: "effectif des apprenants ÷ enseignants en poste",
-    unite: "ratio", source: SOURCE, frequence: "Mensuelle", proprietaire: "Direction des ressources humaines",
+    unite: "ratio", moteur: "simulation", source: SOURCE, frequence: "Mensuelle", proprietaire: "Direction des ressources humaines",
     version: "1.1", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 1,
   },
   taux_occupation: {
     code: "taux_occupation", nom: "Taux d'occupation des établissements",
     definition: "Rapport entre l'effectif accueilli et la capacité d'accueil déclarée des établissements.",
     formule: "effectif ÷ capacité d'accueil × 100",
-    unite: "pourcentage", source: SOURCE, frequence: "Mensuelle", proprietaire: "Direction de la programmation et de la prospective",
+    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Mensuelle", proprietaire: "Direction de la programmation et de la prospective",
     version: "1.0", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 1,
   },
   taux_abandon: {
     code: "taux_abandon", nom: "Taux d'abandon",
     definition: "Part des apprenants inscrits en début d'année ayant quitté le système sans transfert au cours de l'année.",
     formule: "abandons de l'année ÷ inscrits en début d'année × 100",
-    unite: "pourcentage", source: SOURCE, frequence: "Annuelle", proprietaire: "Direction de la programmation et de la prospective",
+    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Annuelle", proprietaire: "Direction de la programmation et de la prospective",
     version: "1.0", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 10,
   },
   taux_reussite_examen: {
     code: "taux_reussite_examen", nom: "Taux de réussite à l'examen",
     definition: "Nombre de candidats admis rapporté au nombre de candidats effectivement évalués (présents).",
     formule: "candidats admis ÷ candidats présents × 100",
-    unite: "pourcentage", source: SOURCE, frequence: "Annuelle (après délibération)", proprietaire: "Direction des examens et concours",
+    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Annuelle (après délibération)", proprietaire: "Direction des examens et concours",
     version: "3.1", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 10,
   },
+  /* ------------------------------------------------------------------ Crédits ECTS — l'unité de compte du supérieur.
+   * Ces deux définitions sont publiées avec leur calculateur : le service de scolarité du supérieur
+   * (`/enseignement-superieur/scolarite/credits-ects`, apps/api/src/etudiants-superieur.ts) les rend à
+   * partir des écritures enregistrées, par période pour un établissement et par voie pour le pilotage.
+   * Le moteur est `registre`, pas `simulation` : la couche statistique nationale n'a aucune UE, aucune
+   * période ni aucun crédit — lui demander de les calculer produirait un chiffre vide sous un nom vrai.
+   * Leurs `dimensions` sont celles que ce calculateur agrège vraiment. Ni sexe ni territoire : la
+   * ventilation communale des crédits attendrait une jointure que le service ne publie pas encore, et
+   * une dimension annoncée sans rendu serait une promesse de plus qu'un dictionnaire n'en peut tenir.
+   */
+  credits_ects_acquis: {
+    code: "credits_ects_acquis", nom: "Crédits ECTS acquis",
+    definition: "Somme des crédits ECTS attachés aux acquisitions d'unité d'enseignement encore en cours de validité, pour la population et la période observées. Une UE s'acquiert en bloc, jamais au prorata : le crédit entier est compté à la date d'acquisition, et un acquis périmé selon la règle de validité sort du compte sans disparaître du registre.",
+    formule: "Σ crédits acquis des validations d'UE dont l'acquis est en cours de validité",
+    unite: "nombre", moteur: "registre", source: SOURCE_REGISTRE, frequence: "À chaque décision de validation",
+    proprietaire: "Direction générale de l'enseignement supérieur (MESRS)",
+    version: "1.0", dimensions: ["annee"], effectifMinimalPublication: 10,
+  },
+  taux_capitalisation_ects: {
+    code: "taux_capitalisation_ects", nom: "Taux de capitalisation des crédits ECTS",
+    definition: "Part, en pourcentage, des crédits attendus sur la période qui ont été réellement acquis par les étudiants sous contrat signé. C'est la mesure du parcours LMD : un étudiant qui valide sa période a capitalisé 30 crédits sur 30. Le dénominateur est la population contractée, pas la population inscrite : un étudiant sans contrat signé n'a rien eu à valider, et le compter ferait baisser le taux pour une raison administrative.",
+    formule: "crédits ECTS acquis ÷ (crédits attendus de la période × étudiants sous contrat signé) × 100",
+    unite: "pourcentage", moteur: "registre", source: SOURCE_REGISTRE, frequence: "Périodique (à la clôture de période)",
+    proprietaire: "Direction générale de l'enseignement supérieur (MESRS)",
+    version: "1.0", dimensions: ["annee"], effectifMinimalPublication: 10,
+  },
 };
+
+/** Les indicateurs qu'un moteur donné est capable de rendre. Le dictionnaire ne promet jamais un calcul absent. */
+export const codesDuMoteur = (moteur: DefinitionIndicateur["moteur"]): CodeIndicateur[] =>
+  (Object.values(DICTIONNAIRE) as DefinitionIndicateur[]).filter((d) => d.moteur === moteur).map((d) => d.code);
+
+/** Un indicateur se calcule-t-il sur les écritures du supérieur, hors de la couche statistique nationale ? */
+export const estCalculeParLeRegistre = (code: CodeIndicateur) => DICTIONNAIRE[code].moteur === "registre";
 
 /** Part de l'effectif d'un niveau dont l'âge (au 31/12 de l'année d'observation) est dans l'intervalle. */
 export function partAge(niveau: Niveau, ageMin?: number, ageMax?: number) {

@@ -242,7 +242,7 @@ export const PROFILS: ContenuProfil[] = [
     arrivee: "/ask",
     ecrans: [
       { titre: "Ask Education", chemin: "/ask", icone: "sparkles", resume: "Une question en français, un chiffre prouvé.", points: ["Chiffre, définition, source, couverture et indice de confiance.", "Petits effectifs masqués ; questions sur une personne refusées et journalisées."] },
-      { titre: "Dictionnaire national", chemin: "/plateforme/dictionnaire", icone: "database", resume: "La définition officielle de chaque indicateur.", points: ["Formule, source, unité, direction propriétaire.", "Historique des versions : un chiffre publié se recalcule avec la définition de son année."] },
+      { titre: "Dictionnaire national", chemin: "/plateforme/dictionnaire", icone: "database", resume: "La définition officielle de chaque indicateur.", points: ["Formule, source, unité, direction propriétaire et moteur de calcul.", "Deux moteurs publiés : la couche statistique nationale, et le registre des écritures du supérieur (crédits ECTS).", "Historique des versions : un chiffre publié se recalcule avec la définition de son année."] },
     ],
     taches: [
       { titre: "Obtenir un chiffre citable", etapes: ["Posez votre question dans Ask Education, ou touchez un exemple.", "Notez le chiffre, l'indicateur utilisé, la source et l'indice de confiance.", "Ouvrez le Dictionnaire national et relevez la définition et sa version.", "Citez les trois : chiffre, définition (avec version), date de consultation."] },
@@ -250,6 +250,7 @@ export const PROFILS: ContenuProfil[] = [
     ],
     faq: [
       { q: "Pourquoi certaines lignes sont-elles masquées ?", r: "Quand un groupe compte trop peu d'élèves, afficher le chiffre permettrait de reconnaître des personnes. Il est donc masqué." },
+      { q: "Pourquoi une question sur les crédits ECTS est-elle refusée ?", r: "Les crédits ECTS ne sortent pas de la couche statistique nationale : ils se calculent à partir des écritures du registre du supérieur (contrats d'UE, décisions de validation). Le dictionnaire en publie la définition et sa version, et le refus vous dit quel service les rend." },
       { q: "Puis-je exporter les données brutes ?", r: "Non. L'accès chercheur porte sur des résultats agrégés. Pour un besoin particulier, adressez une demande à l'administration centrale." },
     ],
     conseils: ["Citez toujours la version de la définition utilisée.", "Ne tentez pas de recouper des résultats pour identifier une personne : c'est interdit et journalisé."],

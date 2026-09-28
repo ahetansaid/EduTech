@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ContratPedagogique, Mention } from "@beile/contracts";
+import type { ContratPedagogique, LigneCapitalisation, Mention, ResultatCapitalisation } from "@beile/contracts";
 import {
   AvisConseil, AutoriteEquivalence, Composante, ConclusionControle, CycleEpes, DecisionDiplome,
   DeliberationDiplome, Diplome, homologationOperante, ModeDeliberation, OfficeDeliberant,
@@ -10,7 +10,8 @@ import {
 } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
-import { and, asc, count, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { communesDuPerimetre, DICTIONNAIRE } from "@beile/simulation/semantique";
+import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -1121,7 +1122,7 @@ scolariteSuperieure.get("/enseignement-superieur/scolarite/effectifs", authentif
   perimetrePilotage(profil);
   const [inscriptions, validations, homologations, jurys] = await Promise.all([
     base().select({ statut: schema.inscriptionsSuperieures.statut, effectif: count() }).from(schema.inscriptionsSuperieures).groupBy(schema.inscriptionsSuperieures.statut),
-    base().select({ voie: schema.filiereSuperieure.voie, credits: count(schema.validationsUe.id) }).from(schema.validationsUe)
+    base().select({ voie: schema.filiereSuperieure.voie, decisions: count(schema.validationsUe.id) }).from(schema.validationsUe)
       .innerJoin(schema.unitesEnseignement, eq(schema.unitesEnseignement.id, schema.validationsUe.ueId))
       .innerJoin(schema.filiereSuperieure, eq(schema.filiereSuperieure.id, schema.unitesEnseignement.filiereId))
       .groupBy(schema.filiereSuperieure.voie),
@@ -1130,4 +1131,256 @@ scolariteSuperieure.get("/enseignement-superieur/scolarite/effectifs", authentif
   ]);
   await journaliser(profil, "Consultation des effectifs de la scolarité du supérieur", `${inscriptions.length} statut(s)`, "statistique", true, null);
   return c.json({ inscriptions, validations, homologations, jurys });
+});
+
+/* ================================================================== Crédit ECTS : le moteur « registre » du dictionnaire */
+
+/** Les définitions publiées que ce module rend. Citer leur version, pas seulement leur nom. */
+const DEFINITIONS_ECTS = [DICTIONNAIRE.credits_ects_acquis, DICTIONNAIRE.taux_capitalisation_ects];
+/** Le seuil se lit dans la définition : deux chiffres, une seule règle de publication. */
+const SEUIL_ECTS = Math.min(...DEFINITIONS_ECTS.map((d) => d.effectifMinimalPublication));
+
+/**
+ * Un acquis compte tant que sa propre règle le déclare valide (paramètre 7, `dureeValiditeAcquis`) :
+ * date d'acquisition + durée de la règle qui l'a jugé. La durée vient de la ligne de règle et non d'une
+ * constante de code, donc un établissement qui ramène la validité à trois ans voit son chiffre bouger
+ * sans qu'on touche une ligne. Les acquis périmés restent rendus à part : les faire disparaître du total
+ * ferait passer une règle pour une perte de donnée.
+ */
+const ACQUIS_VALIDE = sql`${schema.validationsUe.acquiseLe} + make_interval(years => ${schema.reglesValidation.dureeValiditeAcquis}) >= current_date`;
+
+type PeriodeBrute = {
+  periodeId: string;
+  etablissementId: string;
+  filiere: string;
+  voie: string;
+  intitule: string;
+  anneeUniversitaire: string;
+  creditsParEtudiant: number;
+  contrats: number;
+  creditsAcquis: number;
+  creditsPerimes: number;
+};
+
+/**
+ * Une ligne par période ouverte sous le périmètre : ce qui est attendu (crédits de la période ×
+ * contrats signés) et ce qui est acquis. Deux requêtes et non une jointure unique parce que contrats et
+ * acquis sont deux éventails d'une même période — les joindre ensemble multiplierait les lignes et les
+ * sommes, soit un total de crédits faux sous un libellé vrai.
+ */
+async function periodesBrutes(etablissements: Set<string> | null, annee: string | null): Promise<PeriodeBrute[]> {
+  if (etablissements && etablissements.size === 0) return [];
+  const restrictionEtab = etablissements ? inArray(schema.filiereSuperieure.etablissementId, [...etablissements]) : undefined;
+  const restrictionAnnee = annee ? eq(schema.periodes.anneeUniversitaire, annee) : undefined;
+  const attendus = await base().select({
+    periodeId: schema.periodes.id,
+    etablissementId: schema.filiereSuperieure.etablissementId,
+    filiere: schema.filiereSuperieure.nom,
+    voie: schema.filiereSuperieure.voie,
+    intitule: schema.periodes.intitule,
+    anneeUniversitaire: schema.periodes.anneeUniversitaire,
+    creditsParEtudiant: sql<number>`max(${schema.periodes.creditsAttendus})::int`,
+    contrats: sql<number>`count(distinct ${schema.inscriptionsUe.apprenantId})::int`,
+  }).from(schema.periodes)
+    .innerJoin(schema.filiereSuperieure, eq(schema.filiereSuperieure.id, schema.periodes.filiereId))
+    .leftJoin(schema.offresUe, eq(schema.offresUe.periodeId, schema.periodes.id))
+    // Un contrat `proposee` n'est pas attendu : l'étudiant ne l'a pas signé. `validee` reste compté,
+    // c'est une UE d'une période antérieure que la direction a validée sans la re-signer.
+    .leftJoin(schema.inscriptionsUe, and(eq(schema.inscriptionsUe.offreUeId, schema.offresUe.id), inArray(schema.inscriptionsUe.statut, ["signee", "validee"])))
+    .where(and(restrictionAnnee, restrictionEtab))
+    .groupBy(schema.periodes.id, schema.filiereSuperieure.etablissementId, schema.filiereSuperieure.nom, schema.filiereSuperieure.voie, schema.periodes.intitule, schema.periodes.anneeUniversitaire)
+    .orderBy(schema.periodes.anneeUniversitaire, schema.filiereSuperieure.nom, schema.periodes.numero);
+
+  const ids = attendus.map((p) => p.periodeId);
+  const acquis = ids.length === 0 ? [] : await base().select({
+    periodeId: schema.validationsUe.periodeId,
+    creditsAcquis: sql<number>`coalesce(sum(${schema.validationsUe.creditsAcquis}) filter (where ${ACQUIS_VALIDE}), 0)::int`,
+    creditsPerimes: sql<number>`coalesce(sum(${schema.validationsUe.creditsAcquis}) filter (where not ${ACQUIS_VALIDE}), 0)::int`,
+  }).from(schema.validationsUe)
+    .innerJoin(schema.reglesValidation, eq(schema.reglesValidation.id, schema.validationsUe.regleValidationId))
+    .where(inArray(schema.validationsUe.periodeId, ids))
+    .groupBy(schema.validationsUe.periodeId);
+  const parId = new Map(acquis.map((a) => [a.periodeId ?? "", a]));
+  return attendus.map((p) => ({
+    ...p,
+    creditsAcquis: parId.get(p.periodeId)?.creditsAcquis ?? 0,
+    creditsPerimes: parId.get(p.periodeId)?.creditsPerimes ?? 0,
+  }));
+}
+
+/** Le taux, arrondi au dixième : une virgule de plus n'ajouterait rien à une somme de crédits entiers. */
+const tauxDe = (acquis: number, attendus: number) => (attendus > 0 ? Math.round((acquis / attendus) * 1000) / 10 : null);
+
+/**
+ * Cellule établissement : une ligne par période, effectif = population sous contrat. Rien n'est masqué
+ * chez soi — le seuil de publication protège l'agrégat, pas la direction qui a enregistré les faits.
+ */
+async function lignesParPeriode(etablissements: Set<string> | null, annee: string | null): Promise<LigneCapitalisation[]> {
+  const brutes = await periodesBrutes(etablissements, annee);
+  return brutes.map((p) => {
+    const attendus = p.creditsParEtudiant * p.contrats;
+    return {
+      cle: `periode:${p.periodeId}`,
+      libelle: `${p.filiere} · ${p.intitule}`,
+      etablissementId: p.etablissementId,
+      anneeUniversitaire: p.anneeUniversitaire,
+      creditsAcquis: p.creditsAcquis,
+      creditsAttendus: attendus,
+      creditsPerimes: p.creditsPerimes,
+      apprenants: p.contrats,
+      tauxCapitalisation: tauxDe(p.creditsAcquis, attendus),
+      petiteUnite: p.contrats < SEUIL_ECTS,
+      masquee: false,
+    };
+  });
+}
+
+/**
+ * Populations sous contrat signé : par voie, et distincte sur tout le périmètre. Deux comptages et non
+ * l'addition des seconds : un étudiant inscrit dans deux filières de voies différentes apparaîtrait deux
+ * fois dans la somme, et un effectif gonflé est un seuil de publication cru à l'envers — il ferait
+ * publier une cellule qui devrait rester masquée.
+ */
+async function populationsContractees(etablissements: Set<string> | null, annee: string | null) {
+  if (etablissements && etablissements.size === 0) return { parVoie: new Map<string, number>(), totale: 0 };
+  const ou = [inArray(schema.inscriptionsUe.statut, ["signee", "validee"]),
+    annee ? eq(schema.periodes.anneeUniversitaire, annee) : undefined,
+    etablissements ? inArray(schema.filiereSuperieure.etablissementId, [...etablissements]) : undefined];
+  const joints = {
+    offresUe: eq(schema.offresUe.id, schema.inscriptionsUe.offreUeId),
+    periodes: eq(schema.periodes.id, schema.offresUe.periodeId),
+    filiere: eq(schema.filiereSuperieure.id, schema.periodes.filiereId),
+  };
+  const [parVoie, [totale]] = await Promise.all([
+    base().select({ voie: schema.filiereSuperieure.voie, apprenants: sql<number>`count(distinct ${schema.inscriptionsUe.apprenantId})::int` })
+      .from(schema.inscriptionsUe)
+      .innerJoin(schema.offresUe, joints.offresUe)
+      .innerJoin(schema.periodes, joints.periodes)
+      .innerJoin(schema.filiereSuperieure, joints.filiere)
+      .where(and(...ou))
+      .groupBy(schema.filiereSuperieure.voie),
+    base().select({ apprenants: sql<number>`count(distinct ${schema.inscriptionsUe.apprenantId})::int` })
+      .from(schema.inscriptionsUe)
+      .innerJoin(schema.offresUe, joints.offresUe)
+      .innerJoin(schema.periodes, joints.periodes)
+      .innerJoin(schema.filiereSuperieure, joints.filiere)
+      .where(and(...ou)),
+  ]);
+  const carte = new Map<string, number>();
+  for (const p of parVoie) carte.set(p.voie, p.apprenants);
+  return { parVoie: carte, totale: totale?.apprenants ?? 0 };
+}
+
+/**
+ * Cellule pilotage : une ligne par voie, jamais par établissement. Le seuil de publication se lit sur la
+ * population distincte de la voie ; sous lui, les valeurs ne sont pas rendues et `masquee` le dit.
+ */
+async function lignesParVoie(etablissements: Set<string> | null, annee: string | null): Promise<{ lignes: LigneCapitalisation[]; populationTotale: number }> {
+  const brutes = await periodesBrutes(etablissements, annee);
+  if (brutes.length === 0) return { lignes: [], populationTotale: 0 };
+  const { parVoie, totale } = await populationsContractees(etablissements, annee);
+
+  const parCle = new Map<string, PeriodeBrute[]>();
+  for (const p of brutes) parCle.set(p.voie, [...(parCle.get(p.voie) ?? []), p]);
+  const lignes = [...parCle.entries()].map(([voie, periodes]) => {
+    const apprenants = parVoie.get(voie) ?? 0;
+    const creditsAcquis = periodes.reduce((s, p) => s + p.creditsAcquis, 0);
+    const creditsPerimes = periodes.reduce((s, p) => s + p.creditsPerimes, 0);
+    const creditsAttendus = periodes.reduce((s, p) => s + p.creditsParEtudiant * p.contrats, 0);
+    const annees = [...new Set(periodes.map((p) => p.anneeUniversitaire))].sort();
+    const premiere = annees[0] ?? "—";
+    const derniere = annees[annees.length - 1] ?? premiere;
+    const publiable = apprenants >= SEUIL_ECTS;
+    return {
+      cle: `voie:${voie}`,
+      libelle: voie,
+      etablissementId: null,
+      anneeUniversitaire: annees.length === 1 ? premiere : `${premiere} → ${derniere}`,
+      creditsAcquis: publiable ? creditsAcquis : null,
+      creditsAttendus: publiable ? creditsAttendus : null,
+      creditsPerimes: publiable ? creditsPerimes : null,
+      apprenants,
+      tauxCapitalisation: publiable ? tauxDe(creditsAcquis, creditsAttendus) : null,
+      petiteUnite: !publiable,
+      masquee: !publiable,
+    };
+  });
+  return { lignes, populationTotale: totale };
+}
+
+/**
+ * Total de la réponse : somme des cellules publiées, sur la population distincte du périmètre. Les
+ * cellules masquées n'y entrent pas — les y glisserais ferait du total un chiffre plus grand que la
+ * somme de ce qui est affiché, ce qui est exactement ce que le seuil de publication interdit.
+ */
+function consolider(
+  lignes: LigneCapitalisation[],
+  cible: { cle: string; libelle: string; etablissementId: string | null; apprenants: number },
+): LigneCapitalisation | null {
+  if (!lignes.length) return null;
+  const acquis = lignes.reduce((s, l) => s + (l.creditsAcquis ?? 0), 0);
+  const attendus = lignes.reduce((s, l) => s + (l.creditsAttendus ?? 0), 0);
+  const perimes = lignes.reduce((s, l) => s + (l.creditsPerimes ?? 0), 0);
+  return {
+    ...cible,
+    anneeUniversitaire: lignes[0]!.anneeUniversitaire,
+    creditsAcquis: acquis,
+    creditsAttendus: attendus,
+    creditsPerimes: perimes,
+    tauxCapitalisation: tauxDe(acquis, attendus),
+    petiteUnite: cible.apprenants < SEUIL_ECTS,
+    masquee: cible.apprenants < SEUIL_ECTS,
+  };
+}
+
+const enTeteCapitalisation = (annee: string | null, perimetre: string) => ({
+  moteur: "registre" as const,
+  anneeUniversitaire: annee,
+  perimetre,
+  definitions: DEFINITIONS_ECTS.map((d) => `${d.code} v${d.version}`),
+  seuilPublication: SEUIL_ECTS,
+});
+
+/** L'année demandée, validée ; null = toutes les périodes enregistrées. */
+const anneeDemandee = (c: Context) => {
+  const a = c.req.query("annee");
+  return a ? ANNEE.parse(a) : null;
+};
+
+/**
+ * Ce que l'établissement capitalise réellement : ses crédits acquis, par période. Porte
+ * `accesEtablissement` — chef et inspecteur de la circonscription, pas un rôle de pilotage : la
+ * ventilation par période permet de rattacher une ligne à un groupe d'étudiants identifiable.
+ */
+scolariteSuperieure.get("/etablissements/:id/scolarite/credits-ects", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await accesEtablissement(c, id);
+  const annee = anneeDemandee(c);
+  const [lignes, population] = await Promise.all([lignesParPeriode(new Set([id]), annee), populationsContractees(new Set([id]), annee)]);
+  await journaliser(profil, "Consultation de la capitalisation ECTS de l'établissement", `${lignes.length} période(s)`, finalite, true, null);
+  return c.json({
+    ...enTeteCapitalisation(annee, id),
+    lignes,
+    total: consolider(lignes, { cle: "total", libelle: "Ensemble des périodes", etablissementId: id, apprenants: population.totale }),
+  } satisfies ResultatCapitalisation);
+});
+
+/**
+ * Même définition, agrégée nationale : une ligne par voie, sous le périmètre territorial de l'agent,
+ * avec la règle des petites cellules appliquée ici pour de vrai. Aucun établissement nommé.
+ */
+scolariteSuperieure.get("/enseignement-superieur/scolarite/credits-ects", authentifie, async (c) => {
+  const profil = c.get("profil");
+  const perimetre = perimetrePilotage(profil);
+  const communes = communesDuPerimetre(perimetre);
+  const idsEtab = communes === null ? null : new Set((await base().select({ id: schema.etablissements.id }).from(schema.etablissements)
+    .where(and(eq(schema.etablissements.cycle, "superieur"), inArray(schema.etablissements.communeId, [...communes])))).map((e) => e.id));
+  const annee = anneeDemandee(c);
+  const { lignes, populationTotale } = await lignesParVoie(idsEtab, annee);
+  await journaliser(profil, "Consultation nationale de la capitalisation ECTS", `${lignes.length} voie(s)`, "statistique", true, null);
+  return c.json({
+    ...enTeteCapitalisation(annee, perimetre.niveau),
+    lignes,
+    total: consolider(lignes, { cle: "total", libelle: "Ensemble des voies publiées", etablissementId: null, apprenants: populationTotale }),
+  } satisfies ResultatCapitalisation);
 });

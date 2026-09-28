@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Composante, Diplome, TypeParcours, Tutelle } from "./enseignement-superieur";
 import { Mention } from "./referentiels";
+import { MoteurCalcul } from "./semantique";
 
 /**
  * Gestion des étudiants du supérieur — formes du contrat pédagogique LMD/EFTP.
@@ -677,3 +678,47 @@ export const ContratPedagogique = z.object({
   regleAppliquee: RegleValidation,
 });
 export type ContratPedagogique = z.infer<typeof ContratPedagogique>;
+
+/**
+ * La ligne qui rend les deux définitions « ECTS » du dictionnaire national (`credits_ects_acquis`,
+ * `taux_capitalisation_ects`) : agrégat calculé par le registre, jamais par la couche statistique.
+ *
+ * Elle porte son dénominateur et son effectif, pas seulement son taux : un pourcentage de crédits sans
+ * population lisible est un chiffre qu'on ne peut pas contester. Sous le seuil de publication, les
+ * valeurs ne sont pas rendues (`null`) mais l'effectif, lui, reste visible — la cellule est déclarée,
+ * pas effacée. À l'intérieur d'un établissement, où le chef lit déjà ses étudiants en nominatif, la
+ * cellule est seulement marquée `petiteUnite` : là, masquer serait tromper son propre guichet.
+ */
+export const LigneCapitalisation = z.object({
+  /** Clé de la cellule : `periode:<id>` dans un établissement, `voie:<voie>` dans un agrégat national. */
+  cle: z.string(),
+  libelle: z.string(),
+  /** null dans un agrégat national : nommer l'établissement d'une cellule de trois étudiants, c'est les nommer. */
+  etablissementId: z.string().nullable(),
+  anneeUniversitaire: z.string(),
+  /** `credits_ects_acquis` : Σ des crédits des acquis encore valides. null = cellule non publiée. */
+  creditsAcquis: z.number().int().nonnegative().nullable(),
+  /** Σ crédits par période × population sous contrat signé : le dénominateur du taux. */
+  creditsAttendus: z.number().int().nonnegative().nullable(),
+  /** Crédits dont la règle (paramètre 7) a déclaré l'acquis périmé : hors du numérateur, jamais perdus. */
+  creditsPerimes: z.number().int().nonnegative().nullable(),
+  apprenants: z.number().int().nonnegative(),
+  /** `taux_capitalisation_ects` : null quand rien n'est attendu — pas un 0 %, qui dirait « rien n'a marché ». */
+  tauxCapitalisation: z.number().nullable(),
+  petiteUnite: z.boolean(),
+  masquee: z.boolean(),
+}).strict();
+export type LigneCapitalisation = z.infer<typeof LigneCapitalisation>;
+
+/** Réponse du moteur « registre » : la définition dont le chiffre est l'effet, et les cellules. */
+export const ResultatCapitalisation = z.object({
+  moteur: MoteurCalcul,
+  anneeUniversitaire: z.string().nullable(),
+  perimetre: z.string(),
+  /** Code et version du dictionnaire : un crédit cité sans sa définition est un chiffre libre. */
+  definitions: z.array(z.string()),
+  seuilPublication: z.number().int().nonnegative(),
+  lignes: z.array(LigneCapitalisation),
+  total: LigneCapitalisation.nullable(),
+});
+export type ResultatCapitalisation = z.infer<typeof ResultatCapitalisation>;

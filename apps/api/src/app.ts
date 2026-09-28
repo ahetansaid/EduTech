@@ -25,7 +25,7 @@ import { decider } from "@beile/simulation/abac";
 import { repondre } from "@beile/simulation/ask";
 import { empreinteCertificat } from "@beile/simulation/micro";
 import { indexer, notesApprenant, situationApprenant } from "@beile/simulation/projections";
-import { calculer, DICTIONNAIRE, priorites } from "@beile/simulation/semantique";
+import { calculer, DICTIONNAIRE, estCalculeParLeRegistre, priorites } from "@beile/simulation/semantique";
 import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -116,6 +116,13 @@ app.post("/indicateurs", authentifie, async (c) => {
   const requete = await corps(c, RequeteSemantique);
   const profil = c.get("profil");
   const perimetre = perimetrePilotage(profil);
+  // Le dictionnaire publie aussi des définitions rendues par le registre du supérieur. Les demander ici
+  // renverrait une série vide sous un nom officiel : refus explicite, la donnée nominative n'est pas
+  // agrégée par cette couche et ne se calcule que sous le périmètre d'un établissement.
+  if (estCalculeParLeRegistre(requete.indicateur)) {
+    await journaliser(profil, "Calcul d'indicateur refusé — moteur registre", DICTIONNAIRE[requete.indicateur].nom, "statistique", false, "moteur");
+    throw new HTTPException(422, { message: `« ${DICTIONNAIRE[requete.indicateur].nom} » est rendu par le registre du supérieur (/enseignement-superieur/scolarite/credits-ects), pas par la couche statistique.` });
+  }
   const couches = await chargerCouches(base());
   const resultat = memo(couches, `indicateur:${JSON.stringify(perimetre)}:${JSON.stringify(requete)}`, () => calculer(couches, requete, perimetre));
   await journaliser(profil, "Calcul d'indicateur", resultat.definition.nom, "statistique", true, null);
