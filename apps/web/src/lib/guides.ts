@@ -714,6 +714,115 @@ export const GUIDES: Guide[] = [
       BOUTON_GUIDE,
     ],
   },
+  {
+    id: "demarches",
+    titre: "Mes démarches",
+    roles: ["apprenant"],
+    depart: "/apprenant/demarches",
+    ecrans: /^\/apprenant\/demarches/,
+    nature: "ecran",
+    profil: "apprenant",
+    etapes: [
+      {
+        titre: "Vos actes administratifs, au même endroit",
+        texte: "Ici vous déposez une demande d'acte, vous suivez où elle en est, et vous lisez ce qu'il reste à produire pour votre dossier de bourse.",
+        pourquoi: "Chaque étape est enregistrée à la date où elle arrive : c'est ce qui permet de dire qui a retardé, et de réclamer avec une preuve.",
+      },
+      {
+        cible: "demarches-depot",
+        titre: "Déposer une demande",
+        texte: "Choisissez l'acte, puis l'année universitaire si elle compte (AAAA-AAAA). Le guichet compétent et le délai s'affichent avec la source du barème. Pour un duplicata de diplôme, le motif est obligatoire.",
+        pourquoi: "Un relevé de notes se délivre à votre établissement en trois jours ; une attestation de succès ou un diplôme relève de la DEC, en trente à soixante jours. Savoir laquelle vous demandez évite d'attendre six semaines une pièce qui traînait depuis trois jours.",
+      },
+      {
+        cible: "demarches-suivi",
+        titre: "Le suivi, ligne par ligne",
+        texte: "« Déposée », « En cours de préparation », « Prête à retirer », « Remise ». Quand le délai publié est dépassé, la ligne affiche le retard en jours et l'autorité qui doit signer.",
+        pourquoi: "Relancer avec la référence de la demande et le nombre de jours écoulés vaut mieux que « je n'ai rien reçu ».",
+      },
+      {
+        cible: "demarches-pieces",
+        titre: "Votre dossier de bourse avant la date limite",
+        texte: "Les pièces exigées par l'échéance en cours, celles déjà remises, et les jours restants. Une pièce prête au guichet mais que vous n'êtes pas allé retirer y compte comme manquante.",
+        pourquoi: "Une allocation se perd plus souvent pour un dépôt hors délai que pour un manque de résultats.",
+      },
+      {
+        cible: "demarches-allocations",
+        titre: "Les décisions qui vous concernent",
+        texte: "Nature de la décision (attribution, renouvellement, rétablissement, secours), autorité qui a statué, date et référence du texte. Aucun montant n'apparaît ici.",
+        pourquoi: "Le montant, l'échéancier et le RIB relèvent de la DBAU, pas d'un registre de scolarité. Ce que BEILE conserve, c'est votre droit et sa preuve.",
+      },
+      BOUTON_GUIDE,
+    ],
+  },
+  {
+    id: "guichet",
+    titre: "Guichet de l'étudiant",
+    roles: ["chef_etablissement"],
+    depart: "/etablissement/guichet",
+    ecrans: /^\/etablissement\/guichet/,
+    nature: "ecran",
+    profil: "chef_etablissement",
+    etapes: [
+      {
+        cible: "guichet-file",
+        titre: "La file de vos guichetiers",
+        texte: "Les actes demandés par vos étudiants, dans l'ordre des dépôts. Filtrez sur « À préparer » pour voir ce qu'aucun agent n'a encore pris en charge, ou sur « En retard » pour ce qui dépasse le délai publié.",
+        pourquoi: "Le retard est calculé par le serveur contre le barème applicable au jour du dépôt, pas contre l'horloge du poste.",
+      },
+      {
+        titre: "Faire avancer, étape par étape",
+        texte: "« Prendre en charge », puis « Marquer prêt à retirer » avec la date de mise à disposition, puis « Constat de remise ». Trois faits distincts, chacun daté et signé de votre agent.",
+        pourquoi: "Une remise sans date de mise à disposition ne prouve rien et laisse l'étudiant dans l'incertitude.",
+      },
+      {
+        titre: "Consigner la remise",
+        texte: "Indiquez le mode de retrait — titulaire, géniteur, mandataire, autorité académique, dématérialisé — et la pièce d'identité présentée. Pour un mandataire, la procuration est exigée ; la quittance n'est qu'une référence.",
+        pourquoi: "C'est la preuve qui clôt le dossier de bourse de l'étudiant, et la protection de votre établissement en cas de contestation.",
+      },
+      {
+        cible: "guichet-delais",
+        titre: "Ce que votre guichet met de jours",
+        texte: "Par acte et par barème : nombre de demandes, remises dans le délai, médiane constatée. Sous dix demandes, la ligne est marquée « sous le seuil ».",
+        pourquoi: "Une moyenne se laisse tirer par deux dossiers lents, et un délai mesuré sur trois dossiers d'une petite filière réidentifierait son auteur.",
+      },
+      BOUTON_GUIDE,
+    ],
+  },
+  {
+    id: "guichet-national",
+    titre: "Guichet & délais",
+    roles: ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"],
+    depart: "/enseignement-superieur/guichet",
+    ecrans: /^\/enseignement-superieur\/guichet/,
+    nature: "ecran",
+    profil: "administration_centrale",
+    etapes: [
+      {
+        titre: "Le coût réel du parcours administratif",
+        texte: "Le délai constaté entre le dépôt d'une demande d'acte et sa mise à disposition, agrégé par établissement, par acte et par autorité signataire.",
+        pourquoi: "C'est la réponse chiffrée à « les étudiants n'obtiennent jamais leurs diplômes à temps » — sans jamais nommer un étudiant.",
+      },
+      {
+        cible: "guichet-national-tableau",
+        titre: "Lire le comparateur",
+        texte: "Chaque ligne compare le barème publié à la médiane réellement observée. Sous dix demandes, un badge « sous le seuil » prévient : la médiane est instable.",
+        pourquoi: "Nommer l'autorité (établissement, DEC, DGES, DBAU) change tout : on ne peut pas imputer à une université la lenteur de sa DEC.",
+      },
+      {
+        cible: "guichet-national-calendrier",
+        titre: "Le calendrier des dépôts",
+        texte: "Les dates limites déclarées par la DBAU ou le MESRS, avec les pièces exigées à chaque échéance. Tant qu'aucune date n'est déclarée, l'étudiant lit « aucune échéance » — et un retard n'est imputable à personne.",
+      },
+      {
+        cible: "guichet-national-allocations",
+        titre: "L'effet des allocations",
+        texte: "Effectifs par statut de compte, par nature de décision et par autorité. Aucun montant, aucun RIB : un statut daté, signé, avec la référence de l'arrêté.",
+        pourquoi: "La liquidation reste à l'administration payeuse ; ici on suit le droit, pas la paie.",
+      },
+      COMPTE,
+    ],
+  },
 ];
 
 export const guideParId = (id: string) => GUIDES.find((g) => g.id === id);

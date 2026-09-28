@@ -114,6 +114,18 @@
 - « Formations pro » : l'échelle des diplômes EFTP (CAP → BEP → Bac technique → BT → BTS/CQP) et la passerelle vers la licence professionnelle.
 - Le bandeau « indicatif » rappelle que ces listes ne remplacent pas les arrêtés publiés.
 
+### Guichet & délais
+
+`/enseignement-superieur/guichet` — Ce que le parcours administratif coûte réellement aux étudiants.
+
+- Médiane constatée entre le dépôt d'une demande et la mise à disposition de l'acte, par établissement, par acte et par autorité signataire (établissement, DEC, DGES, DBAU).
+- Le barème jugé est celui qui courait au jour du dépôt ; deux lignes peuvent donc coexister pour le même acte.
+- Aucune ligne nominative : uniquement des comptages et des médianes, bornés aux communes du périmètre de l'agent.
+- Sous dix demandes, la ligne est signalée « sous le seuil » — le signalement ne masque rien, il prévient le lecteur.
+- « Calendrier des dépôts » : les dates limites déclarées par la DBAU ou le MESRS, avec les pièces exigées à chaque échéance.
+- « Effet des allocations » : effectifs par statut de compte, par nature de décision et par autorité — aucun montant, aucun RIB, aucun échéancier.
+- « Exporter (CSV) » : les lignes affichées, avec la médiane (jamais la moyenne) et la provenance du barème.
+
 ## Tâches pas à pas
 
 ### Prioriser ses décisions du jour
@@ -166,6 +178,37 @@
 6. Touchez « Exporter (CSV) » sur l'onglet concerné : le fichier reprend uniquement les lignes affichées, avec sa ligne de provenance.
 7. Confrontez ce portrait aux arrêtés publiés du MESRS et du MESTFP avant toute communication : BEILE ne les contient pas encore.
 
+### Voir où le parcours administratif retarde
+
+> « Le diplôme tarde » ne se soigne pas ; « la DEC retarde de 40 jours sur les attestations de succès » oui.
+
+1. Ouvrez « Enseignement supérieur », puis l'onglet « Guichet & délais ».
+2. Lisez la tuile « Médiane pondérée » : le nombre de jours médian entre le dépôt d'une demande et la mise à disposition, toutes lignes confondues.
+3. Repérez, dans le tableau, les lignes dont la médiane dépasse le barème : c'est l'autorité signataire (établissement, DEC, DGES, DBAU) qui porte le retard, et elle est nommée sur la ligne.
+4. Signalez les lignes « sous le seuil » (moins de dix demandes) : leur médiane est instable et peut réidentifier un demandeur dans une petite composante.
+5. Touchez « Exporter (CSV) » pour préparer une note : la médiane y figure, jamais la moyenne, et le fichier porte la provenance du barème.
+
+### Déclarer une échéance de dépôt de dossier d'allocation
+
+> Tant que la date n'est pas déclarée, un dossier « hors délai » n'est imputable à personne — et l'étudiant lit « aucune échéance ».
+
+1. Sur « Guichet & délais », descendez jusqu'au « Calendrier des dépôts ».
+2. Touchez « Déclarer une échéance » (réservé à une habilitation d'administration centrale au périmètre national).
+3. Saisissez l'« Année universitaire » au format AAAA-AAAA, la « Date limite de dépôt » et la nature de la décision (attribution, renouvellement, rétablissement, secours).
+4. Renseignez l'« Intitulé tel que publié » : c'est exactement ce texte que l'étudiant lira, sans reformulation de nous.
+5. Choisissez les « Pièces exigées » (relevé de notes, attestation de scolarité et de progression, attestation de succès…). Une échéance sans pièce reste informative.
+6. Touchez « Déclarer au registre ». Les étudiants concernés voient aussitôt leurs jours restants et la liste de leurs pièces dans « Mes démarches ».
+
+### Statuer un statut d'allocation
+
+> Un statut sans autorité ni référence de texte ne prouve rien devant un contrôleur.
+
+1. Dans le volet « Effet des allocations », touchez « Statuer une allocation » (habilitation centrale nationale).
+2. Saisissez l'identifiant de l'étudiant (APP-000000) et l'année universitaire visée.
+3. Choisissez la nature de la décision et le statut de compte : un secours se statue « secours », une bourse ne se statue jamais « secours » — l'écran bloque l'incohérence avant l'envoi.
+4. Indiquez la « Référence de l'arrêté » : c'est elle qui rend la décision opposable.
+5. Confirmez. L'étudiant est notifié sur son espace et son dossier bascule ; aucun montant n'est saisi ni affiché, la liquidation restant à la DBAU.
+
 ## Questions fréquentes
 
 **Pourquoi un chiffre du cockpit diffère-t-il d'un rapport papier ?**  
@@ -182,6 +225,18 @@ Non, et l'écran le dit : elle est indicative. Elle couvre le modèle LMD et la 
 
 **Pourquoi aucun élève n'apparaît dans les volets Stages et Vœux ?**  
 Par conception. Un stage ou un vœu est une donnée nominative : elle ne se montre qu'à son titulaire, à son enseignant encadrant et à son établissement. Le pilotage ne reçoit que des effectifs.
+
+**Les délais du guichet sont-ils des engagements de l'administration ?**  
+Non. Ils sont ceux publiés par l'administration dans le catalogue des services publics (fiches CatIS, avec leur référence citée), et deux barèmes restent marqués « à confirmer par arrêté ». BEILE mesure le délai constaté à partir des dates du registre ; il ne promet rien à la place de l'autorité.
+
+**Pourquoi aucune bourse n'affiche-t-elle de montant ?**  
+Parce qu'un montant, un échéancier ou un RIB relèvent de la paie et de la donnée sociale : ils appartiennent à un compartiment sensible, pas au registre de scolarité. BEILE conserve la décision de statut — nature, autorité, date, référence de l'arrêté — et la liquidation se lit à la DBAU.
+
+**Une ligne de délai « sous le seuil de publication » est-elle masquée ?**  
+Non, elle est signalée. Les dix demandes et plus ne sont pas une protection absolue, mais une ligne à trois dossiers dans une petite filière se lit comme un annuaire : le badge prévient le lecteur, il ne retire aucun chiffre du calcul ni de l'export.
+
+**Un établissement peut-il modifier une décision d'allocation ?**  
+Non. Seule une habilitation d'administration centrale au périmètre national peut statuer, et chaque décision s'ajoute au registre sans effacer la précédente. Un établissement, lui, ne voit que les pièces que ses étudiants retirent chez lui.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.

@@ -102,6 +102,18 @@
 - La note affichée est la moyenne annuelle de l'apprenant : une base provisoire tant que le centre d'examen n'a pas transmis les notes officielles.
 - Délibération définitive ; chaque admis reçoit un diplôme au QR code vérifiable par un tiers.
 
+### Guichet de l'étudiant
+
+`/etablissement/guichet` — Les actes demandés par vos étudiants, et le délai que votre guichet met réellement à les délivrer.
+
+- File filtrable : « À préparer », « En cours », « Prêtes », « Remises », « En retard » — le retard est calculé par le serveur contre le délai publié (fiche CatIS).
+- Chaque ligne nomme l'étudiant, l'acte, la date de dépôt et l'autorité qui doit signer : établissement, DEC, DGES ou DBAU.
+- Prendre en charge → marquer prêt à retirer → constat de remise : trois faits distincts, inscrits en ajout seul.
+- La remise exige le mode de retrait (titulaire, géniteur, mandataire, autorité académique, dématérialisé) et la pièce d'identité présentée ; pour un mandataire, la procuration est nommée.
+- Un refus se motive (5 caractères minimum) : le texte est transmis à l'étudiant, qui le lit sur son espace.
+- « Délais par acte » : nombre de demandes, remises dans le barème et médiane constatée. Sous dix demandes, la ligne est marquée « sous le seuil » — un délai sur trois dossiers réidentifierait son auteur.
+- Les demandes relevant d'une autorité nationale (attestation de succès, diplôme, duplicata) ne se ferment pas ici : elles s'y suivent, et se statue au niveau compétent.
+
 ### Enseignement supérieur
 
 `/enseignement-superieur` — L'après-bac de vos élèves, pour préparer les conseils d'orientation.
@@ -109,7 +121,8 @@
 - « Filières et parcours » : série de BAC requise, cycle ouvert, matières attendues, accès par concours et durée de stage.
 - « Concours » : le calendrier des sessions (inscriptions, écrits, oraux), pour poser les dates limites de vos classes de Terminale.
 - « Écoles et établissements » : le réseau, ses tutelles et ses rattachements.
-- Catalogue indicatif et aucune donnée nominative : un vœu se dépose par l'élève lui-même, jamais par l'établissement.
+- « Guichet & délais » : ce que le parcours administratif coûte aux étudiants, en médianes par établissement.
+- Catalogue indicatif et aucune donnée nominative ici : un vœu se dépose par l'élève lui-même, jamais par l'établissement.
 
 ## Tâches pas à pas
 
@@ -237,6 +250,19 @@
 4. Pour confirmer, saisissez DÉLIBÉRER, puis « Délibérer définitivement ».
 5. Les diplômes apparaissent dans « Diplômes délivrés » ; « Attestation » affiche le QR code.
 
+### Délivrer un acte demandé par un étudiant
+
+> Sans date de mise à disposition ni pièce d'identité consignée, une remise ne se prouve plus — et c'est l'étudiant qui en pâtit.
+
+1. Ouvrez « Guichet de l'étudiant » dans le menu « Établissement » (processus P6).
+2. Filtrez sur « À préparer » : ce sont les dépôts qu'aucun agent n'a encore pris en charge.
+3. Touchez « Prendre en charge » pour arrêter la première étape — le compteur du délai publié continue jusqu'à la mise à disposition.
+4. Touchez « Marquer prêt à retirer » en indiquant la date de mise à disposition (jamais future) : l'étudiant est notifié et lit le mode de retrait.
+5. Le jour du retrait, « Constat de remise » : mode de retrait, pièce d'identité présentée, nom du réceptionnaire si ce n'est pas l'intéressé, référence de la quittance.
+6. Pour un mandataire, la procuration (notariée ou établie au tribunal) est exigée : sans elle, la remise ne se constate pas.
+7. Si la pièce demandée ne peut pas être délivrée, « Refuser » avec un motif d'au moins 5 caractères — il est transmis à l'étudiant tel quel.
+8. Chaque décision est définitive : un agent qui a déjà fait avancer la demande reçoit un refus explicite, et l'écran se rafraîchit.
+
 ## Questions fréquentes
 
 **L'enfant n'a pas d'acte de naissance. Puis-je l'inscrire ?**  
@@ -247,6 +273,12 @@ Elle est complète. Une classe pleine ne peut plus recevoir d'inscription.
 
 **L'enfant est « Déjà inscrit·e » ailleurs.**  
 Il faut passer par un transfert, depuis l'établissement d'origine ou via le dossier de l'élève.
+
+**Un étudiant réclame son diplôme : est-ce à moi de le délivrer ?**  
+Regardez la colonne « autorité » de la ligne. Si elle indique la DEC, votre guichet ne peut que suivre la demande : le diplôme se signe à l'échelle nationale. Vous pouvez en revanche délivrer un relevé de notes ou une attestation de scolarité, qui souvent débloque l'étudiant en attendant.
+
+**Pourquoi aucune donnée de bourse n'apparaît-elle dans mon guichet ?**  
+Parce qu'une allocation se décide à la DBAU ou au ministère, pas à l'établissement. Vous voyez les pièces que vos étudiants doivent retirer chez vous — c'est votre part du dossier.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.
