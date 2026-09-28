@@ -124,6 +124,17 @@
 - « Guichet & délais » : ce que le parcours administratif coûte aux étudiants, en médianes par établissement.
 - Catalogue indicatif et aucune donnée nominative ici : un vœu se dépose par l'élève lui-même, jamais par l'établissement.
 
+### Scolarité du supérieur
+
+`/enseignement-superieur/scolarite` — Tenir le cycle LMD de votre établissement : référentiel, étudiants, certifications.
+
+- « Référentiel » : filières (diplôme visé, volume ECTS, composantes ouvertes), périodes, UE et offres, groupes, et la règle de validation sous les huit paramètres.
+- « Étudiants & parcours » : inscriptions (aucun montant, aucun RIB), contrat pédagogique signe/abandon/refus, feuille de validation d'une période, acquis hors note et report de crédits.
+- « Jury & certification » : jury de capitalisation par étapes, délibération du diplôme, décisions rendues avec moyenne recalculée, équivalences déposées et statuées.
+- « Crédits ECTS » : acquis, attendus, périmés et taux par période, calculés depuis le registre des écritures — pas la couche statistique.
+- Vous ne voyez que vos étudiants : un chef d'établissement ne lit pas les inscriptions d'un autre, et un établissement privé n'inscrit que sous agrément EPES en cours.
+- Le quatrième volet (« Agrégats & actes de l'État ») n'est pas ouvert à votre rôle : il agrège le pays sans nommer personne.
+
 ## Tâches pas à pas
 
 ### Ouvrir sa journée au poste de pilotage
@@ -264,6 +275,42 @@
 8. Si la pièce demandée ne peut pas être délivrée, « Refuser » avec un motif d'au moins 5 caractères — il est transmis à l'étudiant tel quel.
 9. Chaque décision est définitive : un agent qui a déjà fait avancer la demande reçoit un refus explicite, et l'écran se rafraîchit.
 
+### Inscrire un étudiant dans une filière du supérieur
+
+> La portée de votre règle, le volume de crédits de la filière et l'agrément de votre établissement décident de ce que l'inscription permet — pas l'inverse.
+
+1. Ouvrez « Enseignement supérieur », puis le volet « Scolarité », onglet « Référentiel ».
+2. Déclarez d'abord la filière (diplôme visé, cycle, volume de crédits ECTS, composantes ouvertes), les périodes de l'année et les UE avec leurs crédits et coefficients.
+3. Portez votre règle de validation : seuil d'acquisition, compensation, pondération, validité d'un acquis, report de crédits. Une décision sans règle en vigueur est refusée.
+4. Ouvrez « Étudiants & parcours » et touchez « Inscrire un étudiant ».
+5. Choisissez la personne (votre liste du registre), la filière, la composante — limitée à celles que la filière a ouvertes — l'année universitaire (AAAA-AAAA), le régime et le numéro d'inscription matricule.
+6. Indiquez le statut de compte si un acte d'allocation le fonde : autorité et référence de l'arrêté. Aucun montant, aucun RIB, aucun échéancier ne se saisit ici.
+7. L'inscription apparaît avec son effectif de contrats ; un établissement privé non agréé ou dont l'autorisation d'ouverture a expiré est refusé, et le refus est journalisé.
+
+### Valider les acquis d'une période
+
+> Vous ne fournissez que le couple étudiant / UE : la moyenne, les crédits et la voie d'acquisition sortent du serveur sous la règle en vigueur.
+
+1. Sur « Étudiants & parcours », ouvrez la carte « Feuille de validation » et choisissez la période.
+2. Touchez « Contrats signés et notés » pour retenir ce que la période permet réellement de juger.
+3. Les lignes déjà acquises restent affichées mais décochables : rejouer une validation ne crée pas un second acquis.
+4. Lancez la validation et relisez le rendu, ligne par ligne : acquise ou non, voie (note de session, compensation…), justification et règle appliquée.
+5. Renseignez-vous sur les UE sans note : elles ne peuvent être ni validées ni compensées, et la période restera incomplète tant que l'enseignant n'a pas déposé ses notes.
+6. Exportez la liste des inscriptions en CSV si vous devez préparer un conseil : le fichier porte la date et l'origine des lignes affichées.
+
+### Certifier un diplôme par jury de capitalisation
+
+> Un diplôme s'appuie sur une filière homologuée et sur des crédits que le jury ne saisit pas lui-même.
+
+1. Ouvrez le volet « Jury & certification ».
+2. Touchez « Constituer un jury » : autorité « jury de l'établissement », le diplôme est celui que la filière vise, puis président, membres (sans le président), quorum, période et référence du PV.
+3. Faites avancer le jury : « → étape suivante » pour le passer de constitué à réuni, puis à ayant délibéré.
+4. Dans « Délibérer une promotion », choisissez ce jury et cochez les candidats de la filière.
+5. Donnez la décision : admis, admis sous réserve (en nommant les UE manquantes), ajourné ou refusé.
+6. Touchez « Délibérer au registre ». Un « admis » sous le volume de crédits de la filière n'est pas enregistré : le serveur rend la ligne avec son motif.
+7. Relisez la carte « Décisions rendues » : moyenne et mention sont recalculées depuis les acquis, et un certificat non émis y reste affiché avec son motif.
+8. Un jury d'examen national (BTS, CQP, licence ou master certifiés par l'État) ne se constitue pas ici : il relève du bureau du supérieur.
+
 ## Questions fréquentes
 
 **L'enfant n'a pas d'acte de naissance. Puis-je l'inscrire ?**  
@@ -280,6 +327,12 @@ Regardez la colonne « autorité » de la ligne. Si elle indique la DEC, votre g
 
 **Pourquoi aucune donnée de bourse n'apparaît-elle dans mon guichet ?**  
 Parce qu'une allocation se décide à la DBAU ou au ministère, pas à l'établissement. Vous voyez les pièces que vos étudiants doivent retirer chez vous — c'est votre part du dossier.
+
+**Pourquoi le volet « Agrégats & actes de l'État » ne s'ouvre-t-il pas chez moi ?**  
+Parce qu'il agrège le pays entier et qu'il statue : il se lit sous une habilitation de pilotage, et ses actes exigent l'administration centrale au périmètre national. Votre scolarité du supérieur reste limitée à vos étudiants, sur les trois premiers volets.
+
+**Un de mes étudiants arrive d'un autre établissement : puis-je reprendre ses crédits ?**  
+Oui, par une acquisition de type report de crédits, à partir de la référence d'inscription (INS-…) qu'il apporte, et si votre règle autorise ce report. Le serveur ne vérifie pas l'acquis pris ailleurs — la voie restant opposable est l'équivalence reconnue, instruite puis validée chez vous.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Briefcase, Building2, GraduationCap, Inbox, Layers, Stamp } from "lucide-react";
+import { BookOpen, Briefcase, Building2, GraduationCap, Inbox, Layers, Stamp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -17,6 +17,7 @@ interface Onglet {
 const ONGLETS: Onglet[] = [
   { href: "/enseignement-superieur", libelle: "Filières", icone: GraduationCap, exact: true },
   { href: "/enseignement-superieur/ecoles-nationales", libelle: "Écoles & établissements", icone: Building2 },
+  { href: "/enseignement-superieur/scolarite", libelle: "Scolarité", icone: BookOpen },
   { href: "/enseignement-superieur/concours", libelle: "Concours", icone: Inbox },
   { href: "/enseignement-superieur/stages", libelle: "Stages", icone: Briefcase },
   { href: "/enseignement-superieur/formations-pro", libelle: "Formations professionnelles", icone: Layers },

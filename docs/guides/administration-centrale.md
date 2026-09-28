@@ -127,6 +127,17 @@
 - « Signer un acte qui ne relève pas de l'établissement » : une autorité nationale scelle, à partir de la référence de l'acte (ACTE-…), ce que le guichet d'établissement ne peut pas signer — un diplôme à la DEC, un duplicata national à la DGES. Aucune liste nominative n'est parcourue ici : la référence vient du guichet de l'établissement ou de l'espace de l'étudiant.
 - « Exporter (CSV) » : les lignes affichées, avec la médiane (jamais la moyenne) et la provenance du barème.
 
+### Scolarité du supérieur · agrégats & actes
+
+`/enseignement-superieur/scolarite/pilotage` — Ce que la scolarité du supérieur produit, sans aucun étudiant nommé — et les actes que l'État pose sur un établissement.
+
+- « Capitalisation ECTS — agrégat par voie » : une ligne par voie, jamais par établissement, avec les crédits acquis, attendus et périmés, et le taux. Le moteur est celui du registre des écritures, pas la couche statistique.
+- Sous le seuil de publication, la cellule garde son effectif et perd ses valeurs : la règle des petits effectifs s'applique au calcul, pas seulement à l'affichage.
+- « Effets enregistrés » : inscriptions par statut, décisions par voie, homologations par statut, jurys par étape, exportables en CSV avec leur provenance.
+- « Actes de l'État » (habilitation centrale au périmètre national) : cycle EPES par autorité tutélaire, homologation d'une filière dont le diplôme est celui qu'elle vise, contrôle pédagogique de l'homologation rendue.
+- « Règle nationale de validation » : les huit paramètres applicables là où aucune portée plus précise n'a été déclarée.
+- Aucune lecture nominative : le dossier administratif d'un établissement se lit par son chef et par l'inspecteur de sa circonscription, pas depuis cette console.
+
 ## Tâches pas à pas
 
 ### Prioriser ses décisions du jour
@@ -221,6 +232,31 @@
 3. Choisissez la nature de la décision et le statut de compte : un secours se statue « secours », une bourse ne se statue jamais « secours » — l'écran bloque l'incohérence avant l'envoi.
 4. Indiquez la « Référence de l'arrêté » : c'est elle qui rend la décision opposable.
 5. Confirmez. L'étudiant est notifié sur son espace et son dossier bascule ; aucun montant n'est saisi ni affiché, la liquidation restant à la DBAU.
+
+### Homologuer une filière et la contrôler
+
+> Un diplôme national dont l'homologation n'est pas en cours n'est pas opposable : BEILE refuse de le certifier plutôt que d'affirmer une autorisation qui n'a pas eu lieu.
+
+1. Ouvrez « Enseignement supérieur », puis le volet « Agrégats & actes de l'État » (habilitation d'administration centrale au périmètre national).
+2. Dans « Actes de l'État sur un établissement », choisissez l'établissement dans l'annuaire du supérieur.
+3. Sélectionnez la filière : le diplôme visé s'affiche, non modifiable — le serveur refuse (422) tout autre diplôme que celui que la filière déclare.
+4. Réglez le statut, le quota annuel d'inscriptions (vide = aucun plafond déclaré), les dates d'octroi et d'échéance, puis touchez « Homologuer ».
+5. Lisez la puce rendue : « porte ouverte » ou « porte fermée » avec son motif. Une échéance passée ou un contrôle « non conforme » ferment la porte, même sous un statut « homologuée ».
+6. Consignez alors le contrôle pédagogique de cette même homologation : conclusion (conforme, avec réserves, non conforme) et ce que la visite a constaté.
+7. Vérifiez le compte « Filières homologuées » de la tuile : il intègre l'acte sitôt enregistré.
+
+### Porter la règle nationale de validation
+
+> Là où un établissement n'a rien déclaré, c'est cette ligne qui juge — et chaque acquis cité pourra la défendre paramètre par paramètre.
+
+1. Sur le volet « Agrégats & actes de l'État », descendez jusqu'à « Règle nationale de validation ».
+2. Renseignez l'« Identifiant de la ligne à remplacer » (RGL-…) si une règle nationale existe déjà : deux lignes nationales laissent le moteur libre de l'une ou l'autre.
+3. Fixez le seuil d'acquisition (1) et, si vous le voulez, la note éliminatoire (2) sous laquelle aucune compensation ne rachète une UE.
+4. Choisissez la compensation (3) — « par bloc » reste exclu, les codes d'UE appartiennent au catalogue de chaque établissement — et la pondération (4).
+5. Décidez de la session retenue après un repassage (5) et, pour ouvrir la compensation, d'une moyenne minimale de période (6).
+6. Réglez la validité d'un acquis en années (7) : ce nombre borne aussi la capitalisation ECTS affichée, un acquis périmé restant compté à part.
+7. Autorisez ou non le report des crédits vers un autre établissement homologué (8), puis touchez « Porter la règle nationale ».
+8. Les établissements qui ont déclaré une portée plus précise (filière, période) gardent la leur : la portée la plus spécifique gagne.
 
 ## Questions fréquentes
 

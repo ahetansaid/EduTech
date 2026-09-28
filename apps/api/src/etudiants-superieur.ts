@@ -303,6 +303,19 @@ scolariteSuperieure.post("/etablissements/:id/groupes", authentifie, async (c) =
   return c.json(groupe, 201);
 });
 
+scolariteSuperieure.get("/etablissements/:id/filieres", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await accesEtablissement(c, id);
+  // Les filières du catalogue national se lisent sous `perimetrePilotage` ; celles de CHEZ SOI se
+  // lisent par la porte établissement. Sans cette ligne, un chef ne pourrait pas nommer la filière
+  // qu'il déclare, et son écran ne serait peuplé que d'identifiants `FIL-…`.
+  const lignes = await base().select().from(schema.filiereSuperieure)
+    .where(eq(schema.filiereSuperieure.etablissementId, id))
+    .orderBy(asc(schema.filiereSuperieure.nom));
+  await journaliser(profil, "Consultation des filières de l'établissement", `${lignes.length} filière(s)`, finalite, true, null);
+  return c.json(lignes);
+});
+
 scolariteSuperieure.get("/etablissements/:id/periodes", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, finalite } = await accesEtablissement(c, id);
@@ -329,6 +342,40 @@ scolariteSuperieure.get("/etablissements/:id/offres", authentifie, async (c) => 
     .orderBy(asc(schema.offresUe.periodeId), asc(schema.offresUe.session));
   await journaliser(profil, "Consultation des offres d'UE", `${lignes.length} offre(s)`, finalite, true, null);
   return c.json(lignes);
+});
+
+/** Catalogue d'UE des filières de l'établissement : ce qu'une équivalence ou un transfert peut reconnaître. */
+scolariteSuperieure.get("/etablissements/:id/unites-enseignement", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await accesEtablissement(c, id);
+  const filiereId = c.req.query("filiereId");
+  const lignes = await base().select({ ue: schema.unitesEnseignement, filiereNom: schema.filiereSuperieure.nom })
+    .from(schema.unitesEnseignement)
+    .innerJoin(schema.filiereSuperieure, eq(schema.filiereSuperieure.id, schema.unitesEnseignement.filiereId))
+    .where(and(eq(schema.filiereSuperieure.etablissementId, id), ...(filiereId ? [eq(schema.unitesEnseignement.filiereId, filiereId)] : [])))
+    .orderBy(asc(schema.unitesEnseignement.code));
+  await journaliser(profil, "Consultation du catalogue d'UE de l'établissement", `${lignes.length} UE`, finalite, true, null);
+  return c.json(lignes);
+});
+
+/**
+ * Groupes ouverts sur les offres de l'établissement. La déclaration de groupe existait, sa lecture
+ * non : une direction qui ouvre un groupe sans pouvoir le relire ne peut ni vérifier la capacité
+ * restante ni corriger un créneau. Périmètre strictement le sien, par la même porte.
+ */
+scolariteSuperieure.get("/etablissements/:id/groupes", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await accesEtablissement(c, id);
+  const offreUeId = c.req.query("offreUeId");
+  const lignes = await base().select({ groupe: schema.groupes, offrePeriodeId: schema.offresUe.periodeId })
+    .from(schema.groupes)
+    .innerJoin(schema.offresUe, eq(schema.offresUe.id, schema.groupes.offreUeId))
+    .where(and(eq(schema.offresUe.etablissementId, id), ...(offreUeId ? [eq(schema.groupes.offreUeId, offreUeId)] : [])))
+    .orderBy(asc(schema.groupes.offreUeId), asc(schema.groupes.type), asc(schema.groupes.intitule));
+  await journaliser(profil, "Consultation des groupes de l'établissement", `${lignes.length} groupe(s)`, finalite, true, null);
+  // La période de l'offre voyage avec la ligne : sans elle, filtrer les groupes d'une période
+  // signifierait relancer une requête par groupe depuis l'écran.
+  return c.json(lignes.map(({ groupe, offrePeriodeId }) => ({ ...groupe, periodeId: offrePeriodeId })));
 });
 
 /* ================================================================== Inscription (promotion) */
@@ -408,7 +455,15 @@ scolariteSuperieure.get("/etablissements/:id/inscriptions", authentifie, async (
   const annee = c.req.query("annee");
   const filiereId = c.req.query("filiereId");
   // Nominatif : jamais par `perimetrePilotage`, seulement par la porte établissement.
-  const lignes = await base().select().from(schema.inscriptionsSuperieures)
+  // Le nom accompagne la ligne : une promotion réduite à `APP-000123` est illisible par la direction
+  // qui l'a inscrite, et cette jointure ne franchit aucune porte de plus — elle est dans la ligne même.
+  const lignes = await base().select({
+    inscription: schema.inscriptionsSuperieures,
+    apprenant: { id: schema.apprenants.id, nom: schema.apprenants.nom, prenoms: schema.apprenants.prenoms },
+    filiere: { id: schema.filiereSuperieure.id, nom: schema.filiereSuperieure.nom, voie: schema.filiereSuperieure.voie, diplomeVise: schema.filiereSuperieure.diplomeVise },
+  }).from(schema.inscriptionsSuperieures)
+    .innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.inscriptionsSuperieures.apprenantId))
+    .innerJoin(schema.filiereSuperieure, eq(schema.filiereSuperieure.id, schema.inscriptionsSuperieures.filiereId))
     .where(and(
       eq(schema.inscriptionsSuperieures.etablissementId, id),
       ...(annee ? [eq(schema.inscriptionsSuperieures.anneeUniversitaire, annee)] : []),
@@ -735,6 +790,52 @@ scolariteSuperieure.post("/etablissements/:id/validations/hors-note", authentifi
   return c.json({ validationId, creditsAcquis: ue.creditsEcts, evenementId }, 201);
 });
 
+/**
+ * La feuille de validation, avant l'écriture : pour cette période, qui a un contrat, une note saisie,
+ * et un acquis déjà enregistré. L'écriture `POST /validations` existe depuis T2 ; sans cette lecture,
+ * une direction validerait à l'aveugle — et une seule ligne hors filière ferait échouer le lot entier.
+ * Aucune porte de plus : les mêmes lignes, déjà lisibles une par une par `accesEtablissement`.
+ */
+scolariteSuperieure.get("/etablissements/:id/validations/preparables", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const periodeId = ID_PERIODE.parse(c.req.query("periodeId") ?? "");
+  const { profil, finalite } = await accesEtablissement(c, id);
+  const [periode] = await base().select().from(schema.periodes).where(eq(schema.periodes.id, periodeId));
+  if (!periode) throw new HTTPException(404, { message: "Période introuvable" });
+  if ((await filiereDe(periode.filiereId)).etablissementId !== id) throw new HTTPException(422, { message: "Période hors de cet établissement" });
+  const lignes = await base()
+    .select({
+      apprenantId: schema.inscriptionsUe.apprenantId,
+      nom: schema.apprenants.nom,
+      prenoms: schema.apprenants.prenoms,
+      inscriptionId: schema.inscriptionsSuperieures.id,
+      contratId: schema.inscriptionsUe.id,
+      contratStatut: schema.inscriptionsUe.statut,
+      offreUeId: schema.offresUe.id,
+      ueCode: schema.unitesEnseignement.code,
+      ueIntitule: schema.unitesEnseignement.intitule,
+      creditsEcts: schema.unitesEnseignement.creditsEcts,
+      notes: sql<number>`(select count(*)::int from ${schema.notesUe} n where n.offre_ue_id = ${schema.offresUe.id} and n.apprenant_id = ${schema.inscriptionsUe.apprenantId})`,
+      noteMaximale: sql<number | null>`(select max(n.note) from ${schema.notesUe} n where n.offre_ue_id = ${schema.offresUe.id} and n.apprenant_id = ${schema.inscriptionsUe.apprenantId})`,
+      dejaAcquise: sql<boolean>`exists (select 1 from ${schema.validationsUe} v where v.apprenant_id = ${schema.inscriptionsUe.apprenantId} and v.ue_id = ${schema.unitesEnseignement.id} and v.periode_id = ${periodeId})`,
+    })
+    .from(schema.inscriptionsUe)
+    .innerJoin(schema.offresUe, eq(schema.offresUe.id, schema.inscriptionsUe.offreUeId))
+    .innerJoin(schema.unitesEnseignement, eq(schema.unitesEnseignement.id, schema.offresUe.ueId))
+    .innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.inscriptionsUe.apprenantId))
+    // L'inscription suit la période : un étudiant d'une autre filière ou d'une autre année ne peut pas
+    // être jugé dans ce lot, et le serveur refuserait toute la saisie à cause de lui.
+    .innerJoin(schema.inscriptionsSuperieures, and(
+      eq(schema.inscriptionsSuperieures.id, schema.inscriptionsUe.inscriptionSuperieureId),
+      eq(schema.inscriptionsSuperieures.filiereId, periode.filiereId),
+      eq(schema.inscriptionsSuperieures.anneeUniversitaire, periode.anneeUniversitaire),
+    ))
+    .where(and(eq(schema.offresUe.periodeId, periodeId), eq(schema.offresUe.etablissementId, id)))
+    .orderBy(asc(schema.apprenants.nom), asc(schema.apprenants.prenoms), asc(schema.unitesEnseignement.code));
+  await journaliser(profil, "Consultation de la feuille de validation d'une période", `${periodeId} (${lignes.length} ligne(s))`, finalite, true, null);
+  return c.json({ periode, lignes });
+});
+
 /* ================================================================== Règles de validation */
 
 /** Une portée de règle est une portée d'autorité : la règle nationale ne se déclare pas depuis un
@@ -935,6 +1036,29 @@ scolariteSuperieure.get("/etablissements/:id/jurys", authentifie, async (c) => {
     .orderBy(desc(schema.jurys.statut));
   await journaliser(profil, "Consultation des jurys de l'établissement", `${lignes.length} jury(ies)`, finalite, true, null);
   return c.json(lignes.map((l) => l.j));
+});
+
+/**
+ * Délibérations jugées dans l'établissement. La moyenne, les crédits et la mention viennent du
+ * recalcul du serveur au jour du délibéré : l'écran les lit, il ne les saisit pas. Une délibération
+ * sans certificat émis reste visible — c'est exactement l'état que #57 (certification du supérieur)
+ * doit retrouver, pas une ligne à masquer.
+ */
+scolariteSuperieure.get("/etablissements/:id/deliberations", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await accesEtablissement(c, id);
+  const juryId = c.req.query("juryId");
+  const lignes = await base().select({
+    deliberation: schema.deliberationsDiplome,
+    apprenant: { id: schema.apprenants.id, nom: schema.apprenants.nom, prenoms: schema.apprenants.prenoms },
+    jury: { autorite: schema.jurys.autorite, office: schema.jurys.office, president: schema.jurys.president, statut: schema.jurys.statut },
+  }).from(schema.deliberationsDiplome)
+    .innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.deliberationsDiplome.apprenantId))
+    .innerJoin(schema.jurys, eq(schema.jurys.id, schema.deliberationsDiplome.juryId))
+    .where(and(eq(schema.deliberationsDiplome.etablissementId, id), ...(juryId ? [eq(schema.deliberationsDiplome.juryId, juryId)] : [])))
+    .orderBy(desc(schema.deliberationsDiplome.delibereLe), asc(schema.apprenants.nom));
+  await journaliser(profil, "Consultation des délibérations de l'établissement", `${lignes.length} décision(s)`, finalite, true, null);
+  return c.json(lignes);
 });
 
 /* ================================================================== Équivalences et transfert de crédits */
