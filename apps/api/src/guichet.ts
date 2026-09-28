@@ -436,10 +436,19 @@ guichet.get("/etablissements/:id/actes", authentifie, async (c) => {
  */
 async function decider(c: Context<{ Variables: Variables }>, demandeId: string, decision: DecisionGuichet, etablissementId: string | null, action: string, habilitationEtat = false) {
   const profil = c.get("profil");
-  const [d] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
+  let [d] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
+  // Une référence dictée au guichet ne respecte pas la casse d'un UUID : la rejouer en minuscules évite
+  // un « introuvable » qui ferait douter l'agent d'un acte pourtant réel. Ça n'élargit rien : la ligne
+  // trouvée est la même, et le périmètre comme l'autorité sont jugés juste après.
+  if (!d) {
+    const variante = demandeId.toLowerCase();
+    if (variante !== demandeId) [d] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, variante));
+  }
   if (!d) throw new HTTPException(404, { message: "Demande d'acte introuvable" });
+  // Toute la suite écrit l'identité réelle de la ligne, pas celle qui a été tapée.
+  const id = d.id;
   if (etablissementId && d.etablissementId !== etablissementId) {
-    await journaliser(profil, action, `${demandeId} · hors de votre guichet`, "gestion", false, "perimetre");
+    await journaliser(profil, action, `${id} · hors de votre guichet`, "gestion", false, "perimetre");
     throw new HTTPException(403, { message: "Acte déposé dans un autre établissement : refus journalisé" });
   }
   /**
@@ -450,23 +459,23 @@ async function decider(c: Context<{ Variables: Variables }>, demandeId: string, 
    * signature d'autrui.
    */
   if (decision.statut === "disponible" && d.autorite !== "etablissement" && !habilitationEtat) {
-    await journaliser(profil, action, `${demandeId} · signature d'un acte relevant de ${d.autorite}`, "gestion", false, "autorite");
+    await journaliser(profil, action, `${id} · signature d'un acte relevant de ${d.autorite}`, "gestion", false, "autorite");
     throw new HTTPException(403, { message: `« ${LIBELLE_ACTE[d.typeActe]} » se signe auprès de l'autorité ${d.autorite} : le guichet d'établissement prépare et remet, il ne scelle pas` });
   }
   // Symétrique : sceller l'acte d'un guichet depuis l'écran national produirait la même fausse attestation.
   if (decision.statut === "disponible" && habilitationEtat && d.autorite === "etablissement") {
-    await journaliser(profil, action, `${demandeId} · signature à la place du guichet d'établissement`, "gestion", false, "autorite");
+    await journaliser(profil, action, `${id} · signature à la place du guichet d'établissement`, "gestion", false, "autorite");
     throw new HTTPException(403, { message: "Cet acte relève du guichet de l'établissement : l'écran national ne signe pas à sa place" });
   }
   if (!transitionValide(d.statut, decision.statut)) {
-    await journaliser(profil, action, `${demandeId} · ${d.statut} vers ${decision.statut}`, "gestion", false, "transition");
+    await journaliser(profil, action, `${id} · ${d.statut} vers ${decision.statut}`, "gestion", false, "transition");
     throw new HTTPException(409, { message: `Un acte « ${d.statut} » ne devient pas « ${decision.statut} »` });
   }
   const date = decision.date ?? aujourdhui();
   if (date > aujourdhui()) throw new HTTPException(422, { message: "Une date future ne peut certifier un acte déjà accompli" });
   if (date < d.demandeeLe) throw new HTTPException(422, { message: `Date antérieure au dépôt (${d.demandeeLe}) : la chaîne de dates serait fausse` });
 
-  const donnees: Record<string, unknown> = { apprenantId: d.apprenantId, demandeId };
+  const donnees: Record<string, unknown> = { apprenantId: d.apprenantId, demandeId: id };
   if (decision.statut === "refusee") {
     if (!decision.motif) throw new HTTPException(422, { message: "Un refus sans motif ne se conteste pas : il n'existe pas dans ce modèle" });
     Object.assign(donnees, { motif: decision.motif, refuseLe: date });
@@ -498,13 +507,13 @@ async function decider(c: Context<{ Variables: Variables }>, demandeId: string, 
   }]);
   // La projection porte une clause d'état : si elle n'a pas bougé, un autre agent a clos la ligne entre
   // notre lecture et l'écriture. Le fait reste au registre (la tentative est tracée), l'état ne s'invente pas.
-  const [apres] = await base().select({ statut: schema.demandesActe.statut }).from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
+  const [apres] = await base().select({ statut: schema.demandesActe.statut }).from(schema.demandesActe).where(eq(schema.demandesActe.id, id));
   if (apres?.statut !== decision.statut) {
-    await journaliser(profil, action, `${demandeId} · déjà ${apres?.statut ?? "clos"} entre-temps`, "gestion", false, "concurrence");
+    await journaliser(profil, action, `${id} · déjà ${apres?.statut ?? "clos"} entre-temps`, "gestion", false, "concurrence");
     throw new HTTPException(409, { message: `La demande est passée à « ${apres?.statut ?? "clos"} » entre-temps : aucune seconde écriture` });
   }
-  await journaliser(profil, action, `${demandeId} · ${decision.statut}`, "gestion", true, null);
-  const [ligne] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
+  await journaliser(profil, action, `${id} · ${decision.statut}`, "gestion", true, null);
+  const [ligne] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, id));
   return { acte: enActe(ligne!), evenementId };
 }
 
