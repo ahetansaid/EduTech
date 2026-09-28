@@ -11,6 +11,7 @@ import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
 import { useJournalAudit, useStatistiquesAudit, type FiltreDecision, type LigneJournal, type StatistiquesAudit } from "@/lib/api/gouvernance";
 import { cn } from "@/lib/cn";
+import { exporterCsv, type Colonne } from "@/lib/export";
 import { entier, nombre } from "@/lib/format";
 import { ErreurApi, lire } from "@/lib/http";
 
@@ -29,6 +30,18 @@ const CRITERE_AIDE: Record<Critere | "inconnu", string> = {
   inconnu: "Refus sans critère renseigné",
 };
 const FINALITES = Object.keys(FINALITE_LIBELLE) as Finalite[];
+
+// Le journal est une preuve machine : horodatage ISO brut et codes nus, sans mise en forme.
+const AUDIT_COLONNES: Colonne<LigneJournal>[] = [
+  { entete: "horodatage", valeur: (l) => l.horodatage },
+  { entete: "identifiant", valeur: (l) => l.id },
+  { entete: "profil", valeur: (l) => l.profilNom },
+  { entete: "action", valeur: (l) => l.action },
+  { entete: "ressource", valeur: (l) => l.ressource },
+  { entete: "finalite", valeur: (l) => l.finalite },
+  { entete: "decision", valeur: (l) => (l.autorise ? "accorde" : "refuse") },
+  { entete: "critere_manquant", valeur: (l) => l.critereManquant ?? "" },
+];
 
 /* ------------------------------------------------------------------ Page */
 
@@ -67,7 +80,7 @@ export default function AuditPage() {
   }
 
   const t = stats.data?.totaux;
-  const exporter = () => exporterCsv(lignes);
+  const exporter = () => { exporterCsv("journal-audit", lignes, AUDIT_COLONNES); notifier({ ton: "succes", titre: "Export prêt", texte: `${entier(lignes.length)} ligne(s) exportée(s).` }); };
 
   return (
     <EntreePage>
@@ -429,20 +442,4 @@ function ActeursRefuses({ stats }: { stats?: StatistiquesAudit }) {
       )}
     </Card>
   );
-}
-
-/* ------------------------------------------------------------------ Export */
-
-function exporterCsv(lignes: LigneJournal[]) {
-  const champ = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const entete = ["horodatage", "identifiant", "profil", "action", "ressource", "finalite", "decision", "critere_manquant"];
-  const corps = lignes.map((l) => [l.horodatage, l.id, l.profilNom, l.action, l.ressource, l.finalite, l.autorise ? "accorde" : "refuse", l.critereManquant ?? ""].map(champ).join(";"));
-  const blob = new Blob(["﻿" + [entete.join(";"), ...corps].join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `journal-audit-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  notifier({ ton: "succes", titre: "Export prêt", texte: `${entier(lignes.length)} ligne(s) exportée(s).` });
 }

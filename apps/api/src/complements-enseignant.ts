@@ -33,7 +33,8 @@ complementsEnseignant.get("/classes/:id/historique", authentifie, async (c) => {
 
   const [absences, corrections] = await Promise.all([
     base().execute<{ id: string; apprenant_id: string; date: string; justifiee: boolean | null; enregistre_le: string }>(sql`
-      select id, apprenant_id, donnees->>'date' as date, (donnees->>'justifiee')::boolean as justifiee, enregistre_le
+      select id, apprenant_id, donnees->>'date' as date,
+        ((donnees->>'justifiee')::boolean or exists (select 1 from core.absences_justifiees j where j.absence_id = id)) as justifiee, enregistre_le
       from ledger.evenements
       where type = 'ABSENCE' and donnees->>'classeId' = ${classeId}
       order by donnees->>'date' desc, enregistre_le desc

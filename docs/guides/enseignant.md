@@ -78,6 +78,16 @@
 
 - Grade, ancienneté, charge, formations validées.
 - Catalogue de formation continue : « S'inscrire ».
+- « Exporter le parcours » : recrutement, affectations et formations en CSV, à joindre à une demande de mutation.
+
+### Enseignement supérieur
+
+`/enseignement-superieur` — Préparer l'orientation post-bac de vos classes.
+
+- « Filières et parcours » : critères d'entrée (série de BAC, cycle, ECTS) et stage obligatoire, pour argumenter un conseil d'orientation.
+- « Concours » : les sessions, leurs places et les coefficients des épreuves — utile pour un lycéen qui vise une école nationale.
+- « Formations pro » : les débouchés EFTP et la passerelle CQP/BTS → licence professionnelle.
+- Ici aucun élève n'est visible : vous préparez des conseils, vous ne déposez pas les vœux à leur place.
 
 ## Tâches pas à pas
 
@@ -114,6 +124,15 @@
 2. Saisissez la « Nouvelle note ».
 3. Écrivez le « Motif » (obligatoire, 5 caractères au moins).
 4. Validez. La note d'origine reste visible, barrée.
+
+### Exporter votre passeport professionnel
+
+> Pour une mutation ou un avancement, vous n'avez pas à recomposer un dossier papier : le parcours se reconstruit depuis le registre.
+
+1. Ouvrez « Parcours pro » (/enseignant/carriere).
+2. Touchez « Exporter le parcours » en haut de l'écran.
+3. Le fichier CSV réunit recrutement, affectations et formations, datés et triés du plus ancien au plus récent.
+4. Ouvrez-le avec un tableur ; il se joint à votre demande.
 
 ## Questions fréquentes
 

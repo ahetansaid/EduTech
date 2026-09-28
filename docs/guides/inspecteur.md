@@ -56,6 +56,14 @@
 
 ## Vos écrans
 
+### Poste de pilotage
+
+`/aujourd-hui` — Vos décisions du jour, triées par échéance.
+
+- Rassemble les demandes dont l'étape courante relève de votre rôle et de votre circonscription.
+- Classées par urgence : échéance atteinte ou dépassée en tête, puis cette semaine, puis à surveiller.
+- Chaque ligne ouvre « Demandes à traiter » sur la demande concernée.
+
 ### Console territoriale
 
 `/territoire` — Votre circonscription en un écran.
@@ -64,6 +72,7 @@
 - Carte : votre circonscription et ses établissements (points).
 - Absences du jour en direct.
 - Points d'attention et tableau des établissements (effectifs, encadrement, eau, électricité, transmission).
+- « Statistiques de la circonscription » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, position percentile de chaque établissement, couverture en infrastructures — le tout exportable en CSV.
 
 ### Ask Education
 
@@ -71,7 +80,29 @@
 
 - Le périmètre de votre habilitation s'applique à chaque réponse.
 
+### Demandes à traiter
+
+`/demandes` — La file des circuits en attente de votre décision.
+
+- Accompagnements à valider et demandes relevant de votre rôle et de votre circonscription.
+- « Statuer » pour rendre une décision motivée ; l'étape suivante du circuit est alors déclenchée.
+
+### Enseignement supérieur
+
+`/enseignement-superieur` — L'offre post-bac à connaître pour vos conseils de classe et vos visites.
+
+- « Filières et parcours » : série de BAC requise, cycle ouvert, accès par concours, durée de stage obligatoire — les critères à rappeler en conseil d'orientation.
+- « Formations pro » : l'échelle CAP → BEP → Bac technique → BT → BTS/CQP et la passerelle vers la licence professionnelle, pour les lycées techniques de votre circonscription.
+- « Stages » : les durées obligatoires par filière et le cycle de vie d'une convention, pour juger si un établissement peut les tenir.
+- Catalogue indicatif, lecture seule : rien qui concerne un élève identifié.
+
 ## Tâches pas à pas
+
+### Prioriser ses décisions du jour
+
+1. Touchez « Poste de pilotage » dans le menu, sous « Aujourd'hui ».
+2. Traitez les demandes « À traiter aujourd'hui » (échéance atteinte ou dépassée).
+3. Touchez une ligne : « Demandes à traiter » s'ouvre sur la demande, où vous rendez la décision motivée.
 
 ### Préparer une visite d'établissement
 
@@ -79,10 +110,30 @@
 2. Dans « Établissements de la circonscription », repérez l'établissement concerné et ses infrastructures.
 3. Touchez « Voir sur la carte » pour situer l'établissement et sa commune.
 
+### Situer un établissement par rapport aux autres
+
+> Une occupation de 95 % n'a pas le même sens si la moitié de la circonscription tourne à 120 % : le comparateur montre l'écart, pas seulement la valeur.
+
+1. Sur la console, dépliez « Statistiques de la circonscription ».
+2. Lisez les quatre repères : occupation médiane, établissements saturés, élèves/enseignant médian, classes surchargées.
+3. Choisissez le critère du comparateur (Occupation ou Élèves / ens.) : le trait vertical est la médiane du territoire, les barres en surbrillance dépassent le seuil d'alerte.
+4. Regardez la couverture en infrastructures pour préparer votre visite.
+5. Lisez « Où se situe chaque établissement ? » : le percentile d'occupation (ex. 90ᵉ = plus saturé que 9 établissements sur 10) et d'encadrement situent objectivement la tension.
+6. Touchez « Exporter (CSV) » pour emporter ce portrait (résumé, bandes, comparateur, percentiles, infrastructures) avant une visite ou une relance.
+
 ### Relancer un établissement
 
 1. Dans le tableau des établissements, touchez « Relancer » en face de l'établissement en retard.
 2. La relance est envoyée et tracée ; son suivi est visible dans la qualité des données.
+
+### Statuer sur une demande
+
+> Un circuit ne peut avancer que si l'étape qui vous incombe reçoit une décision motivée.
+
+1. Ouvrez « Demandes à traiter » : seules les demandes de votre rôle et de votre périmètre s'affichent.
+2. Touchez « Statuer » sur la demande concernée.
+3. Choisissez le sens (avis favorable ou défavorable) et rédigez la motivation.
+4. Validez : la décision est journalisée et le circuit passe à l'étape suivante.
 
 ## Questions fréquentes
 

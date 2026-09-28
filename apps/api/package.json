@@ -11,7 +11,9 @@
     "build:vercel": "node scripts/build-vercel.mjs",
     "recette": "tsx src/recette.ts",
     "recette:ecritures": "tsx src/recette.ts --ecritures",
-    "charge": "tsx src/charge.ts"
+    "charge": "tsx src/charge.ts",
+    "scenario:superieur": "tsx src/scenario-superieur.ts",
+    "interop:demo": "tsx src/interop-demo.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",

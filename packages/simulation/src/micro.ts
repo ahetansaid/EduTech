@@ -66,9 +66,34 @@ const etablissementPilote = (
   infrastructures: { eau: true, electricite: true, internet: cycle === "secondaire", latrines: true, bibliotheque: cycle === "secondaire" },
 });
 
-export function empreinteCertificat(c: Pick<Certificat, "id" | "apprenantId" | "examen" | "session" | "mention" | "moyenne" | "delivreLe">, titulaire: string) {
-  return sha256([c.id, c.apprenantId, titulaire, c.examen, c.session, c.mention, c.moyenne.toFixed(2), c.delivreLe].join("|"));
+/**
+ * Ce que recouvre le sceau d'un certificat, dans l'ordre signé. Les trois champs du supérieur entrent
+ * dans le condensé dès qu'ils sont nommés : sans eux, on pourrait déplacer une licence d'une filière ou
+ * d'un établissement à l'autre en base sans que le document présenté change de scellé.
+ *
+ * Le format K-12 reste `id|apprenant|titulaire|examen|session|mention|moyenne|date` — un diplôme déjà
+ * imprimé et déjà remis à un tiers se vérifie donc encore. Une mention ou une moyenne absente se signe
+ * `""`, jamais `0` ni « Passable ».
+ */
+export function champsSignesCertificat(
+  c: Pick<Certificat, "id" | "apprenantId" | "examen" | "session" | "mention" | "moyenne" | "delivreLe" | "filiereId" | "etablissementId" | "office">,
+  titulaire: string,
+): string[] {
+  const socle = [c.id, c.apprenantId, titulaire, c.examen, c.session, c.mention ?? "", c.moyenne === null ? "" : c.moyenne.toFixed(2), c.delivreLe];
+  return certificatDuSuperieur(c) ? ["certificat-sup", ...socle, c.filiereId ?? "", c.etablissementId ?? "", c.office ?? ""] : socle;
 }
+
+/** Ce qu'il faut connaître pour sceller un diplôme : la ligne entière, moins son propre sceau. */
+export type CertificatBrut = Parameters<typeof champsSignesCertificat>[0];
+
+/** Condensé d'intégrité simple : le sceau historique des certificats du K-12, et la valeur par défaut quand aucune clef n'est provisionnée. */
+export function empreinteCertificat(c: CertificatBrut, titulaire: string) {
+  return sha256(champsSignesCertificat(c, titulaire).join("|"));
+}
+
+/** Un certificat nomme-t-il une filière, un établissement ou un office ? C'est ce qui décide du sceau à poser et à relire. */
+export const certificatDuSuperieur = (c: Pick<Certificat, "filiereId" | "etablissementId" | "office">) =>
+  !!(c.filiereId || c.etablissementId || c.office);
 
 export function genererMicroMonde(graine = 229): MicroMonde {
   const rng = createRng(graine);
@@ -219,9 +244,17 @@ export function genererMicroMonde(graine = 229): MicroMonde {
         const survenu = `${annee + 1}-07-05T10:00:00.000Z`;
         evt({ type: "RESULTAT_EXAMEN", apprenantId: a.id, examen: "CEP", session, moyenne, admis: true, survenuLe: survenu, auteurId: "DEC-Examens", source: "examens", etablissementId: etabAnterieur === ETAB_COCOTIERS ? null : ETAB_FLAMBOYANTS });
         const mention = moyenne >= 16 ? "Très bien" : moyenne >= 14 ? "Bien" : moyenne >= 12 ? "Assez bien" : "Passable";
-        const base = { id: `CERT-CEP-${annee + 1}-${a.id.slice(4)}`, apprenantId: a.id, examen: "CEP" as const, session, mention, moyenne, delivreLe: `${annee + 1}-07-20` };
-        certificats.push({ ...base, empreinte: empreinteCertificat(base, `${a.prenoms} ${a.nom}`), revoque: false });
-        evt({ type: "CERTIFICATION", apprenantId: a.id, certificatId: base.id, examen: "CEP", session, mention, survenuLe: `${annee + 1}-07-20T10:00:00.000Z`, auteurId: "DEC-Examens", source: "examens", etablissementId: etabAnterieur === ETAB_COCOTIERS ? null : ETAB_FLAMBOYANTS });
+        const base = {
+          id: `CERT-CEP-${annee + 1}-${a.id.slice(4)}`, apprenantId: a.id, examen: "CEP" as const, session, mention, moyenne, delivreLe: `${annee + 1}-07-20`,
+          // Un CEP ne nomme ni filière ni établissement de certification : l'examen suffit,
+          // et ces trois colonnes vides sont ce qui garde le sceau au format historique.
+          filiereId: null, etablissementId: null, office: null,
+        };
+        const empreinte = empreinteCertificat(base, `${a.prenoms} ${a.nom}`);
+        certificats.push({ ...base, empreinte, revoque: false });
+        // Le fait porte la ligne entière, sceau compris : la projection `core.certificats` se reconstruit
+        // du registre seul. `delivrePar` reste nul alors que la portée du fait nomme le centre d'examen.
+        evt({ type: "CERTIFICATION", apprenantId: a.id, certificatId: base.id, examen: "CEP", session, mention, moyenne, delivreLe: base.delivreLe, filiereId: null, delivrePar: null, office: null, empreinte, survenuLe: `${annee + 1}-07-20T10:00:00.000Z`, auteurId: "DEC-Examens", source: "examens", etablissementId: etabAnterieur === ETAB_COCOTIERS ? null : ETAB_FLAMBOYANTS });
       }
       evt({ type: "PASSAGE", apprenantId: a.id, deNiveau: de, versNiveau: vers, decision: "admis", anneeScolaire: `${annee}-${annee + 1}`, survenuLe: `${annee + 1}-07-10T10:00:00.000Z`, auteurId: "conseil-de-classe", source: de === "CM2" || k < 5 ? "educmaster" : "beile", etablissementId: etabAnterieur === ETAB_COCOTIERS ? (de.startsWith("C") ? null : ETAB_COCOTIERS) : de.startsWith("C") ? ETAB_FLAMBOYANTS : ETAB_RONIERS });
     }

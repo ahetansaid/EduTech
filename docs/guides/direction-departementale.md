@@ -56,6 +56,14 @@
 
 ## Vos écrans
 
+### Poste de pilotage
+
+`/aujourd-hui` — Vos décisions du jour, triées par échéance.
+
+- Rassemble les demandes dont l'étape courante relève de votre rôle et de votre département.
+- Classées par urgence : échéance atteinte ou dépassée en tête, puis cette semaine, puis à surveiller.
+- Chaque ligne ouvre « Demandes à traiter » sur la demande concernée.
+
 ### Console territoriale
 
 `/territoire` — Votre département en un écran.
@@ -64,6 +72,7 @@
 - Carte des niveaux de priorité par commune.
 - Absences du jour en direct (toutes les 30 secondes).
 - Classement des communes et établissements n'ayant pas transmis.
+- « Statistiques du département » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, position percentile de chaque établissement, couverture en infrastructures — le tout exportable en CSV.
 
 ### Où agir ?
 
@@ -83,7 +92,22 @@
 
 - Qualité des données : complétude par commune, suivi des relances.
 
+### Enseignement supérieur
+
+`/enseignement-superieur` — L'offre post-bac, en lecture, pour préparer les départs de vos lycées.
+
+- Le même catalogue que l'administration centrale : filières par voie, sessions de concours avec places et coefficients, annuaire des établissements du supérieur et de leurs tutelles.
+- Utile pour objectiver où vont réellement les bacheliers de votre département et quelle filière fait défaut à proximité.
+- « Formations pro » : l'échelle des diplômes EFTP et la passerelle vers la licence professionnelle.
+- Lecture seule et catalogue indicatif : aucune donnée nominative dans ces écrans.
+
 ## Tâches pas à pas
+
+### Prioriser ses décisions du jour
+
+1. Touchez « Poste de pilotage » dans le menu, sous « Aujourd'hui ».
+2. Traitez les demandes « À traiter aujourd'hui » (échéance atteinte ou dépassée).
+3. Touchez une ligne : « Demandes à traiter » s'ouvre sur la demande, où vous rendez la décision motivée.
 
 ### Relancer les établissements qui n'ont pas transmis
 
@@ -98,6 +122,17 @@
 1. Dans « Classement des communes », choisissez l'indicateur (occupation, élèves par enseignant, maths, absentéisme).
 2. Le trait vertical marque la valeur du département.
 3. Touchez une commune pour ouvrir sa fiche dans « Où agir ? ».
+
+### Mesurer les écarts entre établissements
+
+> La valeur du département masque des situations opposées : ce sont les écarts entre établissements qui décident où envoyer un appui.
+
+1. Sur la console, dépliez « Statistiques du département ».
+2. Comparez médiane et moyenne d'occupation, et le nombre d'établissements saturés ou à classes surchargées.
+3. Utilisez le comparateur classé (Occupation ou Élèves / ens.) pour voir les établissements les plus en tension, repère : la médiane départementale.
+4. Lisez la couverture en infrastructures pour prioriser les visites.
+5. Lisez « Où se situe chaque établissement ? » : le percentile d'occupation et d'encadrement transforme une valeur brute en rang défendable dans le département.
+6. Touchez « Exporter (CSV) » pour emporter ce portrait (résumé, bandes, comparateur, percentiles, infrastructures) vers une note ou un arbitrage.
 
 ## Questions fréquentes
 

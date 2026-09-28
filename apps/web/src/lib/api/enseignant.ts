@@ -69,8 +69,8 @@ export const dateDuJour = () => new Date().toISOString().slice(0, 10);
 
 /* ================================================================== Lectures */
 
-export function useMesClasses() {
-  return useQuery({ queryKey: CLES.classes, queryFn: ({ signal }) => lire<MesClasses>("/moi/classes", signal), refetchInterval: 30_000 });
+export function useMesClasses(actif = true) {
+  return useQuery({ queryKey: CLES.classes, queryFn: ({ signal }) => lire<MesClasses>("/moi/classes", signal), enabled: actif, refetchInterval: 30_000 });
 }
 
 export function useCarnet(classeId: string) {
@@ -92,8 +92,8 @@ export function useHistorique(classeId: string, actif = true) {
   });
 }
 
-export function useCarriere() {
-  return useQuery({ queryKey: CLES.carriere, queryFn: ({ signal }) => lire<Carriere>("/moi/carriere", signal) });
+export function useCarriere(actif = true) {
+  return useQuery({ queryKey: CLES.carriere, queryFn: ({ signal }) => lire<Carriere>("/moi/carriere", signal), enabled: actif });
 }
 
 /* ================================================================== Écritures (avec repli hors connexion) */

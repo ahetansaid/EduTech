@@ -21,13 +21,14 @@ const NIVEAUX = {
   primaire: ["ecole_primaire"],
   secondaire: ["college", "lycee_general"],
   technique: ["lycee_technique", "centre_formation_professionnelle"],
-  superieur: ["universite", "ecole_superieure"],
+  superieur: ["universite", "ecole_superieure", "institut", "ecole_nationale"],
   alphabetisation: ["centre_alphabetisation"],
 } as const;
 const LIBELLE_TYPE: Record<string, string> = {
   ecole_maternelle: "École maternelle", ecole_primaire: "École primaire", college: "Collège", lycee_general: "Lycée général",
   lycee_technique: "Lycée technique", centre_formation_professionnelle: "Centre de formation professionnelle",
   centre_alphabetisation: "Centre d'alphabétisation", universite: "Université", ecole_superieure: "École supérieure", centre_examen: "Centre d'examen",
+  institut: "Institut", ecole_nationale: "École nationale",
 };
 const typesPublics = Object.values(NIVEAUX).flat() as string[];
 
@@ -143,4 +144,59 @@ publique.get("/public/calendrier", async (c) => {
     aujourdhui: auj, annees, annee: choisie,
     evenements: toutes.filter((e) => e.annee === choisie).map(({ majPar: _m, ...e }) => e),
   });
+});
+
+/* ------------------------------------------------------------------ Catalogue public du supérieur
+ * L'offre de formation est une information publique : un élève de terminale s'oriente dessus, une
+ * famille vérifie qu'une filière est habilitée avant d'y inscrire son enfant. Référentiel seul, aucune
+ * donnée nominative ; le détail d'un effectif reste sous la porte de l'établissement.
+ */
+
+publique.get("/public/superieur/filieres", async (c) => {
+  const f = z.object({
+    voie: z.string().max(30).optional(), domaine: z.string().max(40).optional(), etablissementId: z.string().regex(/^ETB-[A-Za-z0-9-]+$/).optional(),
+  }).parse(c.req.query());
+  const lignes = await base().select({
+    filiere: schema.filiereSuperieure,
+    etablissement: { id: schema.etablissements.id, nom: schema.etablissements.nom, sigle: schema.etablissements.sigle, communeId: schema.etablissements.communeId, statut: schema.etablissements.statut, rattachementId: schema.etablissements.rattachementId },
+    homologation: schema.homologationsFiliere.statut,
+  }).from(schema.filiereSuperieure)
+    .innerJoin(schema.etablissements, eq(schema.etablissements.id, schema.filiereSuperieure.etablissementId))
+    .leftJoin(schema.homologationsFiliere, and(eq(schema.homologationsFiliere.filiereId, schema.filiereSuperieure.id), eq(schema.homologationsFiliere.etablissementId, schema.filiereSuperieure.etablissementId)))
+    .where(and(
+      ...(f.voie ? [eq(schema.filiereSuperieure.voie, f.voie as never)] : []),
+      ...(f.domaine ? [eq(schema.filiereSuperieure.domaine, f.domaine as never)] : []),
+      ...(f.etablissementId ? [eq(schema.filiereSuperieure.etablissementId, f.etablissementId)] : []),
+    ))
+    .orderBy(schema.filiereSuperieure.nom);
+  c.header("Cache-Control", "public, max-age=300");
+  return c.json(lignes.map(({ filiere, etablissement, homologation }) => ({
+    ...filiere,
+    etablissement: { ...etablissement, ...libelleLieu(etablissement.communeId) },
+    // Habilitée = homologation accordée : sans elle, le diplôme national n'est pas opposable.
+    habilitee: homologation === "accordee",
+  })));
+});
+
+publique.get("/public/superieur/etablissements", async (c) => {
+  const lignes = await base().select({
+    id: schema.etablissements.id, nom: schema.etablissements.nom, sigle: schema.etablissements.sigle, type: schema.etablissements.typeInstitution,
+    statut: schema.etablissements.statut, tutelles: schema.etablissements.tutelles, rattachementId: schema.etablissements.rattachementId,
+    communeId: schema.etablissements.communeId, lat, lng, // Colonne extérieure qualifiée : non qualifiée, `id` se résoudrait sur la table de la sous-requête.
+    filieres: sql<number>`(select count(*)::int from core.filiere_superieure f where f.etablissement_id = "etablissements"."id")`,
+  }).from(schema.etablissements).where(eq(schema.etablissements.cycle, "superieur")).orderBy(schema.etablissements.nom);
+  c.header("Cache-Control", "public, max-age=300");
+  return c.json(lignes.map((e) => ({ ...e, lat: Number(e.lat), lng: Number(e.lng), libelleType: LIBELLE_TYPE[e.type] ?? e.type, ...libelleLieu(e.communeId) })));
+});
+
+publique.get("/public/superieur/concours", async (c) => {
+  const lignes = await base().select({
+    concours: schema.concoursSession, filiere: { id: schema.filiereSuperieure.id, nom: schema.filiereSuperieure.nom },
+    etablissement: { id: schema.etablissements.id, nom: schema.etablissements.nom, sigle: schema.etablissements.sigle },
+  }).from(schema.concoursSession)
+    .innerJoin(schema.filiereSuperieure, eq(schema.filiereSuperieure.id, schema.concoursSession.filiereId))
+    .innerJoin(schema.etablissements, eq(schema.etablissements.id, schema.filiereSuperieure.etablissementId))
+    .orderBy(sql`${schema.concoursSession.session} desc`, schema.concoursSession.nom);
+  c.header("Cache-Control", "public, max-age=300");
+  return c.json(lignes.map(({ concours, filiere, etablissement }) => ({ ...concours, filiere, etablissement })));
 });

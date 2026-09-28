@@ -41,6 +41,13 @@ ressaisis plusieurs fois et remontent tard, souvent incomplets.
 
 **BEILE relie ces faits en un registre unique et restitue à chaque acteur ce dont il a besoin, et rien de plus.**
 
+BEILE est une **couche nationale**, pas un logiciel de gestion de plus. Il ne remplace ni EducMaster (vie scolaire des
+collèges et lycées), ni eRESULTATS (examens nationaux), ni les systèmes de scolarité des universités, ni la plateforme
+d'allocations de la DBAU : ces systèmes lui **transmettent leurs faits par des connecteurs signés** (esprit X-Road). BEILE
+les rattache à la personne par son **NPI**, les contrôle (homologation, crédits, scolarité réelle), les inscrit au registre
+**avec leur source** et scelle les diplômes. Les écrans de saisie ne sont que le **mode secours** d'un établissement non
+encore raccordé.
+
 | Principe | Traduction concrète |
 |---|---|
 | **Un fait saisi une fois** | L'absence saisie par l'enseignant devient notification pour la famille, ligne du jour pour la direction, taux pour l'inspection et couleur sur la carte nationale, sans aucune ressaisie. |
@@ -85,13 +92,15 @@ flowchart LR
 |---|---|
 | **Cockpit national** | Chiffres clés avec indice de confiance, carte des 77 communes, zones prioritaires expliquées par leurs facteurs, flux des faits du jour en direct |
 | **Console territoriale** | Indicateurs sous périmètre, établissements retardataires, absences du jour par établissement, relances de transmission |
-| **Établissement** | Tableau du jour (absences en direct, alertes de décrochage), inscription par NPI ou sans acte, transferts, délibération et diplômes vérifiables |
+| **Établissement** | Tableau du jour (absences en direct, signaux de vigilance explicables), inscription par NPI ou sans acte, transferts, justificatifs d'absence, conseil de passage, **examens nationaux en lecture seule** (candidats, verdict officiel, diplômes des élèves) |
 | **Enseignant** | Appel en quelques secondes, **y compris hors connexion**, saisie et correction motivée des notes, formation continue |
 | **Famille / Apprenant** | Notes, absences, justification, notifications, passeport éducatif continu malgré les transferts, diplômes à QR code |
 | **Conformité** | Journal de toutes les décisions d'accès (accordées et refusées), statistiques des refus, registre des traitements |
 | **Administration** | Création d'utilisateurs aux habilitations vérifiées (rôle ↔ périmètre ↔ registre NPI), révocation de sessions, file d'assistance, publication du calendrier scolaire |
 | **Assistance** | Tout utilisateur ouvre une demande depuis son menu et suit les réponses ; l'administration la traite et la résout |
-| **Services publics** | Annuaire des 11 700 établissements (recherche, carte, « autour de moi »), calendrier scolaire officiel dynamique, démarches d'inscription (y compris sans acte de naissance), données ouvertes par département, centre d'aide. La vérification d'un diplôme reste servie à l'adresse du QR code imprimé (`/verifier`), sans être mise en avant, en attendant un service de résultats d'examens sur le modèle d'e-resultat |
+| **Services publics** | Annuaire des établissements, universités comprises (recherche, carte, « autour de moi »), catalogue des formations du supérieur avec leur **habilitation**, calendrier scolaire officiel, démarches d'inscription (y compris sans acte de naissance), données ouvertes, **résultats d'examens** (verdict et mention par numéro de table ; nom et moyenne seulement avec la date de naissance ; renvoi vers eRESULTATS), vérification des diplômes par QR code, centre d'aide |
+| **Enseignement supérieur** | Catalogue et homologations, cycle des établissements privés, scolarité LMD (mode secours), jurys, certification des diplômes nationaux, guichet de l'étudiant (actes datés et scellés), allocations (statut, jamais de montant) |
+| **Interopérabilité** | Connecteurs signés EducMaster, eRESULTATS, université, DBAU : statut réel, volumes reçus, provenance de chaque fait au registre |
 | **Guides** | Visite guidée animée dans chaque espace (démarre à la première visite), centre d'aide `/aide` et [guides écrits par profil](docs/guides/README.md) |
 
 ---
@@ -277,7 +286,7 @@ La défense est organisée en couches successives, chacune indépendante des aut
 flowchart TB
     A["Navigateur<br/>CSP stricte à nonce · HSTS · X-Frame DENY · Permissions-Policy · polices auto-hébergées"]
     B["Front<br/>redirection sans session · aucun secret, aucune base"]
-    C["Entrée de l'API<br/>en-têtes · corps ≤ 16 Ko · débit par IP (NAT) et par utilisateur"]
+    C["Entrée de l'API<br/>en-têtes · corps ≤ 16 Ko · débit par IP, par utilisateur, et partagé entre instances sur les portes publiques"]
     D["Authentification<br/>scrypt · session serveur HttpOnly 12 h · CSRF double soumission<br/>contrôle d'origine · verrouillage après 5 échecs · anti-énumération"]
     E["Validation<br/>contrats zod stricts : un champ inconnu vaut 422"]
     F["Autorisation ABAC<br/>rôle · périmètre · relation · finalité<br/>décision journalisée, refus compris"]
@@ -288,7 +297,9 @@ flowchart TB
 - **Mots de passe** : scrypt (N=2¹⁵, r=8), mot de passe initial à changer obligatoirement, réinitialisation par l'administrateur avec affichage unique.
 - **Sessions** : seule l'empreinte SHA-256 du jeton est stockée ; la déconnexion révoque côté serveur ; un changement de mot de passe ferme les autres sessions.
 - **Audit** : chaque décision d'accès à une donnée individuelle est tracée, et les refus le sont systématiquement. Les consultations identiques répétées sont regroupées par fenêtre de 10 minutes.
-- **Données personnelles** : minimisation par espace, finalité déclarée à chaque accès, registre des traitements consultable par le DPO.
+- **Données personnelles** : minimisation par espace, finalité déclarée à chaque accès, registre des traitements consultable par le DPO ; chaque **export de fichier est journalisé** avant d'être produit ; le résultat d'examen public ne révèle ni nom ni moyenne sans la date de naissance.
+- **Diplômes** : sceau HMAC à clef (obligatoire en production, rotation sans invalider les documents remis) ; vérification en deux contrôles (ligne intègre, puis document égal au sceau stocké) ; en base, un déclencheur rend les champs signés **immuables** et la révocation **définitive**.
+- **Systèmes partenaires** : chaque lot est signé (HMAC du corps exact), horodaté (±5 min, anti-rejeu), idempotent, et limité aux messages dont le partenaire est habilité.
 
 Détails, menaces et liste de contrôle avant production : [docs/SECURITE.md](docs/SECURITE.md).
 
@@ -373,6 +384,7 @@ npm run role-api -w @beile/db       # écrit DATABASE_URL_API dans .env
 npm run comptes -w @beile/db        # mots de passe générés dans COMPTES.local.md (ignoré par Git)
 npm run projections -w @beile/db
 npm run calendrier -w @beile/db     # calendrier scolaire officiel (arrêté du 28 juillet 2026)
+npm run superieur -w @beile/db      # référentiel du supérieur (universités, filières, homologations, étudiants)
 npm run verifier -w @beile/db
 # ou, tout en une fois sur une base existante (IRRÉVERSIBLE, l'hôte doit être recopié) :
 # npm run reinitialiser -w @beile/db <hôte de la base>
@@ -384,6 +396,8 @@ npm run dev                         # Front : http://localhost:3000 (BEILE_API_I
 # Contrôles
 npm run typecheck && npm run lint
 npm run recette -w @beile/api       # lecture et refus : sans risque sur une base partagée
+npm run scenario:superieur -w @beile/api  # une année universitaire jouée par l'API (base jetable)
+npm run interop:demo -w @beile/api  # EducMaster, eRESULTATS, UAC et DBAU transmettent par connecteur signé
 npm run guides:docs -w @beile/web   # régénère docs/guides depuis le centre d'aide
 ```
 

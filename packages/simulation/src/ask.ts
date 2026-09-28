@@ -2,7 +2,7 @@ import type { CodeIndicateur, Dimension, Niveau, Perimetre, ReponseAsk, RequeteS
 import { DIMENSION_LIBELLE, NIVEAUX, RequeteSemantique as SchemaRequete } from "@beile/contracts";
 import type { CouchesNationales } from "./macro";
 import { PRENOMS_F, PRENOMS_M } from "./noms";
-import { calculer, communesDuPerimetre, DICTIONNAIRE } from "./semantique";
+import { calculer, codesDuMoteur, communesDuPerimetre, DICTIONNAIRE } from "./semantique";
 import { COMMUNES, DEPARTEMENTS, departementById } from "./territoire";
 
 /**
@@ -39,9 +39,17 @@ export function traduire(question: string): Traduction {
   }
 
   // 2. Indicateur.
+  // Un crédit ECTS se lit dans le registre du supérieur, pas dans la couche statistique : le mot suffit
+  // à refuser, sinon « combien de crédits ECTS » tomberait sur `effectif_apprenants` et répondrait un
+  // nombre d'inscrits sous une question de credits — un chiffre vrai à côté d'une mauvaise question.
+  if (/\bects\b|credit/.test(q)) {
+    return {
+      requete: null, interpretation,
+      refus: { motif: "indicateur_inconnu", explication: "Les crédits ECTS relèvent du registre des écritures du supérieur (validation d'UE, capitalisation), pas de la couche statistique nationale : Ask Education ne les calcule pas. Leur chiffre est rendu par le service de scolarité du supérieur (`/enseignement-superieur/scolarite/credits-ects`), sous périmètre d'établissement ou de pilotage. Définitions publiées au dictionnaire : « Crédits ECTS acquis », « Taux de capitalisation des crédits ECTS »." },
+    };
+  }
   let indicateur: CodeIndicateur | null = null;
-  let seuil: number | undefined;
-  const mSeuil = q.match(/(?:>=|≥|superieure? ou egale? a|superieure? a|au moins|plus de|d au moins)\s*(\d{1,2}(?:[.,]\d+)?)|(\d{1,2}(?:[.,]\d+)?)\s*\/\s*20/);
+  let seuil: number | undefined;  const mSeuil = q.match(/(?:>=|≥|superieure? ou egale? a|superieure? a|au moins|plus de|d au moins)\s*(\d{1,2}(?:[.,]\d+)?)|(\d{1,2}(?:[.,]\d+)?)\s*\/\s*20/);
   if (mSeuil) seuil = Number((mSeuil[1] ?? mSeuil[2])!.replace(",", "."));
   if (/abandon|decroch/.test(q)) indicateur = "taux_abandon";
   else if (/absent/.test(q)) indicateur = "taux_absenteisme";
@@ -53,9 +61,12 @@ export function traduire(question: string): Traduction {
   else if (/combien|nombre|effectif|inscrit|scolarise|apprenants|eleves/.test(q)) indicateur = "effectif_apprenants";
 
   if (!indicateur) {
+    // La liste publiée est celle que ce moteur sait rendre ; annoncer un indicateur « registre » ici
+    // ferait croire qu'Ask Education peut le calculer, alors qu'il renverrait une valeur vide.
+    const rendus = codesDuMoteur("simulation").map((code) => DICTIONNAIRE[code].nom.toLowerCase());
     return {
       requete: null, interpretation,
-      refus: { motif: "indicateur_inconnu", explication: "Aucun indicateur du dictionnaire national ne correspond à cette question. Indicateurs disponibles : " + Object.values(DICTIONNAIRE).map((d) => d.nom.toLowerCase()).join(", ") + "." },
+      refus: { motif: "indicateur_inconnu", explication: "Aucun indicateur du dictionnaire national ne correspond à cette question. Indicateurs calculés par cette couche : " + rendus.join(", ") + ". Ceux du registre du supérieur y sont aussi publiés, mais c'est le service de scolarité du supérieur qui les rend." },
     };
   }
   interpretation.push(`Indicateur : ${DICTIONNAIRE[indicateur].nom} (v${DICTIONNAIRE[indicateur].version})`);

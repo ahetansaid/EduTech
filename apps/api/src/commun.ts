@@ -2,7 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Finalite, Profil } from "@beile/contracts";
 import { connecter, schema } from "@beile/db";
 import { empreinteJeton } from "@beile/db/securite";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
@@ -45,6 +45,35 @@ export function limiteDebit(max: number, fenetreMs: number, cle: (c: Context) =>
       }
     } else if (++e.n > max) {
       c.header("Retry-After", String(Math.ceil((fenetreMs - (maintenant - e.debut)) / 1000)));
+      throw new HTTPException(429, { message: "Trop de requêtes : réessayez dans quelques instants." });
+    }
+    await next();
+  };
+}
+
+/**
+ * Limite de débit PARTAGÉE entre toutes les instances (compteur en base, incrément atomique), pour les
+ * portes publiques sensibles : vérification de diplômes et d'actes, résultats d'examens, connexion. En
+ * serverless, un plafond en mémoire se contourne en tombant sur une autre instance. Si la base ne
+ * répond pas, on retombe sur le plafond local plutôt que de fermer un service public.
+ */
+export function limiteDebitPartage(nom: string, max: number, fenetreMs: number, cle: (c: Context) => string = adresseIp): MiddlewareHandler {
+  const local = limiteDebit(max, fenetreMs, cle);
+  return async (c, next) => {
+    const fenetre = Math.floor(Date.now() / fenetreMs);
+    let n: number;
+    try {
+      const [r] = await base().insert(schema.compteursDebit).values({ cle: `${nom}|${cle(c)}`, fenetre, n: 1 })
+        .onConflictDoUpdate({ target: [schema.compteursDebit.cle, schema.compteursDebit.fenetre], set: { n: sql`${schema.compteursDebit.n} + 1` } })
+        .returning({ n: schema.compteursDebit.n });
+      n = r?.n ?? 1;
+      // Purge paresseuse des fenêtres échues (une requête sur cent), sans jamais retarder la réponse.
+      if (Math.random() < 0.01) void base().delete(schema.compteursDebit).where(lt(schema.compteursDebit.fenetre, fenetre - 2)).catch(() => {});
+    } catch {
+      return local(c, next);
+    }
+    if (n > max) {
+      c.header("Retry-After", String(Math.ceil((fenetreMs - (Date.now() % fenetreMs)) / 1000)));
       throw new HTTPException(429, { message: "Trop de requêtes : réessayez dans quelques instants." });
     }
     await next();

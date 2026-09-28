@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, type ReactNode } from "react";
 import { ecrire, requete } from "./http";
+import type { ContexteAffichage } from "./navigation";
 
 /**
  * Session de l'utilisateur connecté, lue sur le serveur (GET /auth/session).
@@ -13,6 +14,8 @@ import { ecrire, requete } from "./http";
 export interface Session {
   profil: Profil;
   compte: { identifiant: string; doitChangerMotDePasse: boolean };
+  /** Contexte d'affichage calculé par le serveur (cycle des établissements, étudiant du supérieur). */
+  contexte?: ContexteAffichage;
 }
 
 const Contexte = createContext<Session | null>(null);

@@ -98,7 +98,8 @@ enseignant.get("/classes/:id", authentifie, async (c) => {
     where n.classe_id = ${classeId} and n.apprenant_id in (select apprenant_id from el)
       and n.matiere in (select jsonb_array_elements_text(${JSON.stringify(visibles)}::jsonb))
     union all
-    select e.id, e.apprenant_id, 'ABSENCE', e.survenu_le, null, null, null, false, e.donnees->>'date', (e.donnees->>'justifiee')::boolean
+    select e.id, e.apprenant_id, 'ABSENCE', e.survenu_le, null, null, null, false, e.donnees->>'date',
+      ((e.donnees->>'justifiee')::boolean or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id))
     from ledger.evenements e
     where e.type = 'ABSENCE' and e.apprenant_id in (select apprenant_id from el) and e.donnees->>'classeId' = ${classeId}
     order by 4

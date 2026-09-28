@@ -22,6 +22,14 @@ export const MATIERES = ["Mathématiques", "Français", "Anglais", "Sciences phy
 export const Matiere = z.enum(MATIERES);
 export type Matiere = z.infer<typeof Matiere>;
 
+/**
+ * Mention du jury, alignée sur le barème déjà en usage (ne s'applique qu'aux admis). Référentiel
+ * national et non détail du volet K-12 : le même barème qualifie une licence délibérée par un jury
+ * d'établissement et un BTS passé en examen national.
+ */
+export const Mention = z.enum(["Très bien", "Bien", "Assez bien", "Passable"]);
+export type Mention = z.infer<typeof Mention>;
+
 export const Departement = z.object({
   id: z.string(),
   nom: z.string(),

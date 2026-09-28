@@ -10,14 +10,18 @@ import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useThemeEspace } from "@/lib/useSombre";
-import { accueilPour, useProfil } from "@/lib/session";
+import { accueilPour, useSession } from "@/lib/session";
 import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
 import { GardeSession } from "./GardeSession";
 import { MenuUtilisateur } from "./MenuUtilisateur";
 
-export interface Onglet { href: string; libelle: string; icone: LucideIcon }
+export interface Onglet {
+  href: string; libelle: string; icone: LucideIcon; roles?: Role[];
+  /** Réservé à un apprenant inscrit dans le supérieur (guichet des actes, allocations). */
+  etudiantSuperieur?: boolean;
+}
 
 /** Couleur propre à chaque espace : l'utilisateur sait d'un coup d'œil où il se trouve. */
 const ACCENTS = {
@@ -39,11 +43,13 @@ export function EspacePersonnel(props: Proprietes) {
 
 function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Proprietes) {
   const pathname = usePathname();
-  const profil = useProfil();
+  const { profil, contexte } = useSession();
   const a = ACCENTS[espace];
   const autorise = profil.habilitations.some((h) => roles.includes(h.role));
-  useTitre([...onglets].sort((x, y) => y.href.length - x.href.length).find((o) => pathname === o.href || pathname.startsWith(`${o.href}/`))?.libelle ?? a.nom);
-  const actif = (href: string) => (href === onglets[0]?.href ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
+  const visibles = onglets.filter((o) => (!o.roles || o.roles.some((r) => profil.habilitations.some((h) => h.role === r)))
+    && (!o.etudiantSuperieur || !!contexte?.etudiantSuperieur));
+  useTitre([...visibles].sort((x, y) => y.href.length - x.href.length).find((o) => pathname === o.href || pathname.startsWith(`${o.href}/`))?.libelle ?? a.nom);
+  const actif = (href: string) => (href === visibles[0]?.href ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
 
   return (
     <div className="min-h-screen bg-bg" style={{ "--acc": a.accent, "--acc-doux": a.doux } as CSSProperties}>
@@ -58,7 +64,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
             <p className="truncate text-[13px] text-ink-muted">{profil.nomAffiche}</p>
           </div>
           <nav data-guide="onglets" className="ml-6 hidden items-center gap-1 md:flex" aria-label="Sections de l'espace">
-            {onglets.map((o) => (
+            {visibles.map((o) => (
               <Link
                 key={o.href}
                 href={o.href}
@@ -90,7 +96,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
 
       {/* Onglets en bas d'écran (téléphone) */}
       <nav data-guide="onglets" className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
-        {onglets.map((o) => (
+        {visibles.map((o) => (
           <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
             {actif(o.href) && <IndicateurActif id={`onglet-mobile-${espace}`} className="absolute inset-0 rounded-md" style={{ background: "var(--acc-doux)" }} />}
             <o.icone size={20} aria-hidden className="relative" />
