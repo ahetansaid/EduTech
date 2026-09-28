@@ -889,8 +889,14 @@ export const GUIDES: Guide[] = [
       {
         cible: "scolarite-deliberation",
         titre: "Délibérer le diplôme",
-        texte: "Choisissez un jury ayant délibéré, cochez les candidats, donnez la décision. Un « admis » sous le volume de la filière n'est pas enregistré, et une admission sous réserve doit nommer les UE manquantes.",
-        pourquoi: "Moyenne, mention et crédits viennent du registre, jamais de la saisie : deux jurys sur les mêmes acquis rendent le même chiffre.",
+        texte: "Choisissez un jury ayant délibéré, cochez les candidats, donnez la décision. Un « admis » sous le volume de la filière n'est pas enregistré, et une admission sous réserve doit nommer les UE manquantes. Chaque admission pleine émet sur le même acte un diplôme vérifiable (CERT-…), rattaché à la délibération.",
+        pourquoi: "Moyenne, mention et crédits viennent du registre, jamais de la saisie : deux jurys sur les mêmes acquis rendent le même chiffre — et le même sceau.",
+      },
+      {
+        cible: "scolarite-deliberations",
+        titre: "Le diplôme rendu opposable",
+        texte: "La colonne « Certificat émis » nomme le diplôme que le registre a scellé, avec sa filière, son établissement et l'office qui a délibéré. Une ligne « non émis » reste visible : ajournement, refus ou admission sous réserve — le document n'existe pas encore.",
+        pourquoi: "Un tiers vérifie par l'identifiant et le QR code : si BEILE scellait une admission sous réserve, il publierait un diplôme que le jury n'a pas délivré.",
       },
       {
         cible: "scolarite-equivalences",

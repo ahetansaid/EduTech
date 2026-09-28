@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { NIVEAUX, type Certificat, type Habilitation, type Niveau } from "@beile/contracts";
+import { NIVEAUX, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
-import { empreinteCertificat } from "@beile/simulation/micro";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { communeById } from "@beile/simulation/territoire";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -9,7 +8,9 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, comparerFr, corps, journaliser, refuser, type Variables } from "./commun";
+import { sceauCertificat } from "./certification";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
+import { mentionDe } from "./examens";
 import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
 
 /**
@@ -401,23 +402,35 @@ etablissement.post("/etablissements/:id/examens/deliberation", authentifie, asyn
   const annee = anneeDeSession(session);
   const delivreLe = aujourdhui();
   const juges = candidats.filter((a) => a.moyenne != null);
-  const certs: Certificat[] = [];
   const faits = juges.flatMap((a) => {
     // Note provisoire = moyenne annuelle réelle, arrondie telle quelle ; la note officielle du centre s'y substituera par événement correctif.
     const moyenne = Number(a.moyenne!.toFixed(2));
     const admis = moyenne >= 10;
-    const f = [{ type: "RESULTAT_EXAMEN", auteurId: profil.id, etablissementId: id, apprenantId: a.id, source: "examens" as const, donnees: { apprenantId: a.id, examen, session, moyenne, admis } as Record<string, unknown> }];
+    const f: NouveauFait[] = [{ type: "RESULTAT_EXAMEN", auteurId: profil.id, etablissementId: id, apprenantId: a.id, source: "examens", donnees: { apprenantId: a.id, examen, session, moyenne, admis } }];
     if (admis) {
-      const mention = moyenne >= 16 ? "Très bien" : moyenne >= 14 ? "Bien" : moyenne >= 12 ? "Assez bien" : "Passable";
-      const brut = { id: `CERT-${examen}-${annee}-${a.id.slice(4)}`, apprenantId: a.id, examen, session, mention, moyenne, delivreLe };
-      certs.push({ ...brut, empreinte: empreinteCertificat(brut, `${a.prenoms} ${a.nom}`), revoque: false });
-      f.push({ type: "CERTIFICATION", auteurId: profil.id, etablissementId: id, apprenantId: a.id, source: "examens" as const, donnees: { apprenantId: a.id, certificatId: brut.id, examen, session, mention } });
+      const mention = mentionDe(moyenne);
+      // Les trois colonnes du supérieur restent vides ici : pour un examen national du K-12, l'examen
+      // même nomme l'autorité qui délibère, et une certification d'établissement ne se dit pas « CEP ».
+      // Un sceau qui ne les nomme pas garde le format historique — les diplômes déjà imprimés se vérifient.
+      const brut = {
+        id: `CERT-${examen}-${annee}-${a.id.slice(4)}`, apprenantId: a.id, examen, session, mention, moyenne, delivreLe,
+        filiereId: null, etablissementId: null, office: null,
+      };
+      // Le sceau voyage dans le fait : la projection `core.certificats` se reconstruit du seul registre,
+      // et une rangee réécrite en base ne peut plus se donner un diplôme pour un autre.
+      f.push({
+        type: "CERTIFICATION", auteurId: profil.id, etablissementId: id, apprenantId: a.id, source: "examens",
+        donnees: {
+          apprenantId: a.id, certificatId: brut.id, examen, session, mention, moyenne, delivreLe,
+          filiereId: null, delivrePar: null, office: null, empreinte: sceauCertificat(brut, `${a.prenoms} ${a.nom}`),
+        },
+      });
     }
     return f;
   });
-  await inscrireAuRegistre(faits, async (tx) => { if (certs.length) await tx.insert(schema.certificats).values(certs); });
+  await inscrireAuRegistre(faits);
   await journaliser(profil, `Délibération du ${examen}`, `${id} · ${juges.length} candidat(s) jugé(s)`, "gestion", true, null);
-  return c.json({ examen, session, candidats: candidats.length, nonJuges: candidats.length - juges.length, diplomes: certs.length }, 201);
+  return c.json({ examen, session, candidats: candidats.length, nonJuges: candidats.length - juges.length, diplomes: faits.filter((x) => x.type === "CERTIFICATION").length }, 201);
 });
 
 /* ------------------------------------------------------------------ Accompagnement (moteur de workflow) */

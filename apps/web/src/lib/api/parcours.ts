@@ -1,7 +1,7 @@
 "use client";
 
 import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification } from "@beile/contracts";
-import { MATIERES } from "@beile/contracts";
+import { MATIERES, NOM_DIPLOME_ATTESTE } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire, requete } from "@/lib/http";
 
@@ -73,7 +73,8 @@ export function lireSaisieVerification(brut: string): { id: string; empreinte: s
 
 /* ================================================================== Libellés */
 
-export const NOM_EXAMEN: Record<string, string> = { CEP: "Certificat d'études primaires", BEPC: "Brevet d'études du premier cycle", BAC: "Baccalauréat" };
+/** Intitulé lisible de tout diplôme attesté (K-12, EFTP, supérieur) : source unique, le contrat. */
+export const NOM_EXAMEN: Record<string, string> = NOM_DIPLOME_ATTESTE;
 export const NOM_SOURCE: Record<string, string> = { beile: "BEILE", educmaster: "EducMaster", examens: "Office du Bac et des examens", registre_national: "Registre national" };
 export const nomComplet = (a: Pick<Apprenant, "prenoms" | "nom">) => `${a.prenoms} ${a.nom}`;
 export const initiales = (a: Pick<Apprenant, "prenoms" | "nom">) => `${a.prenoms[0] ?? ""}${a.nom[0] ?? ""}`.toUpperCase();
@@ -219,7 +220,7 @@ export function jalonsParcours(d: Dossier): Jalon[] {
         res.push({ id: e.id, date: e.survenuLe, type: "examen", titre: `${e.examen} ${e.admis ? "obtenu" : "non obtenu"}`, detail: `Session ${e.session} · moyenne ${e.moyenne.toLocaleString("fr-FR", { maximumFractionDigits: 2 })}/20`, source, accent: false });
         break;
       case "CERTIFICATION":
-        res.push({ id: e.id, date: e.survenuLe, type: "diplome", titre: `Diplôme délivré : ${e.examen}`, detail: `Mention ${e.mention} · vérifiable en ligne par QR code`, source, accent: true });
+        res.push({ id: e.id, date: e.survenuLe, type: "diplome", titre: `Diplôme délivré : ${NOM_EXAMEN[e.examen] ?? e.examen}`, detail: `${e.mention ? `Mention ${e.mention} · ` : "Sans mention · "}vérifiable en ligne par QR code`, source, accent: true });
         break;
       case "ABANDON":
         res.push({ id: e.id, date: e.survenuLe, type: "abandon", titre: "Interruption de scolarité", detail: `Année ${e.anneeScolaire}`, source, accent: false });

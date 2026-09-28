@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Mention, ResultatExamenPublic } from "@beile/contracts";
+import { ExamenNational } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
@@ -21,6 +22,12 @@ export const examens = new Hono<{ Variables: Variables }>();
 
 const EXAMEN = z.enum(["CEP", "BEPC", "BAC"]);
 const NIVEAU_PAR_EXAMEN: Record<z.infer<typeof EXAMEN>, string> = { CEP: "CM2", BEPC: "3e", BAC: "Tle" };
+/**
+ * Les trois examens dont un candidat se désigne par son niveau de classe. Un examen national du
+ * supérieur se tient sur des inscriptions en filière : `NIVEAU_PAR_EXAMEN` n'a rien à répondre pour lui,
+ * et le dire plutôt que deviner un niveau est la seule issue honnête.
+ */
+const parNiveau = (e: string): e is z.infer<typeof EXAMEN> => EXAMEN.safeParse(e).success;
 const ID_SESSION = z.string().regex(/^SES-[A-Za-z0-9-]+$/);
 const ID_CENTRE = z.string().regex(/^CEN-[A-Za-z0-9-]+$/);
 const ID_CERTIF = z.string().regex(/^CERT-[A-Z]+-\d{4}-\d{6}$/);
@@ -51,11 +58,15 @@ const sessionOuverte = async (id: string) => {
 
 /* ------------------------------------------------------------------ Sessions */
 
-/** Ouvrir une session officielle (examen + session). Idempotente : (examen, session) unique. */
+/**
+ * Ouvrir une session officielle (examen + session). Idempotente : (examen, session) unique.
+ * Tout examen national du domaine s'y déclare — y compris ceux de l'EFTP et du supérieur, dont la
+ * licence certifiée par la DEC — mais le candidaturé par niveau de classe reste K-12 (voir plus bas).
+ */
 examens.post("/examens/sessions", authentifie, async (c) => {
   const profil = await bureau(c, "Ouverture d'une session d'examen");
   const { examen, session, arretCandidatures } = await corps(c, z.object({
-    examen: EXAMEN,
+    examen: ExamenNational,
     session: z.string().trim().min(3).max(40),
     arretCandidatures: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }).strict());
@@ -114,8 +125,13 @@ examens.post("/examens/sessions/:id/candidatures", authentifie, async (c) => {
   }).strict());
   const [centre] = await base().select({ id: schema.examensCentres.id }).from(schema.examensCentres).where(eq(schema.examensCentres.id, centreId));
   if (!centre) throw new HTTPException(422, { message: "Centre d'examen inconnu" });
-  const candidats = (await scolarisesEtablissement(etablissementId)).filter((e) => e.niveau === NIVEAU_PAR_EXAMEN[session.examen]);
-  if (!candidats.length) throw new HTTPException(422, { message: `Aucun scolarisé au niveau ${NIVEAU_PAR_EXAMEN[session.examen]} pour le ${session.examen}` });
+  if (!parNiveau(session.examen)) {
+    await journaliser(profil, "Constitution du candidaturé d'un examen supérieur", `${id} · ${session.examen}`, "gestion", false, "perimetre");
+    throw new HTTPException(422, { message: `Session « ${session.examen} » : le candidaturé d'un examen national du supérieur se constitue par inscriptions en filière, pas par niveau de classe. La porte est celle du registre du supérieur.` });
+  }
+  const niveau = NIVEAU_PAR_EXAMEN[session.examen];
+  const candidats = (await scolarisesEtablissement(etablissementId)).filter((e) => e.niveau === niveau);
+  if (!candidats.length) throw new HTTPException(422, { message: `Aucun scolarisé au niveau ${niveau} pour le ${session.examen}` });
   const dejaInscrits = await base().select({ apprenantId: schema.examensCandidatures.apprenantId, numeroTable: schema.examensCandidatures.numeroTable })
     .from(schema.examensCandidatures).where(eq(schema.examensCandidatures.sessionId, id));
   const dansSession = new Set(dejaInscrits.map((x) => x.apprenantId));
@@ -165,24 +181,33 @@ examens.post("/examens/sessions/:id/deliberation", authentifie, async (c) => {
   const session = await sessionOuverte(id);
   if (session.statut === "publiee") throw new HTTPException(409, { message: "Session déjà publiée : verdicts figés." });
   const { decisions } = await corps(c, z.object({
-    decisions: z.array(z.object({ numeroTable: z.string().trim().min(1).max(20), moyenne: z.coerce.number().min(0).max(20) }).strict()).min(1).max(20000),
+    // Par lots de 5 000 verdicts au plus (≈ 250 Ko, voir la limite de corps propre à cette route).
+    decisions: z.array(z.object({ numeroTable: z.string().trim().min(1).max(20), moyenne: z.coerce.number().min(0).max(20) }).strict()).min(1).max(5000),
   }).strict());
   const tables = decisions.map((d) => d.numeroTable);
   const connues = await base().select({ id: schema.examensCandidatures.id, numeroTable: schema.examensCandidatures.numeroTable })
     .from(schema.examensCandidatures).where(and(eq(schema.examensCandidatures.sessionId, id), inArray(schema.examensCandidatures.numeroTable, tables)));
   const parTable = new Map(connues.map((x) => [x.numeroTable, x.id]));
-  let maj = 0;
-  for (const d of decisions) {
+  // Un seul UPDATE … FROM (VALUES …) dans une transaction : le lot passe entier ou pas du tout (jamais
+  // une session à moitié délibérée), et en un aller-retour au lieu d'un par candidat.
+  const verdicts = decisions.flatMap((d) => {
     const candidatureId = parTable.get(d.numeroTable);
-    if (!candidatureId) continue;
-    const moyenne = Number(d.moyenne.toFixed(2));
+    if (!candidatureId) return [];
+    const moyenne = Math.round(d.moyenne * 100) / 100;
     const admis = moyenne >= 10;
-    await base().update(schema.examensCandidatures)
-      .set({ decision: admis ? "admis" : "non_admis", moyenne, mention: admis ? mentionDe(moyenne) : null })
-      .where(eq(schema.examensCandidatures.id, candidatureId));
-    maj += 1;
+    return [{ candidatureId, moyenne, decision: admis ? "admis" : "non_admis", mention: admis ? mentionDe(moyenne) : null }];
+  });
+  const maj = verdicts.length;
+  if (maj) {
+    await base().transaction(async (tx) => {
+      const valeurs = sql.join(verdicts.map((v) => sql`(${v.candidatureId}, ${v.decision}, ${v.moyenne}::numeric, ${v.mention})`), sql`, `);
+      await tx.execute(sql`
+        update core.examens_candidatures as c set decision = v.decision, moyenne = v.moyenne, mention = v.mention
+        from (values ${valeurs}) as v(id, decision, moyenne, mention)
+        where c.id = v.id and c.session_id = ${id}`);
+      await tx.update(schema.examensSessions).set({ statut: "deliberation" }).where(eq(schema.examensSessions.id, id));
+    });
   }
-  if (maj) await base().update(schema.examensSessions).set({ statut: "deliberation" }).where(eq(schema.examensSessions.id, id));
   await journaliser(profil, "Délibération d'une session d'examen", `${session.examen} ${session.session} · ${maj} verdict(s) reporté(s)`, "gestion", true, null);
   return c.json({ sessionId: id, deliberes: maj, nonTrouves: decisions.length - maj });
 });

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { NIVEAUX } from "@beile/contracts";
+import { ExamenNational, NIVEAUX } from "@beile/contracts";
 import { ANNEES, genererCoucheNationale } from "@beile/simulation/macro";
 import { genererMicroMonde } from "@beile/simulation/micro";
 import { COMMUNES_GEO, DEPARTEMENTS_GEO } from "@beile/simulation/territoire";
@@ -116,7 +116,9 @@ try {
     const sessId = (examen: string, session: string) => `SES-EXAM-${examen}-${session.replace(/\s+/g, "-")}`;
     const anneeDe = (session: string) => session.match(/\d{4}/)?.[0] ?? "";
     // Une session « publiee » par (examen, session) rencontré parmi les diplômes.
-    const groupes = [...new Map(monde.certificats.map((c) => [`${c.examen}|${c.session}`, c])).values()];
+    // Le monde simulé ne délivre que des examens nationaux ; le doctorat, diplôme d'établissement, n'a pas de session.
+    const groupes = [...new Map(monde.certificats.filter((c): c is typeof c & { examen: ExamenNational } => ExamenNational.safeParse(c.examen).success)
+      .map((c) => [`${c.examen}|${c.session}`, c])).values()];
     const sessions = groupes.map((c) => ({ id: sessId(c.examen, c.session), examen: c.examen, session: c.session, statut: "publiee" as const, publieeLe: `${anneeDe(c.session)}-07-20`, arretCandidatures: null }));
     await tx.insert(t.examensSessions).values(sessions);
 

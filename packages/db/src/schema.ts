@@ -43,6 +43,18 @@ const DIPLOMES = ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LIC
 /** Composantes LMD ; null hors LMD (une filière CAP ou BTS n'a pas de « L1 »). */
 const COMPOSANTES = ["L1", "L2", "L3", "M1", "M2", "Dr"] as const;
 
+/**
+ * Ce qu'un certificat atteste : les deux premiers examens, le baccalauréat et tout diplôme national.
+ * Miroir du contrat `DiplomeAtteste` — la valeur est complète, le code court de l'identifiant s'en déduit.
+ */
+const DIPLOMES_ATTESTES = ["CEP", "BEPC", "CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP", "BAC", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DOCTORAT", "DES"] as const;
+
+/** Examens nationaux dont une session peut être organisée, du primaire au master certifié par l'État. */
+const EXAMENS_NATIONAUX = ["CEP", "BEPC", "BAC", "BAC_TECHNIQUE", "CAP", "BEP", "BT", "BTS", "CQP", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DES"] as const;
+
+/** Office qui tient la délibération — le même pesant s'attache au certificat qu'elle produit. */
+const OFFICES_DELIBERANTS = ["office_du_bac", "dec_sup", "etablissement"] as const;
+
 /** Rythmes choisis par l'établissement. `modulaire` reste déclaré mais non attesté par un texte béninois. */
 const REGIMES = ["semestriel", "trimestriel", "annuel", "modulaire"] as const;
 
@@ -223,13 +235,28 @@ export const enseignements = core.table("enseignements", {
   matiere: text("matiere").notNull(),
 }, (t) => [primaryKey({ columns: [t.enseignantId, t.classeId, t.matiere] })]);
 
+/**
+ * Un diplôme certifié, vérifiable par un tiers. `examen` porte la valeur complète de ce qui est attesté
+ * (le code court n'existe que dans l'identifiant). Le volet K-12 n'a jamais nommé sa filière ni son
+ * établissement : ces trois colonnes sont `nullable` et les lignes déjà délivrées les gardent vides. Pour
+ * le supérieur elles se remplissent — une « Licence » sans filière ni université ne prouve rien — et c'est
+ * l'API qui les écrit, jamais la saisie d'un vérificateur.
+ *
+ * `mention` et `moyenne` deviennent nullables : un jury de capitalisation peut admettre sur les seuls
+ * crédits acquis, sans moyenne générale calculable. Écrire 0 ou « Passable » serait une décision que le
+ * jury n'a jamais prise.
+ */
 export const certificats = core.table("certificats", {
   id: text("id").primaryKey(),
   apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
-  examen: text("examen", { enum: ["CEP", "BEPC", "BAC"] }).notNull(),
+  examen: text("examen", { enum: DIPLOMES_ATTESTES }).notNull(),
+  /** Filière certifiée : ce que le tiers compare au relevé. Clé étrangère : un certificat ne nomme pas une filière inexistante. */
+  filiereId: text("filiere_id").references((): AnyPgColumn => filiereSuperieure.id),
+  etablissementId: text("etablissement_id").references(() => etablissements.id),
+  office: text("office", { enum: OFFICES_DELIBERANTS }),
   session: text("session").notNull(),
-  mention: text("mention").notNull(),
-  moyenne: numeric("moyenne", { precision: 4, scale: 2, mode: "number" }).notNull(),
+  mention: text("mention"),
+  moyenne: numeric("moyenne", { precision: 4, scale: 2, mode: "number" }),
   delivreLe: date("delivre_le").notNull(),
   empreinte: text("empreinte").notNull(),
   revoque: boolean("revoque").notNull().default(false),
@@ -243,7 +270,7 @@ export const certificats = core.table("certificats", {
  */
 export const examensSessions = core.table("examens_sessions", {
   id: text("id").primaryKey(),
-  examen: text("examen", { enum: ["CEP", "BEPC", "BAC"] }).notNull(),
+  examen: text("examen", { enum: EXAMENS_NATIONAUX }).notNull(),
   session: text("session").notNull(),
   statut: text("statut", { enum: ["ouverte", "composition", "deliberation", "publiee"] }).notNull().default("ouverte"),
   arretCandidatures: date("arret_candidatures"),
@@ -571,6 +598,8 @@ export const filiereSuperieure = core.table("filiere_superieure", {
   accesConcours: boolean("acces_concours").notNull().default(false),
   /** Durée cumulée de(s) stage(s) obligatoire(s), en mois ; 0 si aucun. */
   stageObligatoireMois: integer("stage_obligatoire_mois").notNull().default(0),
+  /** Matières du secondaire qui éclairent l'orientation, et leur poids (somme 1) — miroir du contrat `Filiere`. */
+  criteresOrientation: jsonb("criteres_orientation").$type<{ matiere: string; poids: number }[]>().notNull().default(sql`'[]'::jsonb`),
   ...validite(),
 }, (t) => [index("filiere_superieure_etablissement_idx").on(t.etablissementId), index("filiere_superieure_domaine_idx").on(t.domaine)]);
 
@@ -626,7 +655,7 @@ export const stage = core.table("stage", {
   au: date("au"),
   statut: text("statut", { enum: ["recherche", "piste", "convention_en_cours", "signe", "en_cours", "termine", "interrompu"] }).notNull().default("recherche"),
   valideParEtablissement: boolean("valide_par_etablissement").notNull().default(false),
-}, (t) => [index("stage_apprenant_idx").on(t.apprenantId), index("stage_statut_idx").on(t.statut), index("stage_filiere_idx").on(t.filiereId)]);
+}, (t) => [index("stage_apprenant_idx").on(t.apprenantId), index("stage_statut_idx").on(t.statut), index("stage_filiere_idx").on(t.filiereId), index("stage_etablissement_idx").on(t.etablissementId)]);
 
 /* ------------------------------------------------------------------ Gestion des étudiants du supérieur
  * Miroir en base des contrats zod `packages/contracts/src/etudiants-superieur.ts` (T0). Doctrine :
@@ -826,7 +855,11 @@ export const reglesValidation = core.table("regles_validation", {
   reportCreditsInterEtab: boolean("report_credits_inter_etab").notNull().default(true),
   /** Forme du paramètre 3 quand la compensation est « par bloc » : des listes de codes d'UE. */
   blocs: jsonb("blocs").$type<{ code: string; ue: string[] }[]>().notNull().default(sql`'[]'::jsonb`),
-}, (t) => [index("regles_validation_portee_idx").on(t.portee, t.etablissementId, t.filiereId, t.periodeId)]);
+}, (t) => [
+  index("regles_validation_portee_idx").on(t.portee, t.etablissementId, t.filiereId, t.periodeId),
+  // Une seule règle par périmètre exact : sans elle, la règle appliquée dépendrait de l'ordre physique.
+  unique("regles_validation_perimetre_uq").on(t.portee, t.etablissementId, t.filiereId, t.periodeId, t.regime).nullsNotDistinct(),
+]);
 
 /**
  * Crédit ECTS acquis : la ligne qui répond à « pourquoi cette UE est-elle acquise ? ». Un crédit
@@ -856,6 +889,11 @@ export const validationsUe = core.table("validations_ue", {
 }, (t) => [
   index("validations_ue_apprenant_idx").on(t.apprenantId, t.ueId),
   index("validations_ue_etablissement_idx").on(t.etablissementId, t.acquiseLe),
+  index("validations_ue_periode_idx").on(t.periodeId),
+  // Barrière en base contre le double acquis (double clic, rejeu concurrent) : une UE s'acquiert une
+  // fois par période. Une revalidation après péremption (règle 7) se fait sur une autre période ; une
+  // acquisition hors période (VAE, équivalence) une seule fois — NULLS NOT DISTINCT.
+  unique("validations_ue_apprenant_ue_periode_uq").on(t.apprenantId, t.ueId, t.periodeId).nullsNotDistinct(),
 ]);
 
 /**
@@ -877,7 +915,7 @@ export const equivalences = core.table("equivalences", {
   motif: text("motif").notNull(),
   decidePar: text("decide_par"),
   decideLe: date("decide_le"),
-}, (t) => [index("equivalences_apprenant_idx").on(t.apprenantId, t.statut), index("equivalences_statut_idx").on(t.statut, t.autorite)]);
+}, (t) => [index("equivalences_apprenant_idx").on(t.apprenantId, t.statut), index("equivalences_statut_idx").on(t.statut, t.autorite), index("equivalences_etablissement_idx").on(t.etablissementId)]);
 
 /**
  * Cycle d'un établissement privé d'enseignement supérieur (EPES), tel que le catalogue des services
@@ -937,14 +975,12 @@ export const homologationsFiliere = core.table("homologations_filiere", {
 export const jurys = core.table("jurys", {
   id: text("id").primaryKey(),
   autorite: text("autorite", { enum: ["examen_national", "jury_capitalisation"] }).notNull(),
-  office: text("office", { enum: ["office_du_bac", "dec_sup", "etablissement"] }),
+  office: text("office", { enum: OFFICES_DELIBERANTS }),
   /**
-   * Session officielle pour un examen national ; null pour un jury d'établissement. Sans clé
-   * étrangère : `core.examens_sessions` ne qualifie encore que les examens du K-12 (CEP, BEPC, BAC).
-   * Tenir une session de licence ou de BTS suppose d'étendre cette table — étape à part, pas un
-   * faux-semblant de plus.
+   * Session officielle pour un examen national ; null pour un jury d'établissement. Clé étrangère :
+   * `core.examens_sessions` qualifie désormais aussi les examens nationaux du supérieur.
    */
-  sessionExamenId: text("session_examen_id"),
+  sessionExamenId: text("session_examen_id").references(() => examensSessions.id),
   filiereId: text("filiere_id").references(() => filiereSuperieure.id),
   periodeId: text("periode_id").references(() => periodes.id),
   diplome: text("diplome", { enum: DIPLOMES }).notNull(),
@@ -956,7 +992,7 @@ export const jurys = core.table("jurys", {
   reuniLe: date("reuni_le"),
   /** Référence du procès-verbal papier : l'acte signé reste la source, BEILE en tient la trace. */
   pvReference: text("pv_reference"),
-}, (t) => [index("jurys_diplome_statut_idx").on(t.diplome, t.statut), index("jurys_periode_idx").on(t.periodeId)]);
+}, (t) => [index("jurys_diplome_statut_idx").on(t.diplome, t.statut), index("jurys_periode_idx").on(t.periodeId), index("jurys_filiere_idx").on(t.filiereId)]);
 
 /** Décision d'un jury portant sur un diplôme national, avant émission du certificat. */
 export const deliberationsDiplome = core.table("deliberations_diplome", {
@@ -975,16 +1011,18 @@ export const deliberationsDiplome = core.table("deliberations_diplome", {
   ueManquantes: text("ue_manquantes").array().notNull().default(sql`'{}'::text[]`),
   delibereLe: date("delibere_le").notNull(),
   /**
-   * Certificat émis ; null tant que la certification n'a pas été produite. Pas de clé étrangère ici :
-   * `core.certificats.examen` ne connaît que CEP, BEPC et BAC, et le service public de vérification
-   * n'a pas vocation à être élargi en douce. Étendre la certification aux diplômes du supérieur est
-   * une étape à part entière (contrat `Certificat`, empreinte, page publique, guides).
+   * Certificat émis par la certification ; null tant qu'aucun diplôme n'a été scellé (une décision
+   * d'ajournement, d'admission sous réserve ou d'une filière hors porte n'en produit pas). La clé
+   * étrangère tient depuis que `core.certificats.examen` admet les codes du supérieur : une délibération
+   * qui annonce un certificat doit en désigner un qui existe, sinon le service public de vérification
+   * renverrait « introuvable » sur un diplôme que l'écran affirme délivré.
    */
-  certificatId: text("certificat_id"),
+  certificatId: text("certificat_id").references(() => certificats.id),
 }, (t) => [
   uniqueIndex("deliberations_diplome_apprenant_jury_uq").on(t.apprenantId, t.juryId),
   index("deliberations_diplome_apprenant_idx").on(t.apprenantId, t.delibereLe),
   index("deliberations_diplome_decision_idx").on(t.decision, t.delibereLe),
+  index("deliberations_diplome_etablissement_idx").on(t.etablissementId, t.delibereLe),
 ]);
 
 /* ------------------------------------------------------------------ Guichet de l'étudiant et allocations
@@ -1034,6 +1072,10 @@ export const demandesActe = core.table("demandes_acte", {
   index("demandes_acte_apprenant_idx").on(t.apprenantId, t.statut),
   index("demandes_acte_guichet_idx").on(t.etablissementId, t.typeActe, t.statut),
   index("demandes_acte_annee_idx").on(t.anneeUniversitaire, t.typeActe),
+  // La file du guichet ne se double pas, même sous deux clics simultanés : une seule demande OUVERTE
+  // par (étudiant, acte, année). Les demandes closes (remise, refusée, retirée) restent en historique.
+  uniqueIndex("demandes_acte_ouverte_uq").on(t.apprenantId, t.typeActe, t.anneeUniversitaire)
+    .where(sql`${t.statut} in ('demandee', 'en_instruction', 'disponible')`),
 ]);
 
 /**

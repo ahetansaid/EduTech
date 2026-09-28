@@ -118,6 +118,15 @@ verifier("Qualité des remontées (Borgou)", (await departement!.appel("GET", "/
 verifier("Relance hors périmètre", (await departement!.appel("POST", "/plateforme/relances", { etablissementIds: ["ETB-COT-PILOTE-CEG"] })).statut, 403);
 verifier("Vérification publique d'un diplôme", (await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
 verifier("Identifiant de diplôme mal formé", (await anonyme.appel("GET", "/certificats/abc'--/verification")).statut, 400);
+// Deux régimes dans le service public : l'identifiant seul atteste l'existence du diplôme, jamais son
+// titulaire. La fin d'un identifiant reprend le numéro d'apprenant — livrer le nom sur l'identifiant
+// seul permettrait de parcourir une promotion entière sans jamais scanner un document.
+const sansSceau = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification");
+verifier("Identifiant seul → « sans_empreinte », et aucun nom rendu", (sansSceau.json as { statut?: string; titulaire?: string }).statut === "sans_empreinte" && !(sansSceau.json as { titulaire?: string }).titulaire, true);
+const prefixe = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification?e=ab12");
+verifier("Un préfixe d'empreinte (4 caractères) ne débloque aucune identité", (prefixe.json as { statut?: string }).statut === "sans_empreinte", true);
+const foreign = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification?e=0000000000000000000000000000ffff");
+verifier("Une empreinte présentée qui ne correspond pas → « altéré »", (foreign.json as { statut?: string }).statut === "altere", true);
 
 titre("Services publics (sans compte)");
 const annuaire = await anonyme.appel("GET", "/public/etablissements?niveau=secondaire&departement=borgou");

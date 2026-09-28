@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Composante, Diplome } from "./enseignement-superieur";
+import { DiplomeAtteste } from "./certification";
 import { AutoriteDelivrance, ModeRetrait, PieceIdentite, TypeActe, TypeDecisionAllocation } from "./delivrance-actes";
 import {
   DecisionDiplome, ModeDeliberation, OfficeDeliberant, RegimePedagogique, SessionEvaluation,
@@ -117,13 +118,32 @@ export const Evenement = z.discriminatedUnion("type", [
     moyenne: z.number(),
     admis: z.boolean(),
   }),
+  /**
+   * Émission d'un diplôme vérifiable. Le fait porte la ligne entière, sceau compris : rejouer
+   * `ledger.evenements` doit reconstruire `core.certificats`, sinon la certification devient un
+   * document annexe que le registre ne contrôle plus.
+   *
+   * `examen` nomme ce qui est attesté — un examen du K-12 comme un diplôme national de l'EFTP ou du
+   * LMD. `filiereId`, `delivrePar` et `office` ne se remplissent que pour le supérieur : le K-12 les
+   * laisse vides, et c'est ce qui garde son sceau au format historique des diplômes déjà imprimés.
+   * `delivrePar` et non `etablissementId` : la colonne de portée du fait désigne le centre d'examen,
+   * celle du certificat désigne l'établissement qui a délivré — deux choses différentes pour un CEP.
+   * `mention` et `moyenne` sont absentes quand le jury admet sur les seuls crédits acquis, sans
+   * moyenne générale calculable — jamais un zéro inventé.
+   */
   Base.extend({
     type: z.literal("CERTIFICATION"),
     apprenantId: z.string(),
     certificatId: z.string(),
-    examen: Examen,
+    examen: DiplomeAtteste,
+    filiereId: z.string().nullable(),
+    delivrePar: z.string().nullable(),
+    office: OfficeDeliberant.nullable(),
     session: z.string(),
-    mention: z.string(),
+    mention: Mention.nullable(),
+    moyenne: z.number().min(0).max(20).nullable(),
+    delivreLe: z.string(),
+    empreinte: z.string(),
   }),
   /**
    * Révocation d'un diplôme par l'autorité de certification. Le diplôme n'est jamais effacé — la
@@ -252,6 +272,10 @@ export const Evenement = z.discriminatedUnion("type", [
     mention: Mention.nullable(),
     /** Ce qui manque : sans cela, un ajournement n'est pas contestable. */
     ueManquantes: z.array(z.string()),
+    /** Le certificat émis sur cette décision, porté par le fait CERTIFICATION de la même délibération.
+     *  Null pour un ajournement, un refus, et pour une admission sous réserve : le diplôme n'est pas
+     *  encore délivré, donc rien n'est vérifiable par un tiers. */
+    certificatId: z.string().nullable(),
   }),
   /** Report de crédits acquis vers une autre inscription — le transfert d'un capital, pas d'une année. */
   Base.extend({

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Certificat } from "@beile/contracts";
+import { NOM_DIPLOME_ATTESTE } from "@beile/contracts";
 import { BadgeCheck, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
@@ -21,9 +22,14 @@ export function CartePreuve({ certificat, titulaire, className }: { certificat: 
       <div className="flex gap-4 p-4">
         <div className="min-w-0 flex-1">
           <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-muted">République du Bénin · attestation numérique</p>
-          <p className="mt-1 font-display text-[19px] font-bold text-ink">{certificat.examen === "CEP" ? "Certificat d'études primaires" : certificat.examen === "BEPC" ? "Brevet d'études du premier cycle" : "Baccalauréat"}</p>
+          <p className="mt-1 font-display text-[19px] font-bold text-ink">{NOM_DIPLOME_ATTESTE[certificat.examen]}</p>
           <p className="mt-0.5 text-[13.5px] text-ink-2">{titulaire} · session {certificat.session}</p>
-          <p className="mt-2 text-[13px] text-ink"><span className="text-ink-muted">Mention :</span> <strong>{certificat.mention}</strong> · <span className="tabular">{nombre(certificat.moyenne, 2)}/20</span></p>
+          {/* Une mention et une moyenne absentes se lisent telles quelles : un « Passable » ou un 0/20
+              affiché par défaut serait une décision que le jury n'a jamais prise. */}
+          <p className="mt-2 text-[13px] text-ink">
+            {certificat.mention ? <><span className="text-ink-muted">Mention :</span> <strong>{certificat.mention}</strong></> : <span className="text-ink-muted">Sans mention (admission sur crédits acquis)</span>}
+            {certificat.moyenne !== null && <> · <span className="tabular">{nombre(certificat.moyenne, 2)}/20</span></>}
+          </p>
           <p className="mt-2 font-mono text-[10.5px] text-ink-muted">{certificat.id} · délivré le {date(certificat.delivreLe)}</p>
           <p className="mt-1 break-all font-mono text-[10px] text-ink-muted">Empreinte {certificat.empreinte.slice(0, 32)}…</p>
           <Link href={lien} className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-blue hover:underline"><BadgeCheck size={14} aria-hidden /> Vérifier comme un tiers <ExternalLink size={12} aria-hidden /></Link>

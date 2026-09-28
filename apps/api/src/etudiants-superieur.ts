@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ContratPedagogique, LigneCapitalisation, Mention, ResultatCapitalisation } from "@beile/contracts";
 import {
-  AvisConseil, AutoriteEquivalence, Composante, ConclusionControle, CycleEpes, DecisionDiplome,
+  AvisConseil, AutoriteEquivalence, CODE_CERTIFICAT, Composante, ConclusionControle, CycleEpes, DecisionDiplome,
   DeliberationDiplome, Diplome, homologationOperante, ModeDeliberation, OfficeDeliberant,
   PhaseEpes, PorteeRegle, RegleCompensation, ReglePonderation, RegleSessionRetenue, RegimePedagogique,
   SessionEvaluation, StatutAccreditation, StatutAgrement, StatutCompte, StatutEquivalence,
@@ -16,6 +16,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, refuser, type Variables } from "./commun";
+import { sceauCertificat } from "./certification";
 import { dejaSaisi, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { mentionDe } from "./examens";
 import { accesEtablissement, bureauSup, ID_ETAB, monApprenant, monEnseignant } from "./superieur";
@@ -82,7 +83,10 @@ async function regleAppliquee(cible: { etablissementId: string; filiereId: strin
     or(isNull(schema.reglesValidation.periodeId), eq(schema.reglesValidation.periodeId, cible.periodeId ?? "")),
     or(isNull(schema.reglesValidation.regime), eq(schema.reglesValidation.regime, cible.regime)),
   ));
-  const meilleure = lignes.sort((a, b) => RANG[a.portee] - RANG[b.portee]).at(-1);
+  // Portée la plus précise d'abord ; à portée égale, la règle propre au régime l'emporte sur la règle
+  // « tous régimes ». L'unicité (portée, établissement, filière, période, régime) en base garantit
+  // qu'il ne reste jamais deux candidates ex æquo : le choix ne dépend pas de l'ordre physique des lignes.
+  const meilleure = lignes.sort((a, b) => RANG[a.portee] - RANG[b.portee] || Number(a.regime !== null) - Number(b.regime !== null)).at(-1);
   if (!meilleure) throw new HTTPException(409, { message: "Aucune règle de validation en vigueur pour ce périmètre : décision impossible" });
   return meilleure;
 }
@@ -186,6 +190,21 @@ async function droitInscrire(etablissementId: string, statutEtablissement: strin
   if (ouvert) return;
   throw new HTTPException(409, { message: `Établissement privé ${lignes[0] ? `au cycle « ${lignes[0].phase} » (${lignes[0].statut})` : "sans cycle EPES enregistré"} : le droit d'inscrire n'est pas ouvert` });
 }
+
+type Tx = Parameters<NonNullable<Parameters<typeof inscrireAuRegistre>[1]>>[0];
+
+/**
+ * Plafond tenu DANS la transaction d'écriture : verrou consultatif propre à la ressource comptée
+ * (filière-année, offre, groupe), puis recomptage. Deux inscriptions simultanées au dernier siège se
+ * sérialisent ; la seconde reçoit 409 et son fait n'est jamais écrit. Le contrôle fait avant (hors
+ * transaction) reste le chemin rapide, celui-ci est la garantie.
+ */
+const plafondTenu = (cle: string, plafond: number, compter: (tx: Tx) => Promise<number>, message: (n: number) => string) =>
+  async (tx: Tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${cle}))`);
+    const n = await compter(tx);
+    if (n >= plafond) throw new HTTPException(409, { message: message(n) });
+  };
 
 async function filiereDe(filiereId: string) {
   const [f] = await base().select().from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, filiereId));
@@ -427,7 +446,15 @@ scolariteSuperieure.post("/etablissements/:id/inscriptions", authentifie, async 
       numeroEtudiant: saisie.numeroEtudiant, anneeUniversitaire: saisie.anneeUniversitaire,
       regimePedagogique: saisie.regimePedagogique, statutCompte: saisie.statutCompte,
     },
-  }]);
+  }], plafond === null ? undefined : plafondTenu(
+    `inscription|${saisie.filiereId}|${saisie.anneeUniversitaire}|${saisie.composante ?? ""}`, plafond,
+    async (tx) => (await tx.select({ n: count() }).from(schema.inscriptionsSuperieures).where(and(
+      eq(schema.inscriptionsSuperieures.filiereId, saisie.filiereId),
+      eq(schema.inscriptionsSuperieures.anneeUniversitaire, saisie.anneeUniversitaire),
+      ...(saisie.composante ? [eq(schema.inscriptionsSuperieures.composante, saisie.composante)] : []),
+    )))[0]?.n ?? 0,
+    (n) => `Plafond d'inscriptions atteint pour cette filière (${n}/${plafond})`,
+  ));
   await journaliser(profil, "Inscription dans l'enseignement supérieur", `${saisie.apprenantId} → ${saisie.filiereId} ${saisie.anneeUniversitaire}`, "gestion", true, null);
   return c.json({ inscriptionId, evenementId }, 201);
 });
@@ -525,7 +552,15 @@ scolariteSuperieure.post("/moi/contrat/ue", authentifie, async (c) => {
   const [evenementId] = await inscrireAuRegistre([{
     type: "INSCRIPTION_UE", auteurId: profil.id, etablissementId: insc.etablissementId, apprenantId,
     donnees: { inscriptionUeId, inscriptionSuperieureId: insc.id, apprenantId, offreUeId, groupeId, statut: "proposee", motifRefus: null },
-  }]);
+  }], capacite === null || contrat ? undefined : plafondTenu(
+    `contrat|${offreUeId}|${groupeId ?? ""}`, capacite,
+    async (tx) => (await tx.select({ n: count() }).from(schema.inscriptionsUe).where(and(
+      eq(schema.inscriptionsUe.offreUeId, offreUeId),
+      ...(groupeId ? [eq(schema.inscriptionsUe.groupeId, groupeId)] : []),
+      inArray(schema.inscriptionsUe.statut, ["proposee", "signee", "validee"]),
+    )))[0]?.n ?? 0,
+    (n) => `Capacité atteinte (${n}/${capacite})`,
+  ));
   await journaliser(profil, "Proposition d'un contrat d'UE", `${ue.code} (${offreUeId})`, "consultation_personnelle", true, null);
   return c.json({ inscriptionUeId, statut: "proposee", evenementId }, 201);
 });
@@ -695,7 +730,10 @@ scolariteSuperieure.post("/etablissements/:id/validations", authentifie, async (
   const apprenantIds = [...new Set(saisie.lignes.map((l) => l.apprenantId))];
   // Un rejeu de la même saisie ne doit pas inscrire un acquis deux fois : la clé d'idempotence est
   // vérifiée AVANT tout calcul, comme pour la saisie de notes.
-  const deja = await dejaSaisi(saisie.idSaisie, "VALIDATION_UE");
+  // Le lot écrit un fait par (apprenant, UE), sous la clé `idSaisie:ue` : ce sont ces clés qu'on cherche.
+  const deja = saisie.idSaisie
+    ? await dejaSaisi([...new Set(saisie.lignes.map((l) => `${saisie.idSaisie}:${offres.find((o) => o.id === l.offreUeId)!.ueId}`))], "VALIDATION_UE")
+    : null;
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
 
   const [ues, notesBrutes, inscriptions, dejaValidees] = await Promise.all([
@@ -771,6 +809,8 @@ scolariteSuperieure.post("/etablissements/:id/validations/hors-note", authentifi
   }).strict());
   const [ue] = await base().select().from(schema.unitesEnseignement).where(eq(schema.unitesEnseignement.id, saisie.ueId));
   if (!ue) throw new HTTPException(404, { message: "Unité d'enseignement inconnue" });
+  // Un établissement n'inscrit un crédit que sur son propre catalogue.
+  if ((await filiereDe(ue.filiereId)).etablissementId !== id) throw new HTTPException(422, { message: "Cette UE relève du catalogue d'un autre établissement" });
   const insc = await inscriptionDe(saisie.apprenantId, id);
   if (!insc) throw new HTTPException(422, { message: "Aucune inscription dans cet établissement : acquisition impossible" });
   const [existe] = await base().select({ id: schema.validationsUe.id }).from(schema.validationsUe)
@@ -886,6 +926,18 @@ scolariteSuperieure.post("/regles-validation", authentifie, async (c) => {
     seuilMoyennePeriode: saisie.seuilMoyennePeriode, dureeValiditeAcquis: saisie.dureeValiditeAcquis,
     reportCreditsInterEtab: saisie.reportCreditsInterEtab, blocs: saisie.blocs,
   };
+  // Modifier une règle, c'est en changer les paramètres, jamais la portée : la ligne existante doit
+  // appartenir au même périmètre que celui dont l'auteur vient de prouver l'autorité. Sans ce contrôle,
+  // un établissement pourrait reprendre la règle nationale (ou celle d'un autre) en la redéclarant chez lui.
+  if (saisie.regleId) {
+    const [existante] = await base().select().from(schema.reglesValidation).where(eq(schema.reglesValidation.id, saisie.regleId));
+    if (!existante) throw new HTTPException(404, { message: "Règle de validation introuvable" });
+    if (existante.portee !== valeurs.portee || existante.etablissementId !== valeurs.etablissementId
+      || existante.filiereId !== valeurs.filiereId || existante.periodeId !== valeurs.periodeId) {
+      await journaliser(profil, "Modification d'une règle hors de son périmètre", saisie.regleId, "gestion", false, "perimetre");
+      throw new HTTPException(403, { message: "Une règle de validation garde sa portée : déclarer une nouvelle règle plutôt que de déplacer celle-ci." });
+    }
+  }
   const [regle] = await base().insert(schema.reglesValidation)
     .values({ id: saisie.regleId ?? `RGL-${randomUUID()}`, ...valeurs })
     .onConflictDoUpdate({ target: schema.reglesValidation.id, set: valeurs }).returning();
@@ -923,6 +975,22 @@ scolariteSuperieure.post("/etablissements/:id/jurys", authentifie, async (c) => 
     pvReference: z.string().trim().max(80).nullable().default(null),
   }).strict());
   const { profil } = await accesJury(c, id, saisie, "Constitution d'un jury de certification");
+  // Un jury existant n'est jamais réaffecté : autorité, filière, diplôme et office sont fixés à sa
+  // constitution (sinon on reprendrait le jury d'un autre établissement en le redéclarant chez soi),
+  // et son statut n'avance que d'une étape à la fois — un jury ne délibère pas sans s'être réuni.
+  const ORDRE_JURY = ["constitue", "reuni", "delibere", "publie"] as const;
+  if (saisie.juryId) {
+    const [existant] = await base().select().from(schema.jurys).where(eq(schema.jurys.id, saisie.juryId));
+    if (!existant) throw new HTTPException(404, { message: "Jury introuvable" });
+    if (existant.autorite !== saisie.autorite || existant.filiereId !== saisie.filiereId || existant.diplome !== saisie.diplome || existant.office !== saisie.office) {
+      await journaliser(profil, "Réaffectation d'un jury refusée", saisie.juryId, "gestion", false, "perimetre");
+      throw new HTTPException(403, { message: "Un jury garde son autorité, sa filière, son diplôme et son office : en constituer un autre." });
+    }
+    const pas = ORDRE_JURY.indexOf(saisie.statut) - ORDRE_JURY.indexOf(existant.statut);
+    if (pas < 0 || pas > 1) throw new HTTPException(409, { message: `Transition de jury impossible : « ${existant.statut} » → « ${saisie.statut} »` });
+  } else if (saisie.statut !== "constitue") {
+    throw new HTTPException(422, { message: "Un jury se constitue avant de se réunir : statut initial « constitue »" });
+  }
   if (saisie.membres.includes(saisie.president)) throw new HTTPException(422, { message: "Le président ne compte pas deux fois dans le quorum" });
   if (saisie.membres.length + 1 < saisie.quorum) throw new HTTPException(422, { message: `Jury incomplet : ${saisie.membres.length + 1} présent(s) pour un quorum de ${saisie.quorum}` });
   if (saisie.periodeId) {
@@ -973,15 +1041,31 @@ scolariteSuperieure.post("/etablissements/:id/deliberations", authentifie, async
   }
 
   const apprenantIds = [...new Set(saisie.decisions.map((d) => d.apprenantId))];
-  const [validations, inscriptions] = await Promise.all([
-    base().select().from(schema.validationsUe).where(and(inArray(schema.validationsUe.apprenantId, apprenantIds), eq(schema.validationsUe.etablissementId, id))),
-    base().select().from(schema.inscriptionsSuperieures).where(inArray(schema.inscriptionsSuperieures.apprenantId, apprenantIds)),
+  // Seuls comptent les acquis de LA filière jugée, dans CET établissement, et l'inscription qui y
+  // correspond : une UE d'une autre filière (ou une inscription dans une autre université) ne fait pas
+  // un diplôme, et c'est de cette inscription que le certificat tire sa session.
+  const [validations, inscriptions, apprenants] = await Promise.all([
+    base().select({ v: schema.validationsUe }).from(schema.validationsUe)
+      .innerJoin(schema.unitesEnseignement, eq(schema.unitesEnseignement.id, schema.validationsUe.ueId))
+      .where(and(inArray(schema.validationsUe.apprenantId, apprenantIds), eq(schema.validationsUe.etablissementId, id), eq(schema.unitesEnseignement.filiereId, filiere.id)))
+      .then((r) => r.map((x) => x.v)),
+    base().select().from(schema.inscriptionsSuperieures).where(and(
+      inArray(schema.inscriptionsSuperieures.apprenantId, apprenantIds),
+      eq(schema.inscriptionsSuperieures.etablissementId, id), eq(schema.inscriptionsSuperieures.filiereId, filiere.id),
+    )),
+    // Le nom du titulaire entre dans le sceau : sans lui, un certificat serait échangeable entre deux
+    // porteurs d'un même diplôme, session et mention identiques.
+    base().select({ id: schema.apprenants.id, prenoms: schema.apprenants.prenoms, nom: schema.apprenants.nom })
+      .from(schema.apprenants).where(inArray(schema.apprenants.id, apprenantIds)),
   ]);
+  const titulaires = new Map(apprenants.map((a) => [a.id, `${a.prenoms} ${a.nom}`]));
   const regles = new Map<string, RegleLue>();
-  const deja = await dejaSaisi(saisie.idSaisie, "DELIBERATION_DIPLOME");
+  // Un fait par apprenant, sous la clé `idSaisie:apprenant`.
+  const deja = saisie.idSaisie ? await dejaSaisi(apprenantIds.map((a) => `${saisie.idSaisie}:${a}`), "DELIBERATION_DIPLOME") : null;
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
 
   const faits: NouveauFait[] = [];
+  const emis: string[] = [];
   const rendu: { apprenantId: string; decision: DecisionDiplome | "non_enregistree"; creditsValides: number; moyenneGenerale: number | null; mention: Mention | null; motif: string }[] = [];
   for (const d of saisie.decisions) {
     const insc = inscriptions.filter((x) => x.apprenantId === d.apprenantId).sort((a, b) => b.anneeUniversitaire.localeCompare(a.anneeUniversitaire))[0];
@@ -996,7 +1080,10 @@ scolariteSuperieure.post("/etablissements/:id/deliberations", authentifie, async
     // Les acquis hors note (VAE, équivalence) n'entrent dans aucune moyenne. S'il ne reste aucune note,
     // la moyenne est absente — et non 0, qui serait une décision que le jury n'a jamais prise.
     const notees = acquis.filter((v) => v.moyenne !== null);
-    const moyenneGenerale = notees.length ? moyennePonderee(notees.map((v) => ({ note: v.moyenne!, poids: poidsDe({ creditsEcts: v.creditsAcquis, coefficient: 1 }, regle.ponderation) }))) : null;
+    // Arrondie UNE fois, au centième, comme la colonne `numeric(4,2)` qui la stocke : le sceau signe
+    // exactement la valeur que la vérification relira (sinon 12,345 signé et 12,35 relu = « altéré »).
+    const brute = notees.length ? moyennePonderee(notees.map((v) => ({ note: v.moyenne!, poids: poidsDe({ creditsEcts: v.creditsAcquis, coefficient: 1 }, regle.ponderation) }))) : null;
+    const moyenneGenerale = brute === null ? null : Math.round(brute * 100) / 100;
     if (d.decision === "admis" && creditsAssis < filiere.creditsEcts) {
       rendu.push({ apprenantId: d.apprenantId, decision: "non_enregistree", creditsValides, moyenneGenerale, mention: null, motif: `Admission refusée : ${creditsAssis}/${filiere.creditsEcts} crédits acquis. Le jury doit statuer à nouveau (ajournement ou admission sous réserve).` });
       continue;
@@ -1004,10 +1091,38 @@ scolariteSuperieure.post("/etablissements/:id/deliberations", authentifie, async
     if (d.decision === "admis_sous_reserve" && !d.ueManquantes.length) throw new HTTPException(422, { message: `${d.apprenantId} : une admission sous réserve doit nommer ce qui manque` });
     const mention = d.decision === "admis" || d.decision === "admis_sous_reserve" ? (moyenneGenerale === null ? null : mentionDe(moyenneGenerale)) : null;
     const deliberationId = `DEB-${randomUUID()}`;
+
+    /* -- Le diplôme vérifiable. Seule une admission pleine le délivre : « admis sous réserve » laisse
+       l'inscription ouverte, donc ne produit aucun document opposable à un tiers. La session citée est
+       l'année universitaire jugée — ce qu'un employeur compare au relevé de notes — et non une session
+       d'examen national, qui n'existe pas pour une délibération par capitalisation. */
+    let certificatId: string | null = null;
+    if (d.decision === "admis") {
+      const titulaire = titulaires.get(d.apprenantId);
+      if (!titulaire) throw new HTTPException(422, { message: `${d.apprenantId} : identité absente du registre, aucune certification possible` });
+      const sessionCertifiee = insc.anneeUniversitaire;
+      const delivreLe = aujourdhui();
+      const brut = {
+        id: `CERT-${CODE_CERTIFICAT[jury.diplome]}-${sessionCertifiee.match(/\d{4}/)?.[0] ?? delivreLe.slice(0, 4)}-${d.apprenantId.slice(4)}`,
+        apprenantId: d.apprenantId, examen: jury.diplome, session: sessionCertifiee, mention, moyenne: moyenneGenerale,
+        delivreLe, filiereId: filiere.id, etablissementId: id, office: jury.office,
+      };
+      certificatId = brut.id;
+      emis.push(brut.id);
+      faits.push({
+        type: "CERTIFICATION", auteurId: profil.id, etablissementId: id, apprenantId: d.apprenantId,
+        donnees: {
+          apprenantId: d.apprenantId, certificatId: brut.id, examen: brut.examen, session: brut.session,
+          mention: brut.mention, moyenne: brut.moyenne, delivreLe: brut.delivreLe, filiereId: brut.filiereId,
+          delivrePar: brut.etablissementId, office: brut.office, empreinte: sceauCertificat(brut, titulaire),
+        },
+      });
+    }
+
     const r = DeliberationDiplome.safeParse({
       id: deliberationId, apprenantId: d.apprenantId, juryId: jury.id, etablissementId: id, filiereId: filiere.id,
       diplome: jury.diplome, decision: d.decision, creditsValides, creditsRequis: filiere.creditsEcts,
-      moyenneGenerale, mention, ueManquantes: d.ueManquantes, delibereLe: aujourdhui(), certificatId: null,
+      moyenneGenerale, mention, ueManquantes: d.ueManquantes, delibereLe: aujourdhui(), certificatId,
     });
     if (!r.success) throw new HTTPException(422, { message: `Délibération non conforme au contrat : ${r.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join(" ; ")}` });
     faits.push({
@@ -1015,10 +1130,21 @@ scolariteSuperieure.post("/etablissements/:id/deliberations", authentifie, async
       donnees: {
         apprenantId: d.apprenantId, deliberationId, juryId: jury.id, filiereId: filiere.id, diplome: jury.diplome,
         decision: d.decision, creditsValides, creditsRequis: filiere.creditsEcts, moyenneGenerale, mention,
-        ueManquantes: d.ueManquantes, ...(saisie.idSaisie ? { idSaisie: `${saisie.idSaisie}:${d.apprenantId}` } : {}),
+        ueManquantes: d.ueManquantes, certificatId,
+        ...(saisie.idSaisie ? { idSaisie: `${saisie.idSaisie}:${d.apprenantId}` } : {}),
       },
     });
-    rendu.push({ apprenantId: d.apprenantId, decision: d.decision, creditsValides, moyenneGenerale, mention, motif: `Jury ${jury.id} — ${porte.motif ?? "homologation en cours"}.` });
+    rendu.push({ apprenantId: d.apprenantId, decision: d.decision, creditsValides, moyenneGenerale, mention, motif: `Jury ${jury.id} — ${porte.motif ?? "homologation en cours"}.${certificatId ? ` Diplôme émis : ${certificatId}.` : ""}` });
+  }
+  /* -- Un diplôme ne s'émet pas deux fois. L'identifiant est dérivé (diplôme, année, apprenant) : s'il
+     existe déjà, c'est qu'une délibération a déjà certifié ce cursus — la refuser en face vaut mieux
+     que de décaler le numéro et de laisser deux sceaux courir pour le même apprenant. */
+  if (emis.length) {
+    const existants = await base().select({ id: schema.certificats.id }).from(schema.certificats).where(inArray(schema.certificats.id, emis));
+    if (existants.length) {
+      await journaliser(profil, "Émission d'un diplôme déjà au registre", existants.map((e) => e.id).join(", "), "gestion", false, "certificat");
+      throw new HTTPException(409, { message: `Certification refusée : ${existants.map((e) => e.id).join(", ")} existe déjà au registre national. Ce diplôme a déjà été délivré pour cette année universitaire — vérifier l'année portée par le jury plutôt qu'émettre un second sceau.` });
+    }
   }
   const enregistres = faits.length ? await inscrireAuRegistre(faits) : [];
   await journaliser(profil, "Délibération d'un diplôme national", `${saisie.juryId} (${enregistres.length}/${saisie.decisions.length})`, "gestion", true, null);
@@ -1071,8 +1197,9 @@ scolariteSuperieure.post("/etablissements/:id/equivalences", authentifie, async 
     etablissementOrigine: z.string().trim().max(120).nullable().default(null), anneeOrigine: ANNEE.nullable().default(null),
     motif: z.string().trim().min(5).max(200),
   }).strict());
-  const [ue] = await base().select({ id: schema.unitesEnseignement.id }).from(schema.unitesEnseignement).where(eq(schema.unitesEnseignement.id, saisie.ueId));
+  const [ue] = await base().select({ id: schema.unitesEnseignement.id, filiereId: schema.unitesEnseignement.filiereId }).from(schema.unitesEnseignement).where(eq(schema.unitesEnseignement.id, saisie.ueId));
   if (!ue) throw new HTTPException(404, { message: "Unité d'enseignement inconnue" });
+  if ((await filiereDe(ue.filiereId)).etablissementId !== id) throw new HTTPException(422, { message: "Cette UE relève du catalogue d'un autre établissement" });
   if (!(await inscriptionDe(saisie.apprenantId, id))) throw new HTTPException(422, { message: "Aucune inscription dans cet établissement" });
   const [equivalence] = await base().insert(schema.equivalences).values({
     id: `EQC-${randomUUID()}`, apprenantId: saisie.apprenantId, etablissementId: id, ueId: ue.id,
@@ -1096,9 +1223,13 @@ scolariteSuperieure.post("/etablissements/:id/equivalences/:equivalenceId/decisi
   }).strict());
   const [equivalence] = await base().select().from(schema.equivalences).where(eq(schema.equivalences.id, equivalenceId));
   if (!equivalence || equivalence.etablissementId !== id) throw new HTTPException(404, { message: "Équivalence introuvable dans cet établissement" });
-  const { profil } = saisie.autorite === "nationale"
+  // Une équivalence déjà portée par l'État ne redescend pas à l'établissement qui en profite : la
+  // porte dépend de l'autorité la plus haute entre la ligne existante et la décision proposée.
+  const nationale = saisie.autorite === "nationale" || equivalence.autorite === "nationale";
+  const { profil } = nationale
     ? { profil: await bureauSup(c, "Décision d'équivalence au nom de l'État") }
     : await accesEtablissement(c, id, true);
+  if (equivalence.autorite === "nationale" && saisie.autorite !== "nationale") throw new HTTPException(422, { message: "Une équivalence d'autorité nationale le reste" });
   const [statue] = await base().update(schema.equivalences).set({
     statut: saisie.statut, autorite: saisie.autorite, motif: saisie.motif, decidePar: profil.id, decideLe: aujourdhui(),
     ...(saisie.creditsReconnus !== null ? { creditsReconnus: saisie.creditsReconnus } : {}),
@@ -1143,6 +1274,17 @@ scolariteSuperieure.post("/etablissements/:id/transferts-credits", authentifie, 
   const ues = await base().select({ id: schema.unitesEnseignement.id, creditsEcts: schema.unitesEnseignement.creditsEcts }).from(schema.unitesEnseignement)
     .where(inArray(schema.unitesEnseignement.id, [...new Set(saisie.ueIds)]));
   if (ues.length !== new Set(saisie.ueIds).size) throw new HTTPException(422, { message: "Une ou plusieurs UE sont inconnues du catalogue" });
+  // On ne transfère que ce qui a été acquis : l'UE appartient à la filière d'origine et l'étudiant y
+  // détient une validation enregistrée dans l'établissement d'origine. Un transfert sur des UE jamais
+  // acquises fabriquerait des crédits.
+  const acquises = await base().select({ ueId: schema.validationsUe.ueId }).from(schema.validationsUe)
+    .innerJoin(schema.unitesEnseignement, eq(schema.unitesEnseignement.id, schema.validationsUe.ueId))
+    .where(and(
+      eq(schema.validationsUe.apprenantId, saisie.apprenantId), eq(schema.validationsUe.etablissementId, de.etablissementId),
+      eq(schema.unitesEnseignement.filiereId, de.filiereId), inArray(schema.validationsUe.ueId, ues.map((u) => u.id)),
+    ));
+  const nonAcquises = ues.filter((u) => !acquises.some((a) => a.ueId === u.id));
+  if (nonAcquises.length) throw new HTTPException(422, { message: `${nonAcquises.length} UE sans acquis dans l'inscription d'origine : seul un crédit acquis se transfère` });
   const [evenementId] = await inscrireAuRegistre([{
     type: "TRANSFERT_CREDITS", auteurId: profil.id, etablissementId: id, apprenantId: saisie.apprenantId,
     donnees: {
@@ -1160,7 +1302,7 @@ scolariteSuperieure.post("/etablissements/:id/transferts-credits", authentifie, 
 scolariteSuperieure.post("/etablissements/:id/cycle-epes", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const profil = await bureauSup(c, "Suivi du cycle d'un établissement privé");
-  if (!(await base().select({ id: schema.etablissements.id }).from(schema.etablissements).where(eq(schema.etablissements.id, id)))) throw new HTTPException(404, { message: "Établissement inconnu" });
+  if (!(await base().select({ id: schema.etablissements.id }).from(schema.etablissements).where(eq(schema.etablissements.id, id))).length) throw new HTTPException(404, { message: "Établissement inconnu" });
   const saisie = await corps(c, z.object({
     autorite: Tutelle,
     phase: PhaseEpes,

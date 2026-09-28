@@ -1,6 +1,7 @@
 "use client";
 
 import { Award, BadgeCheck, ClipboardList, ExternalLink, Gavel, GraduationCap, Info, Lock, QrCode, ScanLine, ShieldAlert, Sigma, Users } from "lucide-react";
+import { NOM_DIPLOME_ATTESTE } from "@beile/contracts";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
@@ -17,7 +18,7 @@ import { ChampRecherche, classeChamp, dateCourte, Dialogue, EtatErreur, HorsPeri
 
 const MOT_CONFIRMATION = "DÉLIBÉRER";
 type FiltreExamen = "tous" | "CEP" | "BEPC" | "BAC";
-const LIBELLE_EXAMEN = { CEP: "Certificat d'études primaires", BEPC: "Brevet d'études du premier cycle", BAC: "Baccalauréat" } as const;
+const LIBELLE_EXAMEN = NOM_DIPLOME_ATTESTE;
 const OPTIONS_EXAMEN: { valeur: ExamenCertifiable; libelle: string }[] = [{ valeur: "CEP", libelle: "CEP" }, { valeur: "BEPC", libelle: "BEPC" }, { valeur: "BAC", libelle: "BAC" }];
 
 export default function Page() {
@@ -244,7 +245,7 @@ function Certificats({ x }: { x: Examens }) {
               <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-md", c.revoque ? "bg-critical-bg text-critical" : "bg-warning-bg text-warning")}><Award size={17} aria-hidden /></span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-ink">{c.titulaire}</p>
-                <p className="truncate text-xs text-ink-muted"><span title={LIBELLE_EXAMEN[c.examen]}>{c.examen}</span> {c.session} · {c.mention} · <span className="tabular">{nombre(c.moyenne, 2)}/20</span> · délivré le {dateCourte(c.delivreLe)}</p>
+                <p className="truncate text-xs text-ink-muted"><span title={LIBELLE_EXAMEN[c.examen]}>{c.examen}</span> {c.session}{c.mention ? ` · ${c.mention}` : ""}{c.moyenne != null && <> · <span className="tabular">{nombre(c.moyenne, 2)}/20</span></>} · délivré le {dateCourte(c.delivreLe)}</p>
               </div>
               {c.revoque && <Statut ton="critique">Révoqué</Statut>}
               <div className="ml-12 flex gap-1.5 sm:ml-0">

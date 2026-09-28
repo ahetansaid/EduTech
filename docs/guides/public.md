@@ -60,8 +60,10 @@
 
 `/verifier` — Scanner le QR code ou saisir l'identifiant.
 
-- « Scanner le QR code » (caméra) ou saisie de l'identifiant (ex. CERT-CEP-2024-000001).
-- Verdict : Diplôme authentique, Document altéré, Diplôme révoqué ou Diplôme introuvable.
+- « Scanner le QR code » (caméra) ou saisie de l'identifiant (ex. CERT-CEP-2024-000001, CERT-LIC-2026-000012).
+- Tout diplôme national se vérifie ici, du CEP au master certifié par l'État. La réponse nomme le diplôme attesté et, pour un diplôme du supérieur, la filière, l'établissement qui a délivré et l'office qui a délibéré.
+- Verdict : Diplôme authentique, Diplôme enregistré, Document altéré, Diplôme révoqué ou Diplôme introuvable.
+- L'identifiant seul ne dit pas à qui appartient le diplôme : le registre confirme qu'il existe, rien de plus. Le nom du titulaire, sa mention et le contrôle d'intégrité du document présenté exigent l'empreinte que porte le QR code du diplôme.
 
 ### Résultats d'examens
 
@@ -80,7 +82,8 @@
 1. Ouvrez BEILE, puis « Vérifier un diplôme ».
 2. Touchez « Scanner le QR code » et visez le code, ou saisissez l'identifiant du diplôme.
 3. Touchez « Vérifier ».
-4. Lisez le verdict. S'il est « Diplôme authentique », comparez les informations affichées au document présenté.
+4. Lisez le verdict. « Diplôme authentique » compare les informations affichées au document présenté ; « Diplôme enregistré » signifie que le diplôme existe mais que personne n'a présenté son QR code — vous n'avez donc aucune preuve que le document est intact, ni que son porteur est bien le titulaire.
+5. Un employeur ou une école doit contrôler le document qu'on lui présente : exigez le scan du QR code, jamais une capture d'écran de la page.
 
 ### Consulter un résultat d'examen
 

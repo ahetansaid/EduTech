@@ -130,7 +130,7 @@
 
 - « Référentiel » : filières (diplôme visé, volume ECTS, composantes ouvertes), périodes, UE et offres, groupes, et la règle de validation sous les huit paramètres.
 - « Étudiants & parcours » : inscriptions (aucun montant, aucun RIB), contrat pédagogique signe/abandon/refus, feuille de validation d'une période, acquis hors note et report de crédits.
-- « Jury & certification » : jury de capitalisation par étapes, délibération du diplôme, décisions rendues avec moyenne recalculée, équivalences déposées et statuées.
+- « Jury & certification » : jury de capitalisation par étapes, délibération du diplôme, décisions rendues avec moyenne recalculée, diplôme vérifiable émis sur chaque admission pleine, équivalences déposées et statuées.
 - « Crédits ECTS » : acquis, attendus, périmés et taux par période, calculés depuis le registre des écritures — pas la couche statistique.
 - Vous ne voyez que vos étudiants : un chef d'établissement ne lit pas les inscriptions d'un autre, et un établissement privé n'inscrit que sous agrément EPES en cours.
 - Le quatrième volet (« Agrégats & actes de l'État ») n'est pas ouvert à votre rôle : il agrège le pays sans nommer personne.
@@ -308,8 +308,9 @@
 4. Dans « Délibérer une promotion », choisissez ce jury et cochez les candidats de la filière.
 5. Donnez la décision : admis, admis sous réserve (en nommant les UE manquantes), ajourné ou refusé.
 6. Touchez « Délibérer au registre ». Un « admis » sous le volume de crédits de la filière n'est pas enregistré : le serveur rend la ligne avec son motif.
-7. Relisez la carte « Décisions rendues » : moyenne et mention sont recalculées depuis les acquis, et un certificat non émis y reste affiché avec son motif.
-8. Un jury d'examen national (BTS, CQP, licence ou master certifiés par l'État) ne se constitue pas ici : il relève du bureau du supérieur.
+7. Relisez la carte « Décisions rendues » : moyenne et mention sont recalculées depuis les acquis, chaque admission pleine émet un diplôme vérifiable (CERT-…) rattaché à sa ligne, et une décision sans certificat reste affichée avec son motif — ajournement, refus ou admission sous réserve.
+8. Le diplôme émis se vérifie comme un tiers : `/verifier/<identifiant>`, ou le QR code de l'attestation. Sauf session d'examen national, la date de délivrance est celle du délibéré et la session citée est l'année universitaire jugée.
+9. Un jury d'examen national (BTS, CQP, licence ou master certifiés par l'État) ne se constitue pas ici : il relève du bureau du supérieur.
 
 ## Questions fréquentes
 

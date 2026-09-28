@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type {
-  AutoriteDelivrance, Composante, DecisionDiplome, Diplome, Mention, ModeDeliberation, ModeRetrait, PieceIdentite,
+  AutoriteDelivrance, Composante, DecisionDiplome, Diplome, DiplomeAtteste, Mention, ModeDeliberation, ModeRetrait, PieceIdentite,
   OfficeDeliberant, RegimePedagogique, SessionEvaluation, StatutCompte, StatutInscriptionUE, StatutJury,
   TypeActe, TypeDecisionAllocation, VoieAcquisition,
 } from "@beile/contracts";
+import { Evenement } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { base } from "./commun";
 import { notifierFaits } from "./notifications";
@@ -13,13 +15,23 @@ import { notifierFaits } from "./notifications";
 /**
  * Point d'écriture unique au registre d'événements.
  * Dans UNE transaction : ajout des événements (table en ajout seul) + mise à jour des projections de
- * lecture (core.scolarites et core.notes pour le K-12, les tables de scolarité du supérieur pour les
- * faits de gestion étudiante, `core.demandes_acte` et `core.allocations_etudiantes` pour le guichet).
+ * lecture (core.scolarites et core.notes pour le K-12, `core.certificats` pour la certification des deux
+ * volets, les tables de scolarité du supérieur pour les faits de gestion étudiante,
+ * `core.demandes_acte` et `core.allocations_etudiantes` pour le guichet).
  * Puis, hors transaction, génération des notifications aux familles.
  *
  * Une projection ne prend que ce que le fait contient déjà : rejouer `ledger.evenements` doit suffire
  * à reconstruire l'état, sinon le registre n'est qu'un journal d'appoint contourné par la lecture.
  */
+/**
+ * Une transition d'acte touche exactement une ligne, ou elle n'a pas eu lieu. Levée DANS la
+ * transaction, l'erreur annule aussi le fait : le registre ne garde jamais une transition que l'état
+ * a refusée (deux guichets qui scelleraient le même acte, une remise d'acte jamais préparé…).
+ */
+const transitionUnique = (touchees: unknown[], demandeId: string, vers: string) => {
+  if (touchees.length !== 1) throw new HTTPException(409, { message: `Demande ${demandeId} : passage à « ${vers} » impossible depuis son état actuel (déjà traitée entre-temps ?)` });
+};
+
 export interface NouveauFait {
   type: string;
   apprenantId: string | null;
@@ -41,7 +53,7 @@ const auJour = (d: Date) => d.toISOString().slice(0, 10);
  * ces tables — et non un journal d'appoint que la lecture contourne.
  *
  * Les types de charge utile sont des déclarations locales, pas une revalidation : le contrat zod
- * `Evenement` a validé la forme AVANT l'écriture au registre. Ils portent les mêmes noms que les
+ * `Evenement` a validé la forme AVANT l'écriture au registre (`inscrireAuRegistre`). Ils portent les mêmes noms que les
  * membres de l'union pour qu'une divergence saute aux yeux à la relecture des deux fichiers.
  */
 type Donnees = Record<string, unknown>;
@@ -51,7 +63,8 @@ interface FaitInscriptionUe { inscriptionUeId: string; inscriptionSuperieureId: 
 interface FaitEvaluationUe { offreUeId: string; ueId: string; session: SessionEvaluation; note: number; creditsEcts: number; coefficient: number }
 interface FaitValidationUe { validationId: string; ueId: string; offreUeId: string | null; periodeId: string | null; voie: VoieAcquisition; session: SessionEvaluation; creditsAcquis: number; moyenne: number | null; regleValidationId: string; justification: string }
 interface FaitJury { juryId: string; autorite: ModeDeliberation; office: OfficeDeliberant | null; diplome: Diplome; periodeId: string | null; filiereId: string | null; sessionExamenId: string | null; statut: StatutJury; president: string; membres: string[]; quorum: number; pvReference: string | null }
-interface FaitDeliberation { deliberationId: string; juryId: string; filiereId: string; diplome: Diplome; decision: DecisionDiplome; creditsValides: number; creditsRequis: number; moyenneGenerale: number | null; mention: Mention | null; ueManquantes: string[] }
+interface FaitDeliberation { deliberationId: string; juryId: string; filiereId: string; diplome: Diplome; decision: DecisionDiplome; creditsValides: number; creditsRequis: number; moyenneGenerale: number | null; mention: Mention | null; ueManquantes: string[]; certificatId: string | null }
+interface FaitCertification { certificatId: string; examen: DiplomeAtteste; filiereId: string | null; delivrePar: string | null; office: OfficeDeliberant | null; session: string; mention: Mention | null; moyenne: number | null; delivreLe: string; empreinte: string }
 interface FaitTransfert { deInscriptionSuperieureId: string; versInscriptionSuperieureId: string; versEtablissementId: string; ueIds: string[] }
 interface FaitAbandon { inscriptionSuperieureId: string; anneeUniversitaire: string; motif: string | null }
 interface FaitDemandeActe { demandeId: string; typeActe: TypeActe; autorite: AutoriteDelivrance; anneeUniversitaire: string | null; periodeId: string | null; delaiContractuelJours: number; delaiSource: string; motifDemande: string | null; demandeeLe: string }
@@ -69,6 +82,17 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
     id: `EVT-${randomUUID()}`, type: f.type, survenuLe: maintenant, auteurId: f.auteurId, source: f.source ?? ("beile" as const),
     etablissementId: f.etablissementId, apprenantId: f.apprenantId, enseignantId: f.enseignantId ?? null, donnees: f.donnees,
   }));
+  // Le contrat avant le registre : chaque fait doit avoir la forme exacte que l'union `Evenement`
+  // déclare (base + charge utile). Un écart est une erreur de programmation, jamais une donnée à
+  // enregistrer — le registre est la source de vérité de toutes les projections.
+  for (const l of lignes) {
+    const r = Evenement.safeParse({
+      ...l.donnees, id: l.id, type: l.type, survenuLe: maintenant.toISOString(), enregistreLe: maintenant.toISOString(),
+      auteurId: l.auteurId, source: l.source, etablissementId: l.etablissementId,
+      ...(l.apprenantId ? { apprenantId: l.apprenantId } : {}), ...(l.enseignantId ? { enseignantId: l.enseignantId } : {}),
+    });
+    if (!r.success) throw new Error(`Fait ${l.type} non conforme au contrat : ${r.error.issues.map((i) => `${i.path.join(".") || "(racine)"} ${i.message}`).join(" ; ").slice(0, 300)}`);
+  }
   await base().transaction(async (tx) => {
     if (avant) await avant(tx);
     await tx.insert(schema.evenements).values(lignes);
@@ -176,6 +200,23 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
       await tx.insert(schema.jurys).values({ id: d.juryId, ...maj }).onConflictDoUpdate({ target: schema.jurys.id, set: maj });
     }
 
+    /* -- Certification : la ligne `core.certificats` est une projection du fait, reconstruisible par son
+       seul payload — sceau compris, sinon rejouer le registre produirait un diplôme dont l'empreinte
+       diffère de celle qui a été vérifiée le jour de la délivrance. Insérée avant la délibération, qui
+       la cite par `certificat_id`. */
+    const certifies = lignes.filter((l) => l.type === "CERTIFICATION" && l.apprenantId);
+    if (certifies.length) {
+      await tx.insert(schema.certificats).values(certifies.map((l) => {
+        const d = vue<FaitCertification>(l.donnees);
+        return {
+          id: d.certificatId, apprenantId: l.apprenantId!, examen: d.examen, session: d.session,
+          filiereId: d.filiereId, etablissementId: d.delivrePar, office: d.office,
+          mention: d.mention, moyenne: d.moyenne, delivreLe: d.delivreLe, empreinte: d.empreinte,
+          revoque: false,
+        };
+      }));
+    }
+
     const deliberees = lignes.filter((l) => l.type === "DELIBERATION_DIPLOME" && l.apprenantId && l.etablissementId);
     if (deliberees.length) {
       await tx.insert(schema.deliberationsDiplome).values(deliberees.map((l) => {
@@ -184,7 +225,7 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
           id: d.deliberationId, apprenantId: l.apprenantId!, juryId: d.juryId, etablissementId: l.etablissementId!,
           filiereId: d.filiereId, diplome: d.diplome, decision: d.decision, creditsValides: d.creditsValides,
           creditsRequis: d.creditsRequis, moyenneGenerale: d.moyenneGenerale, mention: d.mention,
-          ueManquantes: d.ueManquantes, delibereLe: auJour(l.survenuLe),
+          ueManquantes: d.ueManquantes, delibereLe: auJour(l.survenuLe), certificatId: d.certificatId,
         };
       }));
       // Seule l'admission closes la promotion ; « admis sous réserve » laisse l'inscription ouverte.
@@ -245,16 +286,17 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
         eq(schema.demandesActe.id, d.demandeId),
         eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
         eq(schema.demandesActe.statut, "demandee"),
-      ));
+      )).returning({ id: schema.demandesActe.id }).then((r) => transitionUnique(r, d.demandeId, "en instruction"));
     }
     for (const l of lignes.filter((x) => x.type === "ACTE_DISPONIBLE")) {
       const d = vue<FaitActeDisponible>(l.donnees);
       await tx.update(schema.demandesActe).set({ statut: "disponible", disponibleLe: d.disponibleLe, empreinte: d.empreinte }).where(and(
         eq(schema.demandesActe.id, d.demandeId),
         eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
-        // Un acte déjà remis ne se « redispose » pas : la remise clos le cycle.
-        sql`${schema.demandesActe.statut} in ('demandee', 'en_instruction', 'disponible')`,
-      ));
+        // Un acte déjà scellé ne se rescelle pas (le premier document remis deviendrait « altéré »),
+        // et un acte remis ne se « redispose » pas : la remise clôt le cycle.
+        sql`${schema.demandesActe.statut} in ('demandee', 'en_instruction')`,
+      )).returning({ id: schema.demandesActe.id }).then((r) => transitionUnique(r, d.demandeId, "disponible"));
     }
     for (const l of lignes.filter((x) => x.type === "ACTE_REMIS")) {
       const d = vue<FaitActeRemis>(l.donnees);
@@ -266,7 +308,7 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
         eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
         // La remise suppose l'acte prêt : sans cette clause, on pourrait remettre un acte jamais préparé.
         eq(schema.demandesActe.statut, "disponible"),
-      ));
+      )).returning({ id: schema.demandesActe.id }).then((r) => transitionUnique(r, d.demandeId, "remise"));
     }
     for (const l of lignes.filter((x) => x.type === "ACTE_REFUSE")) {
       const d = vue<FaitActeRefuse>(l.donnees);
@@ -276,7 +318,7 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
         eq(schema.demandesActe.id, d.demandeId),
         eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
         sql`${schema.demandesActe.statut} in ('demandee', 'en_instruction', 'disponible')`,
-      ));
+      )).returning({ id: schema.demandesActe.id }).then((r) => transitionUnique(r, d.demandeId, "refusée"));
     }
     for (const l of lignes.filter((x) => x.type === "ACTE_RETIRE")) {
       const d = vue<FaitActeRetire>(l.donnees);
@@ -285,7 +327,7 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
         eq(schema.demandesActe.apprenantId, l.apprenantId ?? ""),
         // Seul le dépôt n'a personne à prévenir : dès l'instruction, c'est au guichet de statuer.
         eq(schema.demandesActe.statut, "demandee"),
-      ));
+      )).returning({ id: schema.demandesActe.id }).then((r) => transitionUnique(r, d.demandeId, "retirée"));
     }
 
     /* -- Allocations : une échéance déclarée, une décision datée. Aucun montant ne passe par ici. */
@@ -333,10 +375,22 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
 export const ID_SAISIE = z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional();
 
 /** Événements déjà enregistrés pour cette saisie (rejeu après une réponse perdue) : on les renvoie sans rien réécrire. */
-export async function dejaSaisi(idSaisie: string | undefined, type: string) {
-  if (!idSaisie) return null;
+/**
+ * Rejeu d'une saisie déjà enregistrée. Un lot qui écrit plusieurs faits pour un même apprenant suffixe
+ * son identifiant (`idSaisie:ue`, `idSaisie:apprenant`) : on passe alors la liste exacte des clés
+ * attendues. Égalité sur l'expression indexée et prédicat de l'index partiel : la recherche reste une
+ * lecture d'index, jamais un parcours de tous les faits du type.
+ */
+export async function dejaSaisi(idSaisie: string | readonly string[] | undefined, type: string, apprenantId?: string) {
+  const cles = typeof idSaisie === "string" ? [idSaisie] : [...(idSaisie ?? [])];
+  if (!cles.length) return null;
   const lignes = await base().select({ id: schema.evenements.id }).from(schema.evenements)
-    .where(and(eq(schema.evenements.type, type), sql`${schema.evenements.donnees}->>'idSaisie' = ${idSaisie}`));
+    .where(and(
+      eq(schema.evenements.type, type),
+      sql`${schema.evenements.donnees} ? 'idSaisie'`,
+      sql`${schema.evenements.donnees}->>'idSaisie' in (${sql.join(cles.map((c) => sql`${c}`), sql`, `)})`,
+      ...(apprenantId ? [eq(schema.evenements.apprenantId, apprenantId)] : []),
+    ));
   return lignes.length ? lignes.map((l) => l.id) : null;
 }
 
