@@ -2,13 +2,15 @@ import type { EleveLigne } from "@/lib/api/etablissement";
 import { nombre, note } from "@/lib/format";
 
 /**
- * Score de risque de décrochage — 100 % local, déterministe et explicable.
+ * Indicateurs de vigilance (décrochage) — 100 % local, déterministe et explicable.
  *
- * Chaque signal déjà présent dans la liste des apprenants contribue un nombre
- * de points visibles : aucune moyenne n'est cachée derrière un chiffre opaque.
+ * Un SIGNAL pour le chef d'établissement, jamais une décision ni une étiquette : il ne quitte pas
+ * l'écran (aucun export), n'affiche aucune note chiffrée, et chaque facteur est lisible. C'est un
+ * humain — l'équipe éducative — qui examine et décide. Pondération indicative, non calibrée sur des
+ * cohortes béninoises : elle ordonne l'attention, elle ne prédit rien.
  * Trois facteurs, dont les poids somment à 100 :
  *   · Insuffisance académique (moyenne générale)      — 40 pts
- *   · Absentéisme (cumul d'absences)                   — 40 pts
+ *   · Absentéisme (absences NON justifiées de l'année) — 40 pts
  *   · Tendance en mathématiques (pente de la baisse)   — 20 pts
  *
  * Le statut d'identité est administratif, pas un signal de décrochage : il est
@@ -38,9 +40,9 @@ export interface EvaluationRisque {
 }
 
 export const LIBELLE_NIVEAU: Record<NiveauRisque, string> = {
-  nominal: "Nominal",
-  a_surveiller: "À surveiller",
-  urgent: "Urgent",
+  nominal: "Sans signal",
+  a_surveiller: "À suivre",
+  urgent: "À examiner en priorité",
 };
 
 /** Décalage des seuils : « élevée » signale plus tôt, « basse » ne retient que l'évident. */
@@ -62,8 +64,10 @@ const BAISSE_MATHS_MAX = 8;
 
 function niveauDu(score: number, sensibilite: Sensibilite): NiveauRisque {
   const s = FACTEUR_SEUIL[sensibilite];
-  if (score >= 60 / s) return "urgent";
-  if (score >= 35 / s) return "a_surveiller";
+  // Seuils MULTIPLIÉS par le facteur : « élevée » (0,7) abaisse le seuil et signale plus tôt,
+  // « basse » (1,4) le relève et ne retient que l'évident.
+  if (score >= 60 * s) return "urgent";
+  if (score >= 35 * s) return "a_surveiller";
   return "nominal";
 }
 
@@ -82,7 +86,7 @@ export function evaluerRisque(e: EleveLigne, sensibilite: Sensibilite = "normale
     libelle: "Absentéisme",
     points: Math.round(rampe(e.absences, 0, ABSENCES_ALERTE_MAX) * POIDS.absence),
     pointsMax: POIDS.absence,
-    detail: `${e.absences} absence${e.absences > 1 ? "s" : ""} cumulée${e.absences > 1 ? "s" : ""}`,
+    detail: `${e.absences} absence${e.absences > 1 ? "s" : ""} non justifiée${e.absences > 1 ? "s" : ""} cette année`,
   };
   const maths: FacteurRisque = {
     cle: "maths",

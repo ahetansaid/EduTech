@@ -1,6 +1,6 @@
 "use client";
 
-import type { Examen, ResultatExamenPublic } from "@beile/contracts";
+import type { Examen, ResultatExamenPublic, SessionPubliee } from "@beile/contracts";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { lire, requete } from "@/lib/http";
 
@@ -79,17 +79,26 @@ export function useCalendrier(annee?: string) {
  * Consultation publique e-résultat : sans session ni compte. L'API ne renvoie un verdict que si la
  * session est publiée ; la requête n'est émise qu'une fois les trois critères renseignés.
  */
-export function useResultatExamen(examen: Examen, session: string, table: string) {
+export function useResultatExamen(examen: Examen, session: string, table: string, naissance = "") {
   return useQuery({
-    queryKey: ["public", "resultats", examen, session, table],
+    queryKey: ["public", "resultats", examen, session, table, naissance],
     queryFn: ({ signal }) => requete<ResultatExamenPublic>(
       "GET",
-      `/public/resultats?examen=${encodeURIComponent(examen)}&session=${encodeURIComponent(session)}&table=${encodeURIComponent(table)}`,
+      `/public/resultats?examen=${encodeURIComponent(examen)}&session=${encodeURIComponent(session)}&table=${encodeURIComponent(table)}${naissance ? `&naissance=${encodeURIComponent(naissance)}` : ""}`,
       undefined,
       { silencieux401: true, signal },
     ),
     enabled: !!table.trim() && !!session.trim(),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** Sessions publiées, proposées au choix (plus de saisie libre qu'un parent devrait deviner). */
+export function useSessionsPubliees() {
+  return useQuery({
+    queryKey: ["public", "resultats", "sessions"],
+    queryFn: ({ signal }) => lire<SessionPubliee[]>("/public/resultats/sessions", signal),
+    staleTime: 5 * 60_000,
   });
 }

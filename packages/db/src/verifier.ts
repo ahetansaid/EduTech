@@ -44,4 +44,10 @@ await essaiRole("UPDATE du registre", "update ledger.evenements set donnees = '{
 await essaiRole("DELETE dans le journal d'audit", "delete from audit.journal");
 await essaiRole("INSERT d'un cas sensible", "insert into sensible.cas (id, categorie, apprenant_id, referent_id, contenu_chiffre, conserver_jusqu_au) values ('CAS-TEST','protection','APP-000001','x','chiffre','2030-01-01')");
 await essaiRole("DELETE d'un apprenant", "delete from core.apprenants where id = 'APP-000001'");
+console.log("6. Diplômes immuables (déclencheur en base, y compris pour le propriétaire) :");
+const cert = "(select id from core.certificats order by id limit 1)";
+await essai("TÉMOIN : révoquer un diplôme (seule transition admise)", `update core.certificats set revoque = true where id = ${cert}`);
+await essai("Modifier la mention d'un diplôme émis", `update core.certificats set mention = case when mention = 'Passable' then 'Bien' else 'Passable' end where id = ${cert}`);
+await essai("Annuler une révocation", `update core.certificats set revoque = true where id = ${cert}; update core.certificats set revoque = false where id = ${cert}`);
+await essai("Supprimer un diplôme", `delete from core.certificats where id = ${cert}`);
 await s.end();

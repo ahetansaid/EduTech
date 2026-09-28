@@ -1,3 +1,6 @@
+import { notifier } from "@/components/ui/Notifications";
+import { ecrire } from "@/lib/http";
+
 /**
  * Export tabulaire côté client. Une source de vérité : on sérialise les lignes *déjà affichées*
  * (filtrées et triées à l'écran), sans appel serveur ni donnée nouvelle — le périmètre exporté
@@ -48,8 +51,21 @@ export function telechargerCsv(nom: string, csv: string) {
 /** Un seul geste : sérialiser puis télécharger. `nom` sans extension.
  *  `provenance` (optionnel) ajoute une dernière ligne de pied de page — périmètre, date, finalité —
  *  pour tracer le cadre d'usage lorsque le fichier contient des données personnelles et quitte la plateforme. */
-export function exporterCsv<T>(nom: string, lignes: readonly T[], colonnes: readonly Colonne<T>[], provenance?: string) {
-  const csv = lignes.length && provenance ? `${versCsv(lignes, colonnes)}\r\n\r\n${echapper(provenance)}` : versCsv(lignes, colonnes);
+/**
+ * Produire un fichier : l'export est d'abord DÉCLARÉ au serveur (journal d'audit : auteur, fichier,
+ * colonnes, volume). Si la trace ne peut pas être écrite, aucun fichier n'est produit — un fichier
+ * nominatif ne quitte jamais la plateforme sans laisser de trace. Le pied de provenance est toujours
+ * présent : il dit d'où vient le fichier et qu'il a été journalisé.
+ */
+export async function exporterCsv<T>(nom: string, lignes: readonly T[], colonnes: readonly Colonne<T>[], provenance?: string, nominatif = true) {
+  try {
+    await ecrire("/audit/exports", { fichier: nom.slice(0, 120), lignes: lignes.length, colonnes: colonnes.map((c) => c.entete.slice(0, 80)).slice(0, 60), nominatif });
+  } catch {
+    notifier({ ton: "critique", titre: "Export impossible", texte: "La trace de l'export n'a pas pu être enregistrée : aucun fichier n'a été produit. Réessayez." });
+    return;
+  }
+  const pied = `${provenance ?? `Export BEILE du ${new Date().toLocaleDateString("fr-FR")}`} — ${lignes.length} ligne(s) — export journalisé${nominatif ? " — document confidentiel" : ""}`;
+  const csv = lignes.length ? `${versCsv(lignes, colonnes)}\r\n\r\n${echapper(pied)}` : versCsv(lignes, colonnes);
   telechargerCsv(`${nom}_${new Date().toISOString().slice(0, 10)}.csv`, csv);
 }
 
@@ -66,7 +82,7 @@ export interface LigneStat {
  * Passe par `exporterCsv`, donc hérite du pied de page de provenance et de la neutralisation des formules.
  */
 export function exporterStats(nom: string, lignes: readonly LigneStat[], provenance?: string) {
-  exporterCsv<LigneStat>(
+  return exporterCsv<LigneStat>(
     nom,
     lignes,
     [
@@ -75,5 +91,6 @@ export function exporterStats(nom: string, lignes: readonly LigneStat[], provena
       { entete: "Valeur", valeur: (l) => l.valeur },
     ],
     provenance,
+    false,
   );
 }

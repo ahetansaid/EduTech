@@ -65,7 +65,7 @@ export default function StagesPage() {
   return (
     <div className="space-y-5">
       <PageHeader titre="Stages" sousTitre="Obligations de stage des filières du supérieur et cycle de vie d'une convention — le fil rouge entre l'école et l'entreprise." surtitre="Enseignement supérieur"
-        actions={<Button variante="secondaire" disabled={!avecStage.length} taille="sm" icone={Download} onClick={() => exporterCsv("stages_obligatoires", avecStage, COLONNES, `BEILE — ${avecStage.length} filières à stage obligatoire — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+        actions={<Button variante="secondaire" disabled={!avecStage.length} taille="sm" icone={Download} onClick={() => exporterCsv("stages_obligatoires", avecStage, COLONNES, `BEILE — ${avecStage.length} filières à stage obligatoire — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter (CSV)</Button>} />
 
       <OngletsESup />
 

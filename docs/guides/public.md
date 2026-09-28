@@ -61,9 +61,9 @@
 `/verifier` — Scanner le QR code ou saisir l'identifiant.
 
 - « Scanner le QR code » (caméra) ou saisie de l'identifiant (ex. CERT-CEP-2024-000001, CERT-LIC-2026-000012).
-- Tout diplôme national se vérifie ici, du CEP au master certifié par l'État. La réponse nomme le diplôme attesté et, pour un diplôme du supérieur, la filière, l'établissement qui a délivré et l'office qui a délibéré.
-- Verdict : Diplôme authentique, Diplôme enregistré, Document altéré, Diplôme révoqué ou Diplôme introuvable.
-- L'identifiant seul ne dit pas à qui appartient le diplôme : le registre confirme qu'il existe, rien de plus. Le nom du titulaire, sa mention et le contrôle d'intégrité du document présenté exigent l'empreinte que porte le QR code du diplôme.
+- Tout diplôme national se vérifie ici, du CEP au master certifié par l'État ; pour un diplôme du supérieur la réponse nomme la filière, l'établissement qui a délivré et l'office qui a délibéré.
+- Verdict : Diplôme authentique, Identifiant existant (titulaire non vérifié), Ne correspond pas, Diplôme révoqué ou Diplôme introuvable.
+- L'identifiant seul ne dit pas à qui appartient le diplôme : le registre confirme qu'il existe et rien de plus. Nom du titulaire, mention et contrôle d'intégrité du document exigent l'empreinte portée par le QR code.
 
 ### Résultats d'examens
 
@@ -82,17 +82,18 @@
 1. Ouvrez BEILE, puis « Vérifier un diplôme ».
 2. Touchez « Scanner le QR code » et visez le code, ou saisissez l'identifiant du diplôme.
 3. Touchez « Vérifier ».
-4. Lisez le verdict. « Diplôme authentique » compare les informations affichées au document présenté ; « Diplôme enregistré » signifie que le diplôme existe mais que personne n'a présenté son QR code — vous n'avez donc aucune preuve que le document est intact, ni que son porteur est bien le titulaire.
-5. Un employeur ou une école doit contrôler le document qu'on lui présente : exigez le scan du QR code, jamais une capture d'écran de la page.
+4. Lisez le verdict. « Diplôme authentique » se compare au document présenté ; « Identifiant existant, titulaire non vérifié » veut dire que le diplôme existe mais qu'aucune empreinte n'a été présentée — vous ne savez ni si le document est intact, ni si son porteur en est le titulaire. « Ne correspond pas » : n'acceptez pas le document en l'état.
+5. Pour un diplôme du supérieur, contrôlez aussi la filière et l'établissement affichés : c'est ce que le document prénommé doit dire.
 
 ### Consulter un résultat d'examen
 
-> Le bureau des examens publie les verdicts dès la fin de la délibération du jury.
+> BEILE reçoit les verdicts du procès-verbal de l'autorité d'examen ; la plateforme officielle des examens et concours reste eRESULTATS (www.eresultats.bj).
 
-1. Ouvrez BEILE, puis « Résultats d'examens » (ou la section « Consulter les résultats » de l'accueil).
-2. Choisissez l'examen et la session.
-3. Saisissez le numéro de table de la convocation, puis « Consulter mon résultat ».
-4. Lisez le verdict. « Résultats non publiés » signifie que la session n'a pas encore été rendue publique.
+1. Ouvrez « Résultats d'examens ».
+2. Choisissez l'examen, puis la session dans la liste des sessions publiées.
+3. Saisissez le numéro de table de la convocation.
+4. Facultatif : saisissez la date de naissance du candidat pour afficher son nom et sa moyenne. Sans elle, seuls le verdict et la mention s'affichent — personne ne lit un nom avec le seul numéro de table.
+5. Touchez « Consulter le résultat ». « Résultats non publiés » : la session n'a pas encore été rendue publique.
 
 ## Questions fréquentes
 

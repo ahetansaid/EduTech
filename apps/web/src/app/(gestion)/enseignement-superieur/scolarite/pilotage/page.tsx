@@ -78,7 +78,7 @@ function Pilotage() {
         surtitre="Enseignement supérieur · Scolarité"
         titre="Agrégats & actes de l'État"
         sousTitre="Compter sans nommer : la capitalisation ECTS par voie, les effets enregistrés de la scolarité, et les actes que l'État pose sur un établissement — agrément, homologation, contrôle, règle nationale."
-        actions={<Button variante="secondaire" taille="sm" icone={Download} disabled={!lignes.length} onClick={() => exporterCsv("effets_scolarite_superieure", lignes, COLONNES_EFFETS, `BEILE — comptages agrégés du registre des écritures du supérieur, toutes zones. Aucune donnée nominative, aucun établissement nommé. Export du ${date(new Date().toISOString())}.`)}>Exporter (CSV)</Button>}
+        actions={<Button variante="secondaire" taille="sm" icone={Download} disabled={!lignes.length} onClick={() => exporterCsv("effets_scolarite_superieure", lignes, COLONNES_EFFETS, `BEILE — comptages agrégés du registre des écritures du supérieur, toutes zones. Aucune donnée nominative, aucun établissement nommé. Export du ${date(new Date().toISOString())}.`, false)}>Exporter (CSV)</Button>}
       />
       <OngletsESup />
       <OngletsScolarite chef={false} />

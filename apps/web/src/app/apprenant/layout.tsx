@@ -10,7 +10,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       roles={["apprenant"]}
       onglets={[
         { href: "/apprenant", libelle: "Mon parcours", icone: Route },
-        { href: "/apprenant/demarches", libelle: "Mes démarches", icone: FileClock },
+        { href: "/apprenant/demarches", libelle: "Mes démarches", icone: FileClock, etudiantSuperieur: true },
         { href: "/apprenant/preuves", libelle: "Mes diplômes", icone: Award },
         { href: "/apprenant/orientation", libelle: "Orientation", icone: Compass },
       ]}

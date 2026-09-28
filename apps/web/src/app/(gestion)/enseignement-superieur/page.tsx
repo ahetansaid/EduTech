@@ -76,7 +76,7 @@ export default function EnseignementSuperieur() {
   return (
     <div className="space-y-5">
       <PageHeader titre="Enseignement supérieur" sousTitre={cadre.sous} surtitre={cadre.sur}
-        actions={<Button variante="secondaire" disabled={!filtres.length} taille="sm" icone={Download} onClick={() => exporterCsv("catalogue_enseignement_superieur", filtres, COLONNES, `Catalogue BEILE — ${filtres.length} filières — voie ${LIBELLE_VOIE[voie]} — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+        actions={<Button variante="secondaire" disabled={!filtres.length} taille="sm" icone={Download} onClick={() => exporterCsv("catalogue_enseignement_superieur", filtres, COLONNES, `Catalogue BEILE — ${filtres.length} filières — voie ${LIBELLE_VOIE[voie]} — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter (CSV)</Button>} />
 
       <OngletsESup />
 

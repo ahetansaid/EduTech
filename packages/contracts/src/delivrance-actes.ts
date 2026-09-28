@@ -419,6 +419,11 @@ export const VerificationActe = z.discriminatedUnion("statut", [
   }),
   /** Demande retirée par son auteur avant toute mise à disposition : le dépôt a existé, le document non. */
   z.object({ statut: z.literal("retire"), demandeId: z.string(), libelle: z.string(), explication: z.string() }),
+  /**
+   * L'acte existe, mais aucune empreinte n'a été présentée : rien ne relie le papier tendu à ce que le
+   * guichet a scellé. Même régime que les diplômes — le QR de l'acte porte l'empreinte.
+   */
+  z.object({ statut: z.literal("sans_empreinte"), demandeId: z.string(), libelle: z.string(), explication: z.string() }),
   z.object({ statut: z.literal("altere"), demandeId: z.string(), explication: z.string() }),
   z.object({ statut: z.literal("introuvable"), explication: z.string() }),
 ]);

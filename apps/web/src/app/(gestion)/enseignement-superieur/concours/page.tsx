@@ -70,7 +70,7 @@ export default function ConcoursPage() {
   return (
     <div className="space-y-5">
       <PageHeader titre="Concours" sousTitre="Sessions sélectives du supérieur : diplôme requis, séries d'accès, places et épreuves pondérées, affichées telles quelles." surtitre="Enseignement supérieur"
-        actions={<Button variante="secondaire" disabled={!visibles.length} taille="sm" icone={Download} onClick={() => exporterCsv("concours_supérieur", visibles, COLONNES, `BEILE — ${visibles.length} sessions (statut ${filtre === "tous" ? "tous" : LIBELLE_STATUT_CONCOURS[filtre]}) — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+        actions={<Button variante="secondaire" disabled={!visibles.length} taille="sm" icone={Download} onClick={() => exporterCsv("concours_supérieur", visibles, COLONNES, `BEILE — ${visibles.length} sessions (statut ${filtre === "tous" ? "tous" : LIBELLE_STATUT_CONCOURS[filtre]}) — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter (CSV)</Button>} />
 
       <OngletsESup />
 

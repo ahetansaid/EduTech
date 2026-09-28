@@ -594,7 +594,11 @@ export type StatutJury = z.infer<typeof StatutJury>;
  * (officedubacbenin.bj) pour le BAC, la Direction des Examens et Concours Supérieurs pour les
  * examens nationaux de l'supérieur, l'établissement pour une délibération sur crédits.
  */
-export const OfficeDeliberant = z.enum(["office_du_bac", "dec_sup", "etablissement"]);
+/**
+ * Office qui délibère et au nom duquel le diplôme est délivré : les deux DEC du K-12 (MEMP pour le CEP,
+ * MESTFP pour le BEPC), l'Office du Baccalauréat, la DEC du supérieur, ou l'établissement (capitalisation).
+ */
+export const OfficeDeliberant = z.enum(["dec_memp", "dec_mestfp", "office_du_bac", "dec_sup", "etablissement"]);
 export type OfficeDeliberant = z.infer<typeof OfficeDeliberant>;
 
 /** Jury : national pour un examen, d'établissement pour un diplôme par capitalisation. */

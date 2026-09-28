@@ -58,14 +58,19 @@ export interface DemandeDetail {
 
 export type ExamenCertifiable = "CEP" | "BEPC" | "BAC";
 
+/** Candidat d'un examen national, vu par son établissement (verdict présent seulement après publication). */
+export interface CandidatExamen {
+  apprenantId: string; nom: string; numeroTable: string; centre: string;
+  decision: "admis" | "non_admis" | "absent" | "exclu" | null; mention: string | null; moyenne: number | null; certificatId: string | null;
+}
+export interface SessionExamenEtab {
+  sessionId: string; examen: string; session: string; statut: "ouverte" | "composition" | "deliberation" | "publiee";
+  publieeLe: string | null; autorite: string; candidats: CandidatExamen[];
+}
+/** Examens nationaux de l'établissement : LECTURE SEULE (l'autorité d'examen délibère et délivre). */
 export interface Examens {
-  examen: ExamenCertifiable;
-  session: string;
-  niveau: string;
-  classes: string[];
-  candidats: { id: string; nom: string; classe: string; moyenne: number | null }[];
-  deliberee: boolean;
-  certificats: (Certificat & { titulaire: string })[];
+  sessions: SessionExamenEtab[];
+  diplomes: (Certificat & { titulaire: string })[];
 }
 
 export interface DossierGestion {
@@ -133,7 +138,7 @@ export const cles = {
   demande: (demandeId: string) => ["etablissement", "demande", demandeId] as const,
   aTraiter: ["etablissement", "a-traiter"] as const,
   justificatifs: (id: string) => ["etablissement", id, "justificatifs"] as const,
-  examens: (id: string, examen: ExamenCertifiable) => ["etablissement", id, "examens", examen] as const,
+  examens: (id: string) => ["etablissement", id, "examens"] as const,
   dossier: (apprenantId: string) => ["etablissement", "dossier", apprenantId] as const,
   accueil: (apprenantId: string, q: string) => ["etablissement", "classes-accueil", apprenantId, q] as const,
   registre: (nom: string, prenoms: string) => ["etablissement", "registre", nom, prenoms] as const,
@@ -202,10 +207,10 @@ export function useDemandes(id: string | null) {
   });
 }
 
-export function useExamens(id: string | null, examen: ExamenCertifiable = "BEPC") {
+export function useExamens(id: string | null) {
   return useQuery({
-    queryKey: cles.examens(id ?? "-", examen),
-    queryFn: ({ signal }) => lire<Examens>(`/etablissements/${e(id!)}/examens?examen=${e(examen)}`, signal),
+    queryKey: cles.examens(id ?? "-"),
+    queryFn: ({ signal }) => lire<Examens>(`/etablissements/${e(id!)}/examens`, signal),
     enabled: !!id,
   });
 }
@@ -287,14 +292,6 @@ export function useDecisionJustificatifMutation(id: string | null) {
     mutationFn: (v: { justificationId: string; decision: "validee" | "refusee"; motif?: string }) =>
       ecrire<{ enregistre: string; decision: string }>(`/etablissements/${e(id!)}/justificatifs/${e(v.justificationId)}/decision`, { decision: v.decision, ...(v.motif ? { motif: v.motif } : {}) }),
     onSuccess: invalider,
-  });
-}
-
-export function useDeliberationMutation(id: string | null) {
-  const invalider = useInvalider();
-  return useMutation({
-    mutationFn: (v: { examen: ExamenCertifiable; session: string }) => ecrire<{ examen: string; session: string; candidats: number; nonJuges: number; diplomes: number }>(`/etablissements/${e(id!)}/examens/deliberation`, v),
-    onSettled: invalider,
   });
 }
 

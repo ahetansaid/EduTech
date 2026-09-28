@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, unique, uniqueIndex,
+  type AnyPgColumn, bigint, boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, unique, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -53,7 +53,7 @@ const DIPLOMES_ATTESTES = ["CEP", "BEPC", "CAP", "BEP", "BAC_TECHNIQUE", "BT", "
 const EXAMENS_NATIONAUX = ["CEP", "BEPC", "BAC", "BAC_TECHNIQUE", "CAP", "BEP", "BT", "BTS", "CQP", "LICENCE", "LICENCE_PRO", "MASTER", "MASTER_PRO", "DES"] as const;
 
 /** Office qui tient la délibération — le même pesant s'attache au certificat qu'elle produit. */
-const OFFICES_DELIBERANTS = ["office_du_bac", "dec_sup", "etablissement"] as const;
+const OFFICES_DELIBERANTS = ["dec_memp", "dec_mestfp", "office_du_bac", "dec_sup", "etablissement"] as const;
 
 /** Rythmes choisis par l'établissement. `modulaire` reste déclaré mais non attesté par un texte béninois. */
 const REGIMES = ["semestriel", "trimestriel", "annuel", "modulaire"] as const;
@@ -296,7 +296,7 @@ export const examensCandidatures = core.table("examens_candidatures", {
   apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
   centreId: text("centre_id").notNull().references(() => examensCentres.id),
   numeroTable: text("numero_table").notNull(),
-  decision: text("decision", { enum: ["admis", "non_admis"] }),
+  decision: text("decision", { enum: ["admis", "non_admis", "absent", "exclu"] }),
   moyenne: numeric("moyenne", { precision: 4, scale: 2, mode: "number" }),
   mention: text("mention"),
 }, (t) => [
@@ -567,6 +567,31 @@ export const calendrier = core.table("calendrier", {
   majLe: timestamp("maj_le", { withTimezone: true }).notNull().defaultNow(),
   majPar: text("maj_par"),
 }, (t) => [index("calendrier_annee_idx").on(t.annee, t.debut)]);
+
+/**
+ * Absences justifiées : projection des décisions « validée » de l'établissement. Le fait ABSENCE est en
+ * ajout seul et naît « non justifié » ; c'est la DECISION_JUSTIFICATION qui le justifie. Sans cette
+ * projection, chaque lecteur (enseignant, statistiques, famille) devrait refaire la jointure sur le
+ * registre — et l'un d'eux l'oublierait. Une ligne par absence, clé primaire : une seule justification.
+ */
+export const absencesJustifiees = core.table("absences_justifiees", {
+  absenceId: text("absence_id").primaryKey(),
+  apprenantId: text("apprenant_id").notNull().references(() => apprenants.id),
+  justificationId: text("justification_id").notNull(),
+  decisionEvenementId: text("decision_evenement_id").notNull(),
+  justifieeLe: timestamp("justifiee_le", { withTimezone: true }).notNull(),
+}, (t) => [index("absences_justifiees_apprenant_idx").on(t.apprenantId)]);
+
+/**
+ * Compteurs de la limite de débit PARTAGÉE : sur un hébergement serverless, chaque instance a sa propre
+ * mémoire, et un plafond tenu en mémoire se contourne en tombant sur une autre instance. Une ligne par
+ * (clé, fenêtre) ; l'incrément est atomique (`insert … on conflict do update … returning`).
+ */
+export const compteursDebit = core.table("compteurs_debit", {
+  cle: text("cle").notNull(),
+  fenetre: bigint("fenetre", { mode: "number" }).notNull(),
+  n: integer("n").notNull().default(1),
+}, (t) => [primaryKey({ columns: [t.cle, t.fenetre] }), index("compteurs_debit_fenetre_idx").on(t.fenetre)]);
 
 /* ------------------------------------------------------------------ Enseignement supérieur & formation professionnelle
  * Miroir en base des contrats zod `packages/contracts/src/enseignement-superieur.ts` (S0). Trois voies

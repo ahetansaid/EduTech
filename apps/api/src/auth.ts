@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
+import type { Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { empreinteJeton, genererMotDePasse, hacherMotDePasse, motDePasseConforme, nouveauJeton, verifierMotDePasse } from "@beile/db/securite";
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { adresseIp, authentifie, base, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { adresseIp, authentifie, base, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser, type Variables } from "./commun";
 
 /**
  * Authentification : identifiant + mot de passe (scrypt), session serveur de 12 h dans un cookie HttpOnly,
@@ -30,7 +31,7 @@ function poserCookies(c: Context, jeton: string) {
 
 // Limite par IP large : établissements et réseaux mobiles partagent souvent une IP (NAT). La force brute
 // est bornée par le verrouillage par compte (5 échecs → 15 min).
-auth.post("/auth/connexion", limiteDebit(60, 60_000), async (c) => {
+auth.post("/auth/connexion", limiteDebitPartage("connexion", 60, 60_000), async (c) => {
   controlerOrigine(c);
   const { identifiant, motDePasse } = await corps(c, z.object({ identifiant: z.string().trim().toLowerCase().min(3).max(80), motDePasse: z.string().min(1).max(200) }).strict());
   const [compte] = await base().select().from(schema.comptes).where(eq(schema.comptes.identifiant, identifiant));
@@ -63,6 +64,23 @@ auth.post("/auth/connexion", limiteDebit(60, 60_000), async (c) => {
  * État de session sans erreur : pour les pages publiques (accueil, connexion) qui veulent seulement savoir si
  * l'utilisateur est déjà connecté. Répond toujours 200 — { session: null } si absente, expirée ou révoquée.
  */
+/**
+ * Contexte d'affichage, calculé par le serveur : le cycle de chaque établissement où le profil exerce
+ * et, pour un apprenant, s'il est inscrit dans le supérieur. Il sert à n'afficher que ce qui concerne
+ * l'utilisateur (une directrice d'école primaire n'a pas de guichet étudiant). Purement cosmétique :
+ * l'accès aux données reste décidé, route par route, par l'ABAC.
+ */
+async function contexteDe(profil: Profil) {
+  const etabIds = [...new Set(profil.habilitations.flatMap((h) => (h.perimetre.niveau === "etablissement" ? [h.perimetre.etablissementId] : [])))];
+  const apprenant = profil.habilitations.find((h) => h.role === "apprenant" && h.perimetre.niveau === "personnel");
+  const apprenantId = apprenant?.perimetre.niveau === "personnel" ? apprenant.perimetre.apprenantId : null;
+  const [etabs, sup] = await Promise.all([
+    etabIds.length ? base().select({ id: schema.etablissements.id, cycle: schema.etablissements.cycle }).from(schema.etablissements).where(inArray(schema.etablissements.id, etabIds)) : [],
+    apprenantId ? base().select({ id: schema.inscriptionsSuperieures.id }).from(schema.inscriptionsSuperieures).where(eq(schema.inscriptionsSuperieures.apprenantId, apprenantId)).limit(1) : [],
+  ]);
+  return { cycles: Object.fromEntries(etabs.map((e) => [e.id, e.cycle])) as Record<string, "primaire" | "secondaire" | "superieur">, etudiantSuperieur: sup.length > 0 };
+}
+
 auth.get("/auth/etat", async (c) => {
   if (!getCookie(c, COOKIE_SESSION)) return c.json({ session: null });
   try {
@@ -72,7 +90,8 @@ auth.get("/auth/etat", async (c) => {
     throw e;
   }
   const compte = c.get("compte");
-  return c.json({ session: { profil: c.get("profil"), compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse } } });
+  const profil = c.get("profil");
+  return c.json({ session: { profil, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse }, contexte: await contexteDe(profil) } });
 });
 
 auth.get("/auth/session", authentifie, (c) => c.json({ profil: c.get("profil"), compte: { identifiant: c.get("compte").identifiant, doitChangerMotDePasse: c.get("compte").doitChangerMotDePasse } }));

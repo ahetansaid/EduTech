@@ -1,10 +1,10 @@
 "use client";
 
 import type { ResultatVerification } from "@beile/contracts";
-import { ArrowLeft, Ban, CircleAlert, CircleCheckBig, FileWarning, FlaskConical, Info, RefreshCw, ScanLine, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Ban, CircleAlert, CircleCheckBig, FileWarning, Info, RefreshCw, ScanLine, ShieldCheck, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, use, useState } from "react";
+import { Suspense, use } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Button, Card, Squelette } from "@/components/ui/primitives";
 import { FORMAT_CERTIFICAT, NOM_EXAMEN, useVerification } from "@/lib/api/parcours";
@@ -18,21 +18,18 @@ type Statut = ResultatVerification["statut"];
 /* Mapping central des cinq verdicts. */
 const VERDICT: Record<Statut, { icone: LucideIcon; titre: string; couleur: string; fond: string; bord: string; conseil: string }> = {
   authentique: { icone: CircleCheckBig, titre: "Diplôme authentique", couleur: "text-success", fond: "bg-success-bg", bord: "border-success/40", conseil: "Les informations ci-dessous proviennent du registre national : comparez-les au document présenté." },
-  altere: { icone: FileWarning, titre: "Document altéré", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/40", conseil: "Le diplôme existe, mais le document présenté a été modifié (nom, mention, note ou session). Ne l'acceptez pas ; demandez l'original ou le lien de vérification au titulaire." },
+  altere: { icone: FileWarning, titre: "Ne correspond pas", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/40", conseil: "Le document présenté ne concorde pas avec le diplôme enregistré. Ne l'acceptez pas en l'état : demandez l'original au titulaire ou saisissez l'autorité qui l'a délivré." },
   revoque: { icone: Ban, titre: "Diplôme révoqué", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/40", conseil: "L'autorité de certification a retiré ce diplôme. Il ne doit pas être accepté." },
-  sans_empreinte: { icone: ScanLine, titre: "Diplôme enregistré", couleur: "text-info", fond: "bg-info-bg", bord: "border-info/40", conseil: "Pour contrôler le titulaire, la mention et l'intégrité du document, scannez le QR code imprimé sur le diplôme : il porte son empreinte." },
+  sans_empreinte: { icone: ScanLine, titre: "Identifiant existant, titulaire non vérifié", couleur: "text-info", fond: "bg-info-bg", bord: "border-info/40", conseil: "Pour contrôler le titulaire, la mention et l'intégrité du document, scannez le QR code imprimé sur le diplôme : il porte son empreinte." },
   introuvable: { icone: CircleAlert, titre: "Diplôme introuvable", couleur: "text-warning", fond: "bg-warning-bg", bord: "border-warning/40", conseil: "Aucun diplôme ne porte cet identifiant. Vérifiez la saisie ; si le document affirme le contraire, il est suspect." },
 };
 
-/** Simule un document retouché : un seul caractère de l'empreinte change, comme après une modification du contenu. */
-const empreinteModifiee = (e: string) => e.slice(0, -1) + (e.at(-1) === "0" ? "1" : "0");
 
 function Verification({ id }: { id: string }) {
   useThemeEspace(false);
   const params = useSearchParams();
   const presente = (params.get("e") ?? "").toLowerCase().replace(/[^0-9a-f]/g, "").slice(0, 64);
-  const [falsifie, setFalsifie] = useState(false);
-  const empreinte = falsifie && presente ? empreinteModifiee(presente) : presente;
+  const empreinte = presente;
   const formatValide = FORMAT_CERTIFICAT.test(id);
   const q = useVerification(id, empreinte);
 
@@ -53,22 +50,6 @@ function Verification({ id }: { id: string }) {
         <Verdict r={resultat} id={id} maj={formatValide ? q.dataUpdatedAt : 0} />
       )}
 
-      {formatValide && presente && resultat && (resultat.statut === "authentique" || falsifie) && (
-        <Card className="min-w-0">
-          <div className="flex items-start gap-3">
-            <FlaskConical size={20} className="mt-0.5 shrink-0 text-amber" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink">Tester la détection de fraude</p>
-              <p className="mt-1 text-[13px] text-ink-2">Présentez au registre l&apos;empreinte d&apos;un document retouché (un seul caractère diffère) : la requête part réellement vers le service et le verdict change.</p>
-              <div className="mt-3">
-                {falsifie
-                  ? <Button taille="sm" variante="secondaire" onClick={() => setFalsifie(false)}>Revenir au document original</Button>
-                  : <Button taille="sm" variante="danger" onClick={() => setFalsifie(true)}>Présenter un document retouché</Button>}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

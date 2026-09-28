@@ -137,7 +137,7 @@
 ## Questions fréquentes
 
 **Un diplôme manque.**  
-Il apparaît après la délibération du jury. S'il manque ensuite, adressez-vous à votre établissement.
+Il apparaît dès la publication officielle des résultats par l'autorité d'examen. S'il manque ensuite, adressez-vous à votre établissement.
 
 **Quelqu'un peut-il modifier mon diplôme ?**  
 Toute modification du document est détectée à la vérification : le verdict devient « Document altéré ».

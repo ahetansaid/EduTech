@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
 import { parcours } from "./parcours";
 import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { auth } from "./auth";
@@ -18,7 +18,7 @@ import { complementsFamille } from "./complements-famille";
 import { complementsGouvernance } from "./complements-gouvernance";
 import { administration } from "./administration";
 import { publique } from "./public";
-import { empreintePresentee, sceauCertificat, sceauCorrespond } from "./certification";
+import { empreintePresentee, sceauCorrespond, sceauxAdmis } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -62,9 +62,9 @@ app.onError((err, c) => {
   // clé étrangère violée désigne une référence inconnue (erreur du client, jamais un 500).
   const pg = (err as { cause?: { code?: string; constraint_name?: string } }).cause ?? (err as { code?: string; constraint_name?: string });
   if (pg?.code === "23505") {
-    return pg.constraint_name === "evenements_id_saisie_idx"
-      ? c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409)
-      : c.json({ erreur: "Conflit : cet enregistrement existe déjà" }, 409);
+    if (pg.constraint_name === "evenements_id_saisie_idx") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
+    if (pg.constraint_name === "evenements_decision_justification_uq") return c.json({ erreur: "Ce justificatif a déjà été tranché" }, 409);
+    return c.json({ erreur: "Conflit : cet enregistrement existe déjà" }, 409);
   }
   if (pg?.code === "23503") return c.json({ erreur: "Référence inconnue : un identifiant fourni ne désigne rien d'existant" }, 422);
   // Paramètre d'URL ou de requête invalide (validation zod) : erreur du client, jamais un 500.
@@ -111,7 +111,7 @@ app.get("/dictionnaire/:code", (c) => {
  * l'identifiant existe — ni nom, ni mention. La fin d'un identifiant de certificat reprend le numéro
  * d'apprenant : livrer l'identité sur l'identifiant seul revaudrait à parcourir une promotion entière.
  */
-app.get("/certificats/:id/verification", limiteDebit(30, 60_000), async (c) => {
+app.get("/certificats/:id/verification", limiteDebitPartage("verification-diplome", 30, 60_000), async (c) => {
   const id = c.req.param("id");
   if (!/^CERT-[A-Z]+-\d{4}-\d{6}$/.test(id)) throw new HTTPException(400, { message: "Identifiant de diplôme mal formé" });
   const presente = empreintePresentee(c.req.query("e"));
@@ -121,9 +121,15 @@ app.get("/certificats/:id/verification", limiteDebit(30, 60_000), async (c) => {
   const [filiere] = cert?.filiereId ? await base().select({ nom: schema.filiereSuperieure.nom }).from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, cert.filiereId)) : [];
   const nom = titulaire ? `${titulaire.prenoms} ${titulaire.nom}` : "";
   let r: ResultatVerification;
+  // Deux contrôles distincts. (1) La LIGNE est-elle intègre ? Son sceau stocké doit être l'un de ceux
+  // que ses champs signés produisent (clef active ou ancienne). (2) Le DOCUMENT correspond-il ? Le
+  // préfixe présenté se compare au sceau STOCKÉ, jamais à un recalcul : un curieux qui ferait varier la
+  // moyenne supposée n'obtient plus aucun indice, puisque rien de ce qu'il envoie n'est recalculé.
+  const integre = !!cert && !!titulaire && sceauxAdmis(cert, nom).includes(cert.empreinte);
   if (!cert || !titulaire) r = { statut: "introuvable", explication: "Aucun diplôme ne porte cet identifiant." };
   else if (cert.revoque) r = { statut: "revoque", certificatId: id, explication: "Diplôme révoqué par l'autorité de certification." };
-  else if (presente && !sceauCorrespond(sceauCertificat(cert, nom), presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
+  else if (!integre) r = { statut: "altere", certificatId: id, explication: "Le registre ne concorde pas avec le diplôme émis. Ne l'acceptez pas en l'état et saisissez l'autorité de certification." };
+  else if (presente && !sceauCorrespond(cert.empreinte, presente)) r = { statut: "altere", certificatId: id, explication: "Le document présenté ne correspond pas au diplôme délivré." };
   else if (!presente) r = {
     statut: "sans_empreinte",
     certificatId: id,

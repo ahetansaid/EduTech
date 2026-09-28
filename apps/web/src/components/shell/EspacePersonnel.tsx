@@ -10,14 +10,18 @@ import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useThemeEspace } from "@/lib/useSombre";
-import { accueilPour, useProfil } from "@/lib/session";
+import { accueilPour, useSession } from "@/lib/session";
 import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
 import { GardeSession } from "./GardeSession";
 import { MenuUtilisateur } from "./MenuUtilisateur";
 
-export interface Onglet { href: string; libelle: string; icone: LucideIcon; roles?: Role[] }
+export interface Onglet {
+  href: string; libelle: string; icone: LucideIcon; roles?: Role[];
+  /** Réservé à un apprenant inscrit dans le supérieur (guichet des actes, allocations). */
+  etudiantSuperieur?: boolean;
+}
 
 /** Couleur propre à chaque espace : l'utilisateur sait d'un coup d'œil où il se trouve. */
 const ACCENTS = {
@@ -39,10 +43,11 @@ export function EspacePersonnel(props: Proprietes) {
 
 function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Proprietes) {
   const pathname = usePathname();
-  const profil = useProfil();
+  const { profil, contexte } = useSession();
   const a = ACCENTS[espace];
   const autorise = profil.habilitations.some((h) => roles.includes(h.role));
-  const visibles = onglets.filter((o) => !o.roles || o.roles.some((r) => profil.habilitations.some((h) => h.role === r)));
+  const visibles = onglets.filter((o) => (!o.roles || o.roles.some((r) => profil.habilitations.some((h) => h.role === r)))
+    && (!o.etudiantSuperieur || !!contexte?.etudiantSuperieur));
   useTitre([...visibles].sort((x, y) => y.href.length - x.href.length).find((o) => pathname === o.href || pathname.startsWith(`${o.href}/`))?.libelle ?? a.nom);
   const actif = (href: string) => (href === visibles[0]?.href ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
 

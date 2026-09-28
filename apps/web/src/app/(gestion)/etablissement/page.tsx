@@ -482,19 +482,25 @@ function DialogueGererClasse({ id, classe, onFermer }: { id: string; classe: Cla
 
 /* ------------------------------------------------------------------ Conseil de passage (fin d'année) */
 
+/** Niveaux qui terminent un cycle : la suite relève d'un examen national et d'une affectation. */
+const FIN_DE_CYCLE: Record<string, string> = { CM2: "CEP", "3e": "BEPC", Tle: "baccalauréat" };
+
 function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; classe: ClasseTableau; eleves: EleveLigne[]; onFermer: () => void }) {
   const muter = useConseilPassageMutation(id);
   const [annee, setAnnee] = useState(anneeScolaireSuggeree());
+  // Aucune décision par défaut : chaque élève est statué explicitement par le conseil.
   const [decisions, setDecisions] = useState<Record<string, "admis" | "redouble">>({});
+  const [confirme, setConfirme] = useState(false);
   const elevesClasse = useMemo(() => eleves.filter((e) => e.classeId === classe.id), [eleves, classe]);
-  const versNiveau = niveauSuivant(classe.niveau);
-  const terminal = !versNiveau;
+  const examenFin = FIN_DE_CYCLE[classe.niveau];
+  const versNiveau = examenFin ? undefined : niveauSuivant(classe.niveau);
   const anneeValide = /^\d{4}-\d{4}$/.test(annee);
-  const decisionDe = (apprenantId: string): "admis" | "redouble" => decisions[apprenantId] ?? "admis";
-  const basculer = (apprenantId: string) => setDecisions((d) => ({ ...d, [apprenantId]: decisionDe(apprenantId) === "admis" ? "redouble" : "admis" }));
-  const admis = elevesClasse.filter((e) => decisionDe(e.id) === "admis").length;
+  const statues = elevesClasse.filter((e) => decisions[e.id]).length;
+  const admis = elevesClasse.filter((e) => decisions[e.id] === "admis").length;
+  const complet = elevesClasse.length > 0 && statues === elevesClasse.length;
+  const choisir = (apprenantId: string, d: "admis" | "redouble") => { setDecisions((x) => ({ ...x, [apprenantId]: d })); setConfirme(false); };
   const envoie = () => {
-    const decisionsFinales: DecisionPassage[] = elevesClasse.map((e) => ({ apprenantId: e.id, decision: decisionDe(e.id) }));
+    const decisionsFinales: DecisionPassage[] = elevesClasse.map((e) => ({ apprenantId: e.id, decision: decisions[e.id]! }));
     muter.mutate({ classeId: classe.id, anneeScolaire: annee, decisions: decisionsFinales }, {
       onSuccess: (r) => { notifier({ ton: "succes", titre: "Conseil de passage enregistré", texte: `${r.admis} admis, ${r.maintenus} maintenu(s) en ${annee}${r.divisionsCrees.length ? ` · ${r.divisionsCrees.length} division(s) créée(s)` : ""}.` }); onFermer(); },
     });
@@ -506,14 +512,14 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
       large
       icone={GraduationCap}
       titre={`Conseil de passage — ${classe.libelle}`}
-      description={terminal
-        ? `« ${classe.niveau} » est le niveau terminal : la sortie des admis relève de la certification des examens nationaux, pas du conseil de passage.`
-        : `Les admis passent en ${versNiveau}, les redoublants sont maintenus en ${classe.niveau}, réinscrits dans leur division de l'année ${annee}.`}
+      description={examenFin || !versNiveau
+        ? `« ${classe.niveau} » termine un cycle : la suite relève du ${examenFin ?? "examen national"} et de l'affectation. Seul le maintien (redoublement) se décide ici.`
+        : `Statuez chaque élève : admis en ${versNiveau} ou maintenu en ${classe.niveau}, réinscrit dans sa division de l'année ${annee}. La décision est inscrite au registre et ne s'annule pas.`}
       pied={
         <>
           <Button variante="secondaire" onClick={onFermer} disabled={muter.isPending}>Annuler</Button>
-          <Button variante="valider" icone={Check} chargement={muter.isPending} disabled={terminal || !anneeValide || !elevesClasse.length} onClick={envoie}>
-            Enregistrer {elevesClasse.length ? `(${admis} admis · ${elevesClasse.length - admis} maintenus)` : ""}
+          <Button variante="valider" icone={Check} chargement={muter.isPending} disabled={!complet || !anneeValide || !confirme} onClick={envoie}>
+            Enregistrer {complet ? `(${admis} admis · ${elevesClasse.length - admis} maintenus)` : `(${statues}/${elevesClasse.length} statués)`}
           </Button>
         </>
       }
@@ -524,27 +530,40 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
           <input value={annee} onChange={(e) => setAnnee(e.target.value.replace(/[^0-9-]/g, "").slice(0, 9))} placeholder="2026-2027" className={classeChamp} />
           <span className={cn("mt-1 block text-xs", anneeValide ? "text-ink-muted" : "text-critical")}>Format attendu : AAAA-AAAA.</span>
         </label>
-        {terminal ? (
-          <EtatVide icone={GraduationCap} titre="Passage non applicable à ce niveau" texte="Les apprenants de ce niveau quittent le cycle : leur sort se règle à la délibération des examens nationaux." />
-        ) : elevesClasse.length === 0 ? (
+        {elevesClasse.length === 0 ? (
           <EtatVide icone={Users} titre="Aucun élève scolarisé dans cette classe" texte="Le conseil de passage s'appuie sur les élèves actuellement inscrits dans la classe." />
         ) : (
           <ul className="divide-y divide-line/60">
             {elevesClasse.map((e) => {
-              const sens = decisionDe(e.id);
+              const d = decisions[e.id];
               return (
-                <li key={e.id} className="flex items-center gap-3 py-2.5">
+                <li key={e.id} className="flex flex-wrap items-center gap-3 py-2.5">
                   <div className="min-w-0 flex-1">
                     <Link href={`/etablissement/eleves/${e.id}`} className="block truncate text-[13.5px] font-semibold text-ink hover:text-blue hover:underline">{e.prenoms} {e.nom}</Link>
-                    <span className="text-[12px] tabular text-ink-muted">Moyenne {nombre(e.moyenne, 2)}{e.absences ? ` · ${e.absences} absence(s)` : ""}</span>
+                    <span className="text-[12px] tabular text-ink-muted">Moyenne {nombre(e.moyenne, 2)}{e.absences ? ` · ${e.absences} absence(s) non justifiée(s)` : ""}</span>
                   </div>
-                  <button type="button" onClick={() => basculer(e.id)} className="shrink-0" aria-label={sens === "admis" ? "Admis — toucher pour maintenir" : "Maintenu — toucher pour admettre"}>
-                    <Statut ton={sens === "admis" ? "succes" : "avertissement"}>{sens === "admis" ? `Admis en ${versNiveau}` : `Maintien en ${classe.niveau}`}</Statut>
-                  </button>
+                  <div className="flex shrink-0 gap-1.5" role="group" aria-label={`Décision pour ${e.prenoms} ${e.nom}`}>
+                    {versNiveau && (
+                      <button type="button" onClick={() => choisir(e.id, "admis")} aria-pressed={d === "admis"}
+                        className={cn("h-8 rounded-md px-2.5 text-[12.5px] font-medium ring-1 ring-inset transition", d === "admis" ? "bg-success-bg text-success ring-success/40" : "text-ink-2 ring-line hover:bg-surface-2")}>
+                        Admis en {versNiveau}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => choisir(e.id, "redouble")} aria-pressed={d === "redouble"}
+                      className={cn("h-8 rounded-md px-2.5 text-[12.5px] font-medium ring-1 ring-inset transition", d === "redouble" ? "bg-warning-bg text-warning ring-warning/40" : "text-ink-2 ring-line hover:bg-surface-2")}>
+                      Maintien en {classe.niveau}
+                    </button>
+                  </div>
                 </li>
               );
             })}
           </ul>
+        )}
+        {complet && (
+          <label className="flex items-start gap-2.5 rounded-lg bg-surface-2/70 px-3.5 py-3 text-[13px] text-ink">
+            <input type="checkbox" checked={confirme} onChange={(e) => setConfirme(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-navy)]" />
+            <span>Je confirme que ces décisions sont celles du conseil de classe. Elles seront inscrites au registre et ne pourront pas être annulées.</span>
+          </label>
         )}
       </div>
     </Dialogue>

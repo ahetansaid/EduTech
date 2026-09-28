@@ -15,7 +15,8 @@ import { and, asc, count, desc, eq, inArray, isNotNull, sql } from "drizzle-orm"
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
+import { empreintePresentee, sceauCorrespond } from "./certification";
 import { lireEnv } from "./env";
 import { dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { inscriptionDe } from "./etudiants-superieur";
@@ -78,8 +79,14 @@ type InscriptionLue = NonNullable<Awaited<ReturnType<typeof inscriptionCourante>
  * Avec `BEILE_CLE_SEAU`, le sceau devient un MAC : le rôle qui écrit dans la base ne connaît pas la
  * clef, donc avancer en base une date de mise à disposition ne produirait plus un sceau valide.
  */
-const sceau = (d: { id: string; apprenantId: string; typeActe: string; anneeUniversitaire: string | null; periodeId: string | null; disponibleLe: string | null }) =>
-  empreinteContenu(["acte", d.id, d.apprenantId, d.typeActe, d.anneeUniversitaire, d.periodeId, d.disponibleLe], lireEnv().CLE_SEAU);
+type ChampsActe = { id: string; apprenantId: string; typeActe: string; anneeUniversitaire: string | null; periodeId: string | null; disponibleLe: string | null };
+const champsActe = (d: ChampsActe) => ["acte", d.id, d.apprenantId, d.typeActe, d.anneeUniversitaire, d.periodeId, d.disponibleLe];
+const sceau = (d: ChampsActe) => empreinteContenu(champsActe(d), lireEnv().CLE_SEAU);
+/** Sceaux qu'un acte intègre peut porter : un par clef acceptée (rotation sans faux « altéré »). */
+const sceauxAdmisActe = (d: ChampsActe) => {
+  const cles = lireEnv().CLES_VERIFICATION;
+  return cles.length ? cles.map((k) => empreinteContenu(champsActe(d), k)) : [empreinteContenu(champsActe(d))];
+};
 
 /**
  * Jours écoulés et retard sur le délai publié, calculés à la lecture et jamais stockés : un retard figé
@@ -720,8 +727,11 @@ guichet.post("/enseignement-superieur/actes/:demandeId/decision", authentifie, a
  * été mis à disposition et sous quelle autorité — ni à qui, ni ce qu'il contient. Un annuaire de
  * diplômes consultable par n'importe qui serait une fuite, pas un service.
  */
-guichet.get("/actes/:demandeId/verification", limiteDebit(30, 60_000), async (c) => {
-  const demandeId = ID_DEMANDE.parse(c.req.param("demandeId"));
+guichet.get("/actes/:demandeId/verification", limiteDebitPartage("verification-acte", 30, 60_000), async (c) => {
+  // Une référence dictée ou recopiée arrive souvent en capitales : l'UUID se compare en minuscules.
+  const brut = c.req.param("demandeId");
+  const demandeId = ID_DEMANDE.parse(brut.replace(/^acte-/i, "ACTE-").replace(/(?<=^ACTE-).*/, (x) => x.toLowerCase()));
+  const presente = empreintePresentee(c.req.query("e"));
   const [d] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
   let r: VerificationActe;
   if (!d) {
@@ -732,7 +742,12 @@ guichet.get("/actes/:demandeId/verification", limiteDebit(30, 60_000), async (c)
     r = { statut: "retire", demandeId, libelle: LIBELLE_ACTE[d.typeActe], explication: "Cette demande a été retirée par son auteur : aucun document n'a été délivré sous cet identifiant." };
   } else if (!d.empreinte || !d.disponibleLe) {
     r = { statut: "introuvable", explication: "Aucun acte délivré ne porte cet identifiant." };
-  } else if (d.empreinte !== sceau(d)) {
+  } else if (!sceauxAdmisActe(d).includes(d.empreinte)) {
+    // La ligne elle-même a bougé après le scellé (date avancée en base, par exemple).
+    r = { statut: "altere", demandeId, explication: "Le registre ne concorde pas avec l'acte scellé. Ne l'acceptez pas en l'état et saisissez l'établissement." };
+  } else if (!presente) {
+    r = { statut: "sans_empreinte", demandeId, libelle: LIBELLE_ACTE[d.typeActe], explication: "Cet acte existe au registre. Pour contrôler que le document présenté est bien celui-ci, scannez son QR code : il porte l'empreinte." };
+  } else if (!sceauCorrespond(d.empreinte, presente)) {
     r = { statut: "altere", demandeId, explication: "Le document présenté ne correspond pas à l'acte mis à disposition." };
   } else {
     r = {

@@ -94,13 +94,13 @@
 - « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque ; la date de naissance devient une classe d'âge et le fichier porte une ligne de provenance.
 - « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
 
-### Examens et certification
+### Examens nationaux
 
-`/etablissement/examens` — Candidatures, délibération, diplômes vérifiables (CEP, BEPC, BAC).
+`/etablissement/examens` — Vos candidats au CEP, au BEPC et au BAC, et leurs verdicts officiels.
 
-- Choisissez l'examen : les candidats viennent du niveau correspondant (CEP → CM2, BEPC → 3e, BAC → Terminale).
-- La note affichée est la moyenne annuelle de l'apprenant : une base provisoire tant que le centre d'examen n'a pas transmis les notes officielles.
-- Délibération définitive ; chaque admis reçoit un diplôme au QR code vérifiable par un tiers.
+- Chaque session montre vos élèves inscrits, leur numéro de table et leur centre.
+- Le verdict (admis, non admis, absent, exclu) et la mention apparaissent à la publication officielle par l'autorité d'examen : DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC, Office du Baccalauréat pour le BAC.
+- L'établissement ne délibère pas et ne délivre aucun diplôme national : les diplômes de vos élèves, délivrés par l'autorité, se retrouvent ici avec leur attestation à QR code.
 
 ### Guichet de l'étudiant
 
@@ -130,7 +130,7 @@
 
 - « Référentiel » : filières (diplôme visé, volume ECTS, composantes ouvertes), périodes, UE et offres, groupes, et la règle de validation sous les huit paramètres.
 - « Étudiants & parcours » : inscriptions (aucun montant, aucun RIB), contrat pédagogique signe/abandon/refus, feuille de validation d'une période, acquis hors note et report de crédits.
-- « Jury & certification » : jury de capitalisation par étapes, délibération du diplôme, décisions rendues avec moyenne recalculée, diplôme vérifiable émis sur chaque admission pleine, équivalences déposées et statuées.
+- « Jury & certification » : jury de capitalisation par étapes, délibération du diplôme, décisions rendues avec moyenne recalculée, équivalences déposées et statuées.
 - « Crédits ECTS » : acquis, attendus, périmés et taux par période, calculés depuis le registre des écritures — pas la couche statistique.
 - Vous ne voyez que vos étudiants : un chef d'établissement ne lit pas les inscriptions d'un autre, et un établissement privé n'inscrit que sous agrément EPES en cours.
 - Le quatrième volet (« Agrégats & actes de l'État ») n'est pas ouvert à votre rôle : il agrège le pays sans nommer personne.
@@ -251,15 +251,15 @@
 3. Choisissez le type dans la barre d'outils : État nominatif, Feuille d'appel ou PV de conseil.
 4. Touchez « Imprimer / PDF » ; dans la fenêtre du navigateur, sélectionnez « Enregistrer en PDF » pour archiver.
 
-### Délibérer un examen national
+### Suivre les résultats de ses élèves à un examen national
 
-> La délibération est définitive : toute correction ultérieure — notamment l'arrivée des notes officielles du centre — passe par un événement correctif journalisé.
+> Le verdict appartient à l'autorité d'examen : l'établissement le lit dans BEILE dès sa publication, sans ressaisie ni calcul.
 
-1. Ouvrez « Examens et certification » et choisissez l'examen (CEP, BEPC ou BAC).
-2. Relisez la liste des candidats et leurs moyennes annuelles.
-3. Touchez « Délibérer et délivrer les diplômes » : les candidats sans moyenne ne sont pas jugés.
-4. Pour confirmer, saisissez DÉLIBÉRER, puis « Délibérer définitivement ».
-5. Les diplômes apparaissent dans « Diplômes délivrés » ; « Attestation » affiche le QR code.
+1. Ouvrez « Examens nationaux ».
+2. Choisissez la session (par exemple BEPC · Juin 2026) : vos candidats s'affichent avec leur numéro de table et leur centre.
+3. Avant la publication, la colonne verdict indique « En attente » : c'est normal, le procès-verbal n'est pas encore publié.
+4. Après la publication, chaque candidat porte son verdict et sa mention ; « Diplôme » ouvre la vérification publique du diplôme délivré.
+5. Dans « Diplômes de vos élèves », « Attestation » affiche le QR code à remettre ou à imprimer.
 
 ### Délivrer un acte demandé par un étudiant
 
@@ -308,9 +308,8 @@
 4. Dans « Délibérer une promotion », choisissez ce jury et cochez les candidats de la filière.
 5. Donnez la décision : admis, admis sous réserve (en nommant les UE manquantes), ajourné ou refusé.
 6. Touchez « Délibérer au registre ». Un « admis » sous le volume de crédits de la filière n'est pas enregistré : le serveur rend la ligne avec son motif.
-7. Relisez la carte « Décisions rendues » : moyenne et mention sont recalculées depuis les acquis, chaque admission pleine émet un diplôme vérifiable (CERT-…) rattaché à sa ligne, et une décision sans certificat reste affichée avec son motif — ajournement, refus ou admission sous réserve.
-8. Le diplôme émis se vérifie comme un tiers : `/verifier/<identifiant>`, ou le QR code de l'attestation. Sauf session d'examen national, la date de délivrance est celle du délibéré et la session citée est l'année universitaire jugée.
-9. Un jury d'examen national (BTS, CQP, licence ou master certifiés par l'État) ne se constitue pas ici : il relève du bureau du supérieur.
+7. Relisez la carte « Décisions rendues » : moyenne et mention sont recalculées depuis les acquis, et un certificat non émis y reste affiché avec son motif.
+8. Un jury d'examen national (BTS, CQP, licence ou master certifiés par l'État) ne se constitue pas ici : il relève du bureau du supérieur.
 
 ## Questions fréquentes
 
@@ -350,8 +349,8 @@ Chaque indicateur suit la définition du dictionnaire national et porte un indic
 ## Bons réflexes
 
 - Consultez les absences du jour chaque matin : la famille est déjà prévenue, vous pouvez agir vite.
-- Ne délibérez qu'après avoir relu la liste des candidats : l'opération est irréversible.
-- La note de délibération est provisoire (moyenne annuelle) : elle ne vaut note officielle qu'une fois les résultats du centre transmis.
+- Le conseil de passage est irréversible : statuez chaque élève, relisez, puis confirmez.
+- En fin de cycle (CM2, 3e, Terminale), la suite relève de l'examen national et de l'affectation : seul le maintien se décide en conseil.
 - **Votre identifiant est personnel.** Ne le prêtez jamais, même à un collègue ou à un supérieur. Tout ce qui est fait avec votre compte est inscrit à votre nom.
 - **Un mot de passe solide et secret.** 12 caractères au moins, avec majuscule, minuscule et chiffre. Ne l'écrivez pas sur un papier visible, ne le dites à personne.
 - **Personne ne vous demandera votre mot de passe.** Ni l'administrateur, ni l'assistance, ni le ministère. Un message qui le demande est une tentative de fraude : signalez-le.

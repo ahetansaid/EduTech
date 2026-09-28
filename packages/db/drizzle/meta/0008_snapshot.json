@@ -1,9 +1,83 @@
 {
-  "id": "79b5f8c8-6ab4-4856-b800-32f38cb5b77f",
+  "id": "d947ad5d-6d2a-4c4e-a035-6b9806843bbc",
   "prevId": "b3e2a6ee-2624-4081-83ae-269aa517e325",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "core.absences_justifiees": {
+      "name": "absences_justifiees",
+      "schema": "core",
+      "columns": {
+        "absence_id": {
+          "name": "absence_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "apprenant_id": {
+          "name": "apprenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "justification_id": {
+          "name": "justification_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decision_evenement_id": {
+          "name": "decision_evenement_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "justifiee_le": {
+          "name": "justifiee_le",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "absences_justifiees_apprenant_idx": {
+          "name": "absences_justifiees_apprenant_idx",
+          "columns": [
+            {
+              "expression": "apprenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "absences_justifiees_apprenant_id_apprenants_id_fk": {
+          "name": "absences_justifiees_apprenant_id_apprenants_id_fk",
+          "tableFrom": "absences_justifiees",
+          "tableTo": "apprenants",
+          "schemaTo": "core",
+          "columnsFrom": [
+            "apprenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "core.affectations": {
       "name": "affectations",
       "schema": "core",
@@ -1165,6 +1239,62 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "core.compteurs_debit": {
+      "name": "compteurs_debit",
+      "schema": "core",
+      "columns": {
+        "cle": {
+          "name": "cle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fenetre": {
+          "name": "fenetre",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "n": {
+          "name": "n",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "compteurs_debit_fenetre_idx": {
+          "name": "compteurs_debit_fenetre_idx",
+          "columns": [
+            {
+              "expression": "fenetre",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "compteurs_debit_cle_fenetre_pk": {
+          "name": "compteurs_debit_cle_fenetre_pk",
+          "columns": [
+            "cle",
+            "fenetre"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

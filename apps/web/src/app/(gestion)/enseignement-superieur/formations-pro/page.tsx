@@ -50,7 +50,7 @@ export default function FormationsProPage() {
   return (
     <div className="space-y-5">
       <PageHeader titre="Formations professionnelles" sousTitre="La voie EFTP (technologique et professionnelle) : du CAP au BTS/CQP, et la passerelle qui mène à la licence professionnelle." surtitre="Enseignement supérieur"
-        actions={<Button variante="secondaire" disabled={!eftp.length} taille="sm" icone={Download} onClick={() => exporterCsv("formations_professionnelles", eftp, COLONNES, `BEILE — ${eftp.length} filières EFTP — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+        actions={<Button variante="secondaire" disabled={!eftp.length} taille="sm" icone={Download} onClick={() => exporterCsv("formations_professionnelles", eftp, COLONNES, `BEILE — ${eftp.length} filières EFTP — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter (CSV)</Button>} />
 
       <OngletsESup />
 

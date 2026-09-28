@@ -367,10 +367,10 @@ export const GUIDES: Guide[] = [
       },
       {
         aller: "/etablissement/examens",
-        cible: "examens-deliberation",
-        titre: "Examens et diplômes",
-        texte: "Choisissez le CEP, le BEPC ou le BAC : les candidats viennent du niveau correspondant. La délibération délivre des diplômes vérifiables par QR code.",
-        pourquoi: "La note de délibération est provisoire (moyenne annuelle) en attendant les notes du centre ; délibérer est définitif.",
+        cible: "examens-sessions",
+        titre: "Examens nationaux",
+        texte: "Vos candidats au CEP, au BEPC ou au BAC : numéro de table, centre, puis le verdict officiel et le diplôme dès que l'autorité a publié la session.",
+        pourquoi: "Un diplôme national n'est délivré que par l'autorité d'examen (DEC, Office du Baccalauréat) : ce que vous voyez ici vient de son procès-verbal, jamais d'un calcul de l'établissement.",
       },
       BOUTON_GUIDE,
     ],
@@ -561,7 +561,7 @@ export const GUIDES: Guide[] = [
         aller: "/apprenant/preuves",
         cible: "preuves-liste",
         titre: "Vos diplômes vous appartiennent",
-        texte: "Ils apparaissent ici après la délibération du jury, sans aucune démarche.",
+        texte: "Ils apparaissent ici dès la publication officielle des résultats, sans aucune démarche.",
       },
       {
         cible: "preuves-actions",

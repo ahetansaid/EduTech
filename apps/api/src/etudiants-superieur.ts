@@ -178,7 +178,14 @@ async function accesJury(c: Context<{ Variables: Variables }>, etablissementId: 
   if (!jury.filiereId) throw new HTTPException(422, { message: "Un jury de capitalisation doit désigner la filière qu'il juge" });
   const [filiere] = await base().select({ etablissementId: schema.filiereSuperieure.etablissementId }).from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, jury.filiereId));
   if (!filiere || filiere.etablissementId !== etablissementId) throw new HTTPException(422, { message: "La filière jugée ne relève pas de cet établissement" });
-  return { profil: (await accesEtablissement(c, etablissementId, true)).profil };
+  const acces = await accesEtablissement(c, etablissementId, true);
+  // Un établissement privé ne délivre pas seul un diplôme national : ses étudiants sont présentés aux
+  // examens nationaux organisés par l'État (DEC). Le jury de capitalisation reste celui du public.
+  if (acces.etab.statut !== "public") {
+    await journaliser(acces.profil, action, `${etablissementId} · ${jury.diplome} par capitalisation`, "gestion", false, "autorite");
+    throw new HTTPException(403, { message: `Établissement ${acces.etab.statut} : le diplôme national (${jury.diplome}) se délivre par l'examen national de l'État, pas par un jury d'établissement.` });
+  }
+  return { profil: acces.profil };
 }
 
 /** Droit d'inscrire d'un établissement privé, selon l'étape du cycle EPES. Un établissement public n'a

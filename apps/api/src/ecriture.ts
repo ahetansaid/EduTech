@@ -108,6 +108,15 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
         await tx.insert(schema.scolarites).values({ apprenantId: p.apprenantId!, ...valeurs }).onConflictDoUpdate({ target: schema.scolarites.apprenantId, set: valeurs });
       }
     }
+    // Absences justifiées : une décision « validée » justifie chacune des absences qu'elle couvre.
+    for (const l of lignes.filter((x) => x.type === "DECISION_JUSTIFICATION" && x.donnees.decision === "validee")) {
+      const ids = (l.donnees.absenceIds as string[] | undefined) ?? [];
+      if (ids.length) {
+        await tx.insert(schema.absencesJustifiees).values(ids.map((absenceId) => ({
+          absenceId, apprenantId: l.apprenantId!, justificationId: String(l.donnees.justificationId), decisionEvenementId: l.id, justifieeLe: maintenant,
+        }))).onConflictDoNothing();
+      }
+    }
     // Projection des notes effectives : chaque évaluation ajoutée, chaque correction appliquée.
     const evaluations = lignes.filter((l) => l.type === "EVALUATION" && l.apprenantId);
     if (evaluations.length) {

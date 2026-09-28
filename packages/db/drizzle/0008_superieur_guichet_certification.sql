@@ -1,3 +1,11 @@
+CREATE TABLE "core"."absences_justifiees" (
+	"absence_id" text PRIMARY KEY NOT NULL,
+	"apprenant_id" text NOT NULL,
+	"justification_id" text NOT NULL,
+	"decision_evenement_id" text NOT NULL,
+	"justifiee_le" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "core"."allocations_etudiantes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"apprenant_id" text NOT NULL,
@@ -10,6 +18,13 @@ CREATE TABLE "core"."allocations_etudiantes" (
 	"decide_le" date NOT NULL,
 	"echeance_id" text,
 	"motif" text
+);
+--> statement-breakpoint
+CREATE TABLE "core"."compteurs_debit" (
+	"cle" text NOT NULL,
+	"fenetre" bigint NOT NULL,
+	"n" integer DEFAULT 1 NOT NULL,
+	CONSTRAINT "compteurs_debit_cle_fenetre_pk" PRIMARY KEY("cle","fenetre")
 );
 --> statement-breakpoint
 CREATE TABLE "core"."concours_session" (
@@ -318,6 +333,7 @@ ALTER TABLE "core"."certificats" ADD COLUMN "office" text;--> statement-breakpoi
 ALTER TABLE "core"."etablissements" ADD COLUMN "sigle" text;--> statement-breakpoint
 ALTER TABLE "core"."etablissements" ADD COLUMN "tutelles" text[];--> statement-breakpoint
 ALTER TABLE "core"."etablissements" ADD COLUMN "rattachement_id" text;--> statement-breakpoint
+ALTER TABLE "core"."absences_justifiees" ADD CONSTRAINT "absences_justifiees_apprenant_id_apprenants_id_fk" FOREIGN KEY ("apprenant_id") REFERENCES "core"."apprenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."allocations_etudiantes" ADD CONSTRAINT "allocations_etudiantes_apprenant_id_apprenants_id_fk" FOREIGN KEY ("apprenant_id") REFERENCES "core"."apprenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."allocations_etudiantes" ADD CONSTRAINT "allocations_etudiantes_etablissement_id_etablissements_id_fk" FOREIGN KEY ("etablissement_id") REFERENCES "core"."etablissements"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."allocations_etudiantes" ADD CONSTRAINT "allocations_etudiantes_echeance_id_echeances_depot_id_fk" FOREIGN KEY ("echeance_id") REFERENCES "core"."echeances_depot"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -374,9 +390,11 @@ ALTER TABLE "core"."validations_ue" ADD CONSTRAINT "validations_ue_regle_validat
 ALTER TABLE "core"."voeu_superieur" ADD CONSTRAINT "voeu_superieur_apprenant_id_apprenants_id_fk" FOREIGN KEY ("apprenant_id") REFERENCES "core"."apprenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."voeu_superieur" ADD CONSTRAINT "voeu_superieur_filiere_id_filiere_superieure_id_fk" FOREIGN KEY ("filiere_id") REFERENCES "core"."filiere_superieure"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."voeu_superieur" ADD CONSTRAINT "voeu_superieur_concours_id_concours_session_id_fk" FOREIGN KEY ("concours_id") REFERENCES "core"."concours_session"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "absences_justifiees_apprenant_idx" ON "core"."absences_justifiees" USING btree ("apprenant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "allocations_etudiantes_apprenant_annee_type_uq" ON "core"."allocations_etudiantes" USING btree ("apprenant_id","annee_universitaire","type_decision");--> statement-breakpoint
 CREATE INDEX "allocations_etudiantes_annee_idx" ON "core"."allocations_etudiantes" USING btree ("annee_universitaire","statut");--> statement-breakpoint
 CREATE INDEX "allocations_etudiantes_apprenant_idx" ON "core"."allocations_etudiantes" USING btree ("apprenant_id","decide_le");--> statement-breakpoint
+CREATE INDEX "compteurs_debit_fenetre_idx" ON "core"."compteurs_debit" USING btree ("fenetre");--> statement-breakpoint
 CREATE UNIQUE INDEX "concours_session_filiere_session_uq" ON "core"."concours_session" USING btree ("filiere_id","session");--> statement-breakpoint
 CREATE INDEX "concours_session_statut_idx" ON "core"."concours_session" USING btree ("statut");--> statement-breakpoint
 CREATE UNIQUE INDEX "cycles_epes_etablissement_autorite_uq" ON "core"."cycles_epes" USING btree ("etablissement_id","autorite");--> statement-breakpoint

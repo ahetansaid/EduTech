@@ -141,7 +141,7 @@ function Liste() {
         sousTitre={donnees ? `${entier(donnees.length)} apprenants scolarisés. Chaque dossier s'ouvre au titre de la gestion de l'établissement ; chaque ouverture est journalisée.` : "Apprenants scolarisés dans votre établissement."}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, [...COLONNES, { entete: "Score de risque", valeur: (e: EleveLigne) => evals.get(e.id)!.score }, { entete: "Niveau de risque", valeur: (e: EleveLigne) => LIBELLE_NIVEAU[evals.get(e.id)!.niveau] }], `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — ${tableau.data?.etablissement.nom ?? "établissement"}. Données à caractère personnel : usage limité à la gestion de l'établissement.`)} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque, classe d'âge)`}>Exporter</Button>
+            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, COLONNES, `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — ${tableau.data?.etablissement.nom ?? "établissement"}. Données à caractère personnel : usage limité à la gestion de l'établissement.`)} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque, classe d'âge)`}>Exporter</Button>
             <Button variante="secondaire" icone={Printer} disabled={!liste.length} onClick={() => setImpression(true)} title="Imprimer un état nominatif, une feuille d'appel ou un PV de conseil">Imprimer</Button>
             <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
           </div>
@@ -302,11 +302,11 @@ function Signalements({ e, className }: { e: EleveLigne; className?: string }) {
 /* ------------------------------------------------------------------ Pastille de risque */
 
 function PuceRisque({ ev, compact }: { ev: EvaluationRisque; compact?: boolean }) {
-  if (ev.niveau === "nominal") return <span className="text-xs text-ink-muted">{compact ? "—" : "Nominal"}</span>;
+  if (ev.niveau === "nominal") return <span className="text-xs text-ink-muted">{compact ? "—" : "Sans signal"}</span>;
   const raison = ev.facteurs.filter((f) => f.points > 0).map((f) => f.detail).join(" · ");
   return (
-    <span title={`Score ${ev.score}/100 — ${raison}${ev.fiable ? "" : " · signal mince"}`}>
-      <Badge ton={TON_NIVEAU[ev.niveau]} icone={ShieldAlert}>{compact ? `${LIBELLE_NIVEAU[ev.niveau]} ${ev.score}` : `${LIBELLE_NIVEAU[ev.niveau]} · ${ev.score}`}</Badge>
+    <span title={`${raison}${ev.fiable ? "" : " · signal mince"} — signal à examiner, pas une décision`}>
+      <Badge ton={TON_NIVEAU[ev.niveau]} icone={ShieldAlert}>{LIBELLE_NIVEAU[ev.niveau]}</Badge>
     </span>
   );
 }
@@ -334,7 +334,7 @@ function PanneauVigilance({ eleves, risque, sens, setSens, ouvert, onBasculer }:
           <span className="min-w-0">
             <span className="block text-[15px] font-semibold text-ink">Vigilance décrochage</span>
             <span className="block text-xs text-ink-muted">
-              {aSuivre.length === 0 ? "Aucun apprenant au-dessus du seuil" : `${n.urgent} urgent(s) · ${n.a_surveiller} à surveiller · score explicable, calculé ici`}
+              {aSuivre.length === 0 ? "Aucun signal à examiner" : `${n.urgent} à examiner en priorité · ${n.a_surveiller} à suivre · signaux explicables, jamais exportés`}
             </span>
           </span>
         </span>
@@ -344,7 +344,7 @@ function PanneauVigilance({ eleves, risque, sens, setSens, ouvert, onBasculer }:
       <div className={cn("border-t border-line/60", ouvert ? "block" : "hidden")}>
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
           <p className="max-w-xl text-[13px] text-ink-2">
-            Le score additionne trois signaux déjà connus de l'établissement — moyenne, absences, tendance en maths. Aucun algorithme opaque : chaque contribution est affichée. Le statut d'identité, administratif, n'entre pas dans le calcul.
+            Trois signaux déjà connus de l'établissement — moyenne, absences non justifiées de l'année, tendance en maths — pour ordonner l'attention de l'équipe éducative. Un signal n'est ni une décision ni une étiquette : il ne sort pas de cet écran. Le statut d'identité n'entre pas en compte.
           </p>
           <div className="-mx-1 overflow-x-auto px-1">
             <Segmente label="Sensibilité des seuils" valeur={sens} onChange={setSens} options={SENSIBILITES} />
@@ -361,7 +361,7 @@ function PanneauVigilance({ eleves, risque, sens, setSens, ouvert, onBasculer }:
                   <Avatar prenoms={e.prenoms} nom={e.nom} taille="sm" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-ink"><span className="uppercase">{e.nom}</span> {e.prenoms}</p>
-                    <p className="text-xs text-ink-muted">{e.classe} · score {ev.score}/100</p>
+                    <p className="text-xs text-ink-muted">{e.classe}{ev.fiable ? "" : " · signal mince"}</p>
                   </div>
                   <Badge ton={TON_NIVEAU[ev.niveau]}>{LIBELLE_NIVEAU[ev.niveau]}</Badge>
                 </div>

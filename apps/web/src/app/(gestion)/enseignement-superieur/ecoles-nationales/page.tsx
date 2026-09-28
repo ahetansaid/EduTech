@@ -61,7 +61,7 @@ export default function EtablissementsPage() {
   return (
     <div className="space-y-5">
       <PageHeader titre="Écoles & établissements" sousTitre="Le réseau du supérieur : universités, écoles nationales rattachées, instituts et centres EFTP — avec leur tutelle et leur statut." surtitre="Enseignement supérieur"
-        actions={<Button variante="secondaire" disabled={!visibles.length} taille="sm" icone={Download} onClick={() => exporterCsv("etablissements_enseignement_superieur", visibles, COLONNES, `BEILE — ${visibles.length} établissements (type ${filtre === "tous" ? "tous" : libelleType(filtre)}) — ${new Date().toISOString().slice(0, 10)}`)}>Exporter (CSV)</Button>} />
+        actions={<Button variante="secondaire" disabled={!visibles.length} taille="sm" icone={Download} onClick={() => exporterCsv("etablissements_enseignement_superieur", visibles, COLONNES, `BEILE — ${visibles.length} établissements (type ${filtre === "tous" ? "tous" : libelleType(filtre)}) — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter (CSV)</Button>} />
 
       <OngletsESup />
 

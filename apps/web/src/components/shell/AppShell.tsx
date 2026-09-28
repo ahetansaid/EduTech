@@ -10,7 +10,7 @@ import { AnimatePresence, IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { NAVIGATION, navigationPour } from "@/lib/navigation";
-import { accueilPour, useProfil } from "@/lib/session";
+import { accueilPour, useProfil, useSession } from "@/lib/session";
 import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
@@ -52,7 +52,8 @@ const lireRail = (variante: string): boolean | null => {
 
 function Enveloppe({ children, rail: railParDefaut, variante }: { children: ReactNode; rail: boolean; variante: string }) {
   const pathname = usePathname();
-  const profil = useProfil();
+  const session = useSession();
+  const profil = session.profil;
   // Rail flottant repliable (disposition de l'intranet) ; préférence mémorisée par espace.
   const preference = useSyncExternalStore(abonnerRail, () => lireRail(variante), () => null);
   const replie = preference ?? railParDefaut;
@@ -68,7 +69,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
   const { sombre, basculer } = useTheme();
 
   const rolesProfil = profil.habilitations.map((h) => h.role);
-  const nav = navigationPour(rolesProfil);
+  const nav = navigationPour(profil, session.contexte);
   const groupes = [...new Set(nav.map((n) => n.groupe))];
   const courant = [...nav].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
   // Garde d'espace (cosmétique) : l'entrée de navigation la plus spécifique fixe les rôles admis.

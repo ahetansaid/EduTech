@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 
-export const metadata: Metadata = { title: "Résultats d'examens", description: "Service public de consultation des résultats des examens nationaux du Bénin, par numéro de table." };
+export const metadata: Metadata = { title: "Résultats d'examens", description: "Consultation des résultats des examens nationaux du Bénin (CEP, BEPC, BAC) par numéro de table, en complément de la plateforme officielle eRESULTATS." };
 
 /** Service public e-résultat : aucune connexion, le verdict d'une session publiée et rien de plus. */
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-8">{children}</main>
-      <footer className="border-t border-line/60 py-5 text-center text-[12px] text-ink-muted">Consultation gratuite, sans compte · Office national des examens et concours</footer>
+      <footer className="border-t border-line/60 px-5 py-5 text-center text-[12px] text-ink-muted">Consultation gratuite, sans compte · Verdicts reçus des autorités d&apos;examen : DEC du MEMP (CEP), DEC du MESTFP (BEPC), Office du Baccalauréat (BAC)</footer>
     </div>
   );
 }

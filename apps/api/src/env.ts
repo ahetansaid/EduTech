@@ -14,10 +14,25 @@ const Schema = z.object({
    * l'hébergeur, elle fait du sceau un MAC : avancer en base une date de mise à disposition se lit
    * alors comme un acte « altéré », au lieu de passer pour un acte régulier.
    * Un MAC prouve l'intégrité, pas la non-répudiation — toutes les instances de l'API partagent la
-   * clef. La changer rend « altéré » tout sceau déjà posé : elle se provisionne une fois pour toutes.
+   * clef. OBLIGATOIRE en production (voir plus bas) : sans elle, un diplôme scellé ne résisterait pas à
+   * qui peut écrire dans la base.
    */
   BEILE_CLE_SEAU: z.string().min(32).optional(),
+  /**
+   * Anciennes clefs, séparées par des virgules : une rotation ne rend jamais « altéré » un document déjà
+   * remis. On scelle toujours avec la clef active ; on vérifie avec la clef active PUIS les anciennes.
+   */
+  BEILE_CLES_SEAU_ANCIENNES: z.string().optional(),
   NODE_ENV: z.string().optional(),
+  VERCEL_ENV: z.string().optional(),
+}).superRefine((v, ctx) => {
+  const production = v.VERCEL_ENV === "production" || v.NODE_ENV === "production";
+  if (production && !v.BEILE_CLE_SEAU) {
+    ctx.addIssue({ code: "custom", path: ["BEILE_CLE_SEAU"], message: "obligatoire en production (diplômes et actes scellés par MAC)" });
+  }
+  for (const cle of (v.BEILE_CLES_SEAU_ANCIENNES ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
+    if (cle.length < 32) ctx.addIssue({ code: "custom", path: ["BEILE_CLES_SEAU_ANCIENNES"], message: "chaque clef fait au moins 32 caractères" });
+  }
 });
 
 /** Validation paresseuse : exécutée à la première requête (le build de production n'a pas besoin de la base). */
@@ -43,5 +58,8 @@ return {
   DATABASE_URL_API: v.DATABASE_URL_API,
   ORIGINES: v.BEILE_ORIGINES_AUTORISEES.split(",").map((o) => o.trim()),
   CLE_SEAU: v.BEILE_CLE_SEAU,
+  /** Clefs acceptées à la vérification : l'active d'abord, puis les anciennes (rotation). */
+  CLES_VERIFICATION: [v.BEILE_CLE_SEAU, ...(v.BEILE_CLES_SEAU_ANCIENNES ?? "").split(",").map((x) => x.trim()).filter(Boolean)]
+    .filter((x): x is string => !!x),
 };
 }

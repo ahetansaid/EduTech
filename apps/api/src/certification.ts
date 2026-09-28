@@ -21,6 +21,17 @@ export const sceauCertificat = (c: CertificatBrut, titulaire: string) =>
     : empreinteCertificat(c, titulaire));
 
 /**
+ * Sceaux qu'un certificat INTÈGRE peut porter : un par clef acceptée (rotation), ou le condensé
+ * historique pour un diplôme du K-12 émis avant la certification par office. Sert à juger la LIGNE :
+ * si son sceau stocké n'est aucun d'eux, un champ signé a été modifié en base après l'émission.
+ */
+export const sceauxAdmis = (c: CertificatBrut, titulaire: string): string[] => {
+  if (!certificatDuSuperieur(c)) return [empreinteCertificat(c, titulaire)];
+  const cles = lireEnv().CLES_VERIFICATION;
+  return cles.length ? cles.map((k) => empreinteContenu(champsSignesCertificat(c, titulaire), k)) : [empreinteContenu(champsSignesCertificat(c, titulaire))];
+};
+
+/**
  * Longueur minimale de l'empreinte présentée pour qu'elle débloque une identité. Le service est public et
  * sans compte : un préfixe d'un ou deux caractères se devine à l'usure (un seizième, puis un deux-cent
  * cinquante-sixième…), et la fin de l'identifiant reprend le numéro d'apprenant. Le QR d'une attestation

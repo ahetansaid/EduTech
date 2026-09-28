@@ -72,14 +72,12 @@ verifier("Directrice → tableau de bord", tableau.statut, 200, `${(tableau.json
 verifier("Directrice → liste des élèves", (await directrice!.appel("GET", `/etablissements/${PILOTE}/eleves`)).statut, 200);
 verifier("Directrice → autre établissement", (await directrice!.appel("GET", "/etablissements/ETB-COT-PILOTE-CEG/tableau")).statut, 403);
 verifier("Inspecteur de la circonscription → tableau (contrôle)", (await inspecteur!.appel("GET", `/etablissements/${PILOTE}/tableau`)).statut, 200);
-verifier("Inspecteur → délibération (écriture interdite)", (await inspecteur!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 403);
-verifier("Enseignant → délibération", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 403);
-const examensBepc = await directrice!.appel("GET", `/etablissements/${PILOTE}/examens`);
-verifier("Directrice → examens", examensBepc.statut, 200);
-verifier("Examen par défaut : BEPC", (examensBepc.json as { examen?: string }).examen === "BEPC", true);
-const examensCep = await directrice!.appel("GET", `/etablissements/${PILOTE}/examens?examen=CEP`);
-verifier("Examen paramétrable : CEP → niveau CM2", (examensCep.json as { niveau?: string }).niveau === "CM2", true, `${liste((examensCep.json as { candidats?: unknown }).candidats).length} candidat(s)`);
-verifier("Examen inconnu → 422 (jamais un 500)", (await directrice!.appel("GET", `/etablissements/${PILOTE}/examens?examen=BREVET`)).statut, 422);
+// Un établissement ne délibère pas un examen national : la route n'existe plus, même pour son chef.
+verifier("Directrice → délibérer un examen national (route retirée)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/examens/deliberation`, {})).statut, 404);
+const examensEtab = await directrice!.appel("GET", `/etablissements/${PILOTE}/examens`);
+verifier("Directrice → examens nationaux (lecture seule)", examensEtab.statut, 200);
+verifier("Examens de l'établissement : sessions et diplômes", Array.isArray((examensEtab.json as { sessions?: unknown }).sessions) && Array.isArray((examensEtab.json as { diplomes?: unknown }).diplomes), true);
+verifier("Enseignant → examens de l'établissement", (await enseignant!.appel("GET", `/etablissements/${PILOTE}/examens`)).statut, 403);
 verifier("Transfert par un enseignant", (await enseignant!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: "CLS-COT-5eA-S" })).statut, 403);
 verifier("Directrice → registre national", (await directrice!.appel("GET", "/registre/personnes?nom=WOROU&prenoms=Sidonie")).statut, 200);
 verifier("Enseignant → registre national", (await enseignant!.appel("GET", "/registre/personnes?nom=WOROU")).statut, 403);
@@ -152,6 +150,12 @@ titre("Examens nationaux — e-résultat");
 const resAdmis = await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001");
 verifier("Public : session publiée → verdict", resAdmis.statut, 200, String(resAdmis.json.statut ?? ""));
 verifier("Public : numéro de table d'un lauréat → « admis »", (resAdmis.json as { statut?: string }).statut === "admis", true);
+verifier("Public : sans date de naissance, ni nom ni moyenne", (resAdmis.json as { identite?: unknown }).identite === null && !("titulaire" in resAdmis.json), true);
+const resDateFausse = await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001&naissance=1900-01-01");
+verifier("Public : date de naissance fausse → aucune identité, signalée", (resDateFausse.json as { identite?: unknown; dateNonConcordante?: boolean }).identite === null && (resDateFausse.json as { dateNonConcordante?: boolean }).dateNonConcordante === true, true);
+const sessionsPub = await anonyme.appel("GET", "/public/resultats/sessions");
+verifier("Public : sessions publiées proposées au choix", liste(sessionsPub.json).some((x) => x.examen === "CEP" && x.session === "Juin 2024"), true);
+verifier("Public : chaque session nomme son autorité (pas d'« ONEC »)", liste(sessionsPub.json).every((x) => typeof x.autorite === "string" && !/ONEC|Office national des examens/i.test(String(x.autorite))), true);
 verifier("Public : session inconnue → « introuvable » (jamais un 500)", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Janvier%201900&table=1900000001")).statut, 200);
 verifier("Public : table absente d'une session publiée → « introuvable »", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024099999")).statut, 200);
 verifier("Paramètre d'examen invalide → 422", (await anonyme.appel("GET", "/public/resultats?examen=BREVET&session=Juin%202024&table=1")).statut, 422);
@@ -253,6 +257,28 @@ if (ECRITURES) {
   verifier("Administrateur : passage en « officiel »", (await admin!.appel("POST", `/admin/calendrier/${idCal}`, { ...echeance, statut: "officiel" })).statut, 200);
   verifier("Public : statut officiel visible", liste((await anonyme.appel("GET", "/public/calendrier?annee=2026-2027")).json.evenements).find((e) => e.id === idCal)?.statut === "officiel", true);
   verifier("Administrateur : suppression", (await admin!.appel("POST", `/admin/calendrier/${idCal}/supprimer`)).statut, 200);
+
+  titre("Examens nationaux : réception du PV, publication, diplômes (écritures)");
+  {
+    const libelle = `Recette ${Date.now()}`;
+    const ses = await central!.appel("POST", "/examens/sessions", { examen: "CEP", session: libelle });
+    verifier("Bureau : ouverture d'une session CEP", ses.statut, 201);
+    const centres = liste((await central!.appel("GET", "/examens/centres")).json);
+    const cand = await central!.appel("POST", `/examens/sessions/${ses.json.id}/candidatures`, { etablissementId: "ETB-PAR-PILOTE-EPP", centreId: centres[0]?.id });
+    verifier("Bureau : candidaturé du CM2 de l'école pilote", cand.statut, 201, `${cand.json.ajoutes} candidat(s)`);
+    const tables = liste((await central!.appel("GET", `/examens/sessions/${ses.json.id}/candidatures`)).json).map((x) => String(x.numeroTable));
+    verifier("Bureau : PV avec une moyenne pour un absent → 422", (await central!.appel("POST", `/examens/sessions/${ses.json.id}/deliberation`, { pvReference: "PV-RECETTE", decisions: [{ numeroTable: tables[0], decision: "absent", moyenne: 12 }] })).statut, 422);
+    const [premier, second, ...autres] = tables;
+    const partiel = await central!.appel("POST", `/examens/sessions/${ses.json.id}/deliberation`, { pvReference: "PV-RECETTE-1", decisions: [{ numeroTable: premier, decision: "admis", moyenne: 14.5 }] });
+    verifier("Bureau : réception d'un premier lot du PV", partiel.statut, 200, `${partiel.json.recus} verdict(s)`);
+    if (autres.length || second) verifier("Publication refusée tant que tous ne sont pas statués", (await central!.appel("POST", `/examens/sessions/${ses.json.id}/publication`, {})).statut, 409);
+    const reste = [...(second ? [{ numeroTable: second, decision: "absent", moyenne: null }] : []), ...autres.map((t) => ({ numeroTable: t, decision: "non_admis", moyenne: 8 }))];
+    if (reste.length) verifier("Bureau : réception du reste du PV", (await central!.appel("POST", `/examens/sessions/${ses.json.id}/deliberation`, { pvReference: "PV-RECETTE-2", decisions: reste })).statut, 200);
+    const pub = await central!.appel("POST", `/examens/sessions/${ses.json.id}/publication`, {});
+    verifier("Publication : diplômes délivrés au nom de la DEC du MEMP", pub.statut === 200 && pub.json.diplomes === 1 && /maternel et primaire/.test(String(pub.json.autorite)), true, `${pub.json.diplomes} diplôme(s)`);
+    const verif = await anonyme.appel("GET", `/public/resultats?examen=CEP&session=${encodeURIComponent(libelle)}&table=${premier}`);
+    verifier("Public : le lauréat voit « admis » après publication", (verif.json as { statut?: string }).statut === "admis", true);
+  }
 
   titre("Cycle annuel et certification (écritures)");
   // Édition de classe par le chef : capacité relevée puis visible au tableau de bord.

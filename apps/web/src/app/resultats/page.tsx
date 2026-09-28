@@ -1,12 +1,12 @@
 "use client";
 
 import type { Examen, ResultatExamenPublic } from "@beile/contracts";
-import { CalendarClock, CircleAlert, CircleCheckBig, CircleX, GraduationCap, ScanLine, Search, ShieldCheck, type LucideIcon } from "lucide-react";
+import { CalendarClock, CircleAlert, CircleCheckBig, CircleX, ExternalLink, GraduationCap, Info, ScanLine, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Button, Card, Segmente, Squelette } from "@/components/ui/primitives";
-import { useResultatExamen } from "@/lib/api/public";
+import { useResultatExamen, useSessionsPubliees } from "@/lib/api/public";
 import { NOM_EXAMEN } from "@/lib/api/parcours";
 import { cn } from "@/lib/cn";
 import { nombre } from "@/lib/format";
@@ -20,13 +20,15 @@ const EXAMENS: { valeur: Examen; libelle: string }[] = [
   { valeur: "BAC", libelle: "BAC" },
 ];
 
-/* Mapping central des quatre verdicts du service e-résultat. */
+/* Mapping central des quatre verdicts du service. */
 const VERDICT: Record<ResultatExamenPublic["statut"], { icone: LucideIcon; titre: string; couleur: string; fond: string; bord: string }> = {
   admis: { icone: CircleCheckBig, titre: "Admis", couleur: "text-success", fond: "bg-success-bg", bord: "border-success/40" },
   non_admis: { icone: CircleX, titre: "Non admis", couleur: "text-critical", fond: "bg-critical-bg", bord: "border-critical/40" },
   session_non_publiee: { icone: CalendarClock, titre: "Résultats non publiés", couleur: "text-info", fond: "bg-info-bg", bord: "border-info/40" },
   introuvable: { icone: CircleAlert, titre: "Numéro de table introuvable", couleur: "text-warning", fond: "bg-warning-bg", bord: "border-warning/40" },
 };
+
+const champ = "h-12 w-full rounded-md border border-line bg-surface px-3.5 text-[15px] text-ink outline-none transition focus:border-blue focus:ring-4 focus:ring-blue/15";
 
 export default function Resultats() {
   return (
@@ -36,25 +38,35 @@ export default function Resultats() {
   );
 }
 
+type Criteres = { examen: Examen; session: string; table: string; naissance: string };
+
 function Recherche() {
   useThemeEspace(false);
   const params = useSearchParams();
   const router = useRouter();
-  // Valeurs engagées par la dernière recherche soumise : source de la requête, synchronisée dans l'URL.
-  const [criteres, setCriteres] = useState<{ examen: Examen; session: string; table: string }>(() => ({
+  const sessions = useSessionsPubliees();
+  // Critères engagés par la dernière recherche soumise (la date de naissance n'entre jamais dans l'URL).
+  const [criteres, setCriteres] = useState<Criteres>(() => ({
     examen: (EXAMENS.find((e) => e.valeur === params.get("examen"))?.valeur ?? "BEPC"),
     session: params.get("session")?.slice(0, 40) ?? "",
     table: params.get("table")?.slice(0, 20) ?? "",
+    naissance: "",
   }));
   const [fExamen, setFExamen] = useState<Examen>(criteres.examen);
   const [fSession, setFSession] = useState(criteres.session);
   const [fTable, setFTable] = useState(criteres.table);
-  const q = useResultatExamen(criteres.examen, criteres.session, criteres.table);
+  const [fNaissance, setFNaissance] = useState("");
+  const q = useResultatExamen(criteres.examen, criteres.session, criteres.table, criteres.naissance);
   const pret = criteres.table.length > 0 && criteres.session.length > 0;
+
+  const sessionsExamen = useMemo(() => (sessions.data ?? []).filter((s) => s.examen === fExamen), [sessions.data, fExamen]);
+  // La session proposée par défaut : la plus récente publiée pour l'examen choisi.
+  const sessionChoisie = sessionsExamen.some((s) => s.session === fSession) ? fSession : sessionsExamen[0]?.session ?? "";
+  const autorite = sessionsExamen.find((s) => s.session === sessionChoisie)?.autorite ?? null;
 
   const soumettre = (e: React.FormEvent) => {
     e.preventDefault();
-    const c = { examen: fExamen, session: fSession.trim().slice(0, 40), table: fTable.trim().slice(0, 20) };
+    const c = { examen: fExamen, session: sessionChoisie, table: fTable.trim().slice(0, 20), naissance: fNaissance };
     setCriteres(c);
     router.replace(`/resultats?examen=${c.examen}&session=${encodeURIComponent(c.session)}&table=${encodeURIComponent(c.table)}`, { scroll: false });
   };
@@ -67,32 +79,45 @@ function Recherche() {
           <GraduationCap size={30} aria-hidden />
         </motion.span>
         <h1 className="mt-4 text-[26px] font-bold leading-tight text-ink sm:text-[30px]">Résultats d&apos;examens nationaux</h1>
-        <p className="mx-auto mt-2 max-w-lg text-[15px] text-ink-2">Saisissez votre numéro de table pour connaître le verdict de la session. Service gratuit, sans compte.</p>
+        <p className="mx-auto mt-2 max-w-lg text-[15px] text-ink-2">Choisissez l&apos;examen et la session, puis saisissez votre numéro de table. Service gratuit, sans compte.</p>
       </div>
 
       <Card>
         <form onSubmit={soumettre} className="space-y-4">
           <div>
             <span className="mb-1.5 block text-sm font-medium text-ink">Examen</span>
-            <Segmente label="Examen" options={EXAMENS} valeur={fExamen} onChange={setFExamen} />
+            <Segmente label="Examen" options={EXAMENS} valeur={fExamen} onChange={(v) => { setFExamen(v); setFSession(""); }} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Session</span>
-              <input value={fSession} onChange={(e) => setFSession(e.target.value)} placeholder="Juin 2026" autoComplete="off"
-                className="h-12 w-full rounded-md border border-line bg-surface px-3.5 text-[15px] text-ink outline-none transition focus:border-blue focus:ring-4 focus:ring-blue/15" />
+              {sessions.isPending ? <Squelette className="h-12" /> : sessionsExamen.length ? (
+                <select value={sessionChoisie} onChange={(e) => setFSession(e.target.value)} className={champ}>
+                  {sessionsExamen.map((s) => <option key={s.session} value={s.session}>{s.session}</option>)}
+                </select>
+              ) : (
+                <p className="flex h-12 items-center rounded-md border border-dashed border-line px-3.5 text-[14px] text-ink-muted">Aucune session publiée pour le {fExamen}</p>
+              )}
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Numéro de table</span>
               <span className="relative block">
                 <Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" aria-hidden />
                 <input value={fTable} onChange={(e) => setFTable(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} placeholder="2026000123" autoComplete="off" inputMode="numeric"
-                  className="h-12 w-full rounded-md border border-line bg-surface pl-10 pr-3.5 font-mono text-[15px] text-ink outline-none transition focus:border-blue focus:ring-4 focus:ring-blue/15" />
+                  className={cn(champ, "pl-10 font-mono")} />
               </span>
             </label>
           </div>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-ink">Date de naissance du candidat <span className="font-normal text-ink-muted">(facultatif)</span></span>
+            <input type="date" value={fNaissance} onChange={(e) => setFNaissance(e.target.value)} max={new Date().toISOString().slice(0, 10)} className={cn(champ, "sm:max-w-xs")} />
+            <span className="mt-1.5 flex items-start gap-1.5 text-[12.5px] text-ink-muted">
+              <Info size={14} className="mt-0.5 shrink-0" aria-hidden />
+              Sans elle, vous voyez le verdict et la mention. Avec elle, le nom et la moyenne s&apos;ajoutent : ils ne s&apos;affichent jamais à qui ne connaît que le numéro de table.
+            </span>
+          </label>
           <div className="flex justify-end">
-            <Button type="submit" taille="lg" icone={Search} disabled={!fTable.trim() || !fSession.trim()}>Consulter mon résultat</Button>
+            <Button type="submit" taille="lg" icone={Search} disabled={!fTable.trim() || !sessionChoisie}>Consulter le résultat</Button>
           </div>
         </form>
       </Card>
@@ -101,16 +126,16 @@ function Recherche() {
         <Card className="text-center">
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-ink-muted"><CircleAlert size={24} aria-hidden /></span>
           <p className="mt-3 text-[17px] font-semibold text-ink">{q.error instanceof ErreurApi && q.error.statut === 429 ? "Trop de consultations en peu de temps" : "Consultation impossible pour le moment"}</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-ink-2">{q.error instanceof ErreurApi && q.error.statut === 429 ? "Le service limite le nombre de recherches par minute pour se protéger des devinettes. Réessayez dans un instant." : `${q.error.message}. Aucun verdict n'est donné sans réponse du registre national des examens.`}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-ink-2">{q.error instanceof ErreurApi && q.error.statut === 429 ? "Le service limite le nombre de recherches pour se protéger des balayages. Réessayez dans un instant." : `${q.error.message}. Aucun verdict n'est donné sans réponse du registre.`}</p>
         </Card>
       ) : pret && q.data ? <Verdict r={q.data} /> : null}
 
       {!pret && (
         <Cascade className="grid gap-3 sm:grid-cols-3">
           {[
-            { icone: ScanLine, titre: "1. Repérez", texte: "Votre numéro de figure est imprimé sur la carte de convocation." },
+            { icone: ScanLine, titre: "1. Repérez", texte: "Votre numéro de table est imprimé sur la convocation." },
             { icone: CalendarClock, titre: "2. Attendez", texte: "Le verdict n'apparaît qu'après la publication officielle de la session." },
-            { icone: CircleCheckBig, titre: "3. Consultez", texte: "Admis ou non admis, avec le centre et la mention — en une seconde." },
+            { icone: CircleCheckBig, titre: "3. Consultez", texte: "Admis ou non admis, et la mention — en une seconde." },
           ].map((e) => (
             <Element key={e.titre}>
               <div className="rounded-lg border border-line/70 bg-surface p-4 shadow-soft">
@@ -122,6 +147,14 @@ function Recherche() {
           ))}
         </Cascade>
       )}
+
+      <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-[12.5px] text-ink-muted">
+        {autorite ? <>Résultats publiés par : {autorite}.</> : null}
+        <span>Plateforme officielle des examens et concours :</span>
+        <a href="https://www.eresultats.bj" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-accent-ink hover:underline">
+          eRESULTATS <ExternalLink size={12} aria-hidden />
+        </a>
+      </p>
     </div>
   );
 }
@@ -129,12 +162,22 @@ function Recherche() {
 function Verdict({ r }: { r: ResultatExamenPublic }) {
   const v = VERDICT[r.statut];
   const positif = r.statut === "admis";
+  const id = r.statut === "admis" || r.statut === "non_admis" ? r.identite : null;
   const lignes: readonly (readonly [string, string])[] =
-    r.statut === "admis" ? [["Titulaire", r.titulaire], ["Diplôme", `${NOM_EXAMEN[r.examen] ?? r.examen}`], ["Session", r.session], ["Centre", r.centre], ["Numéro de table", r.numeroTable], ["Moyenne", `${nombre(r.moyenne, 2)} / 20`], ["Mention", r.mention]]
-    : r.statut === "non_admis" ? [["Titulaire", r.titulaire], ["Examen", `${NOM_EXAMEN[r.examen] ?? r.examen}`], ["Session", r.session], ["Centre", r.centre], ["Numéro de table", r.numeroTable]]
+    r.statut === "admis" ? [
+      ...(id ? [["Titulaire", id.titulaire] as const] : []),
+      ["Diplôme", `${NOM_EXAMEN[r.examen] ?? r.examen}`], ["Session", r.session], ["Centre", r.centre], ["Numéro de table", r.numeroTable],
+      ...(id?.moyenne != null ? [["Moyenne", `${nombre(id.moyenne, 2)} / 20`] as const] : []),
+      ["Mention", r.mention],
+    ]
+    : r.statut === "non_admis" ? [
+      ...(id ? [["Candidat", id.titulaire] as const] : []),
+      ["Examen", `${NOM_EXAMEN[r.examen] ?? r.examen}`], ["Session", r.session], ["Numéro de table", r.numeroTable],
+      ...(id?.moyenne != null ? [["Moyenne", `${nombre(id.moyenne, 2)} / 20`] as const] : []),
+    ]
     : [];
   return (
-    <motion.div key={r.statut} initial={{ opacity: 0, y: 16, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE }}>
+    <motion.div key={`${r.statut}-${id ? 1 : 0}`} initial={{ opacity: 0, y: 16, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE }}>
       <Card className={cn("border-2 text-center", v.bord)}>
         <div className="relative mx-auto h-20 w-20">
           {positif && <motion.span className="absolute inset-0 rounded-full bg-success/25" initial={{ scale: 0.8, opacity: 0.8 }} animate={{ scale: 1.8, opacity: 0 }} transition={{ duration: 1.2, delay: 0.25, ease: "easeOut" }} aria-hidden />}
@@ -156,9 +199,20 @@ function Verdict({ r }: { r: ResultatExamenPublic }) {
           </Cascade>
         )}
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-ink-muted">
-          <ShieldCheck size={13} aria-hidden /> Verdict officiel · registre national des examens et concours
-        </p>
+        {(r.statut === "admis" || r.statut === "non_admis") && !id && (
+          <p className={cn("mx-auto mt-4 flex max-w-md items-start gap-2 rounded-lg px-3.5 py-2.5 text-left text-[12.5px]", r.dateNonConcordante ? "bg-warning-bg text-warning" : "bg-info-bg text-info")}>
+            <Info size={15} className="mt-0.5 shrink-0" aria-hidden />
+            {r.dateNonConcordante
+              ? "La date de naissance saisie ne correspond pas à ce numéro de table : seul le verdict est affiché."
+              : "Nom et moyenne masqués : saisissez la date de naissance du candidat pour les afficher."}
+          </p>
+        )}
+
+        {(r.statut === "admis" || r.statut === "non_admis") && (
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-ink-muted">
+            <ShieldCheck size={13} aria-hidden /> Verdict du procès-verbal officiel · {r.autorite}
+          </p>
+        )}
       </Card>
     </motion.div>
   );

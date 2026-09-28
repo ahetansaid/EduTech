@@ -6,7 +6,8 @@ import { connecter } from "./index";
 /**
  * Reconstruit les projections de lecture depuis le registre (source de vérité) :
  * - core.scolarites : le dernier événement de placement fixe la classe et le statut de chaque apprenant ;
- * - core.notes      : une ligne par évaluation, la correction la plus récente appliquée.
+ * - core.notes      : une ligne par évaluation, la correction la plus récente appliquée ;
+ * - core.absences_justifiees : les absences couvertes par un justificatif validé.
  * Idempotent : peut être relancé à tout moment (reprise après incident, changement de règle de calcul).
  */
 config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
@@ -42,6 +43,15 @@ try {
       ) c on c.eid = e.id
       where e.type = 'EVALUATION' and e.apprenant_id is not null
       on conflict (evenement_id) do update set note = excluded.note, corrigee = excluded.corrigee`);
+
+    // Absences justifiées : chaque décision « validée » justifie les absences qu'elle couvre.
+    await tx.execute(sql`
+      insert into core.absences_justifiees (absence_id, apprenant_id, justification_id, decision_evenement_id, justifiee_le)
+      select a.absence_id, d.apprenant_id, d.donnees->>'justificationId', d.id, d.enregistre_le
+      from ledger.evenements d
+      cross join lateral jsonb_array_elements_text(d.donnees->'absenceIds') as a(absence_id)
+      where d.type = 'DECISION_JUSTIFICATION' and d.donnees->>'decision' = 'validee' and d.apprenant_id is not null
+      on conflict (absence_id) do nothing`);
   });
   const [r] = (await db.execute(sql`
     select (select count(*)::int from core.scolarites) n, (select count(*)::int from core.scolarites where statut = 'scolarise') scolarises,

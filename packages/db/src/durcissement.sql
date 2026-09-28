@@ -99,3 +99,46 @@ ALTER TABLE core.tickets_messages ADD CONSTRAINT tickets_messages_contenu_chk CH
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.calendrier TO beile_app;
 ALTER TABLE core.calendrier DROP CONSTRAINT IF EXISTS calendrier_dates_coherentes;
 ALTER TABLE core.calendrier ADD CONSTRAINT calendrier_dates_coherentes CHECK (fin >= debut);
+
+-- Certification et scolarité du supérieur : ce qui a été acquis, délibéré ou certifié ne se réécrit pas.
+-- Notes d'UE, acquis et délibérations : ajout seul (une correction est un nouveau fait du registre).
+DROP TRIGGER IF EXISTS ajout_seul ON core.notes_ue;
+CREATE TRIGGER ajout_seul BEFORE UPDATE OR DELETE ON core.notes_ue
+  FOR EACH ROW EXECUTE FUNCTION public.beile_interdire_modification();
+DROP TRIGGER IF EXISTS ajout_seul ON core.validations_ue;
+CREATE TRIGGER ajout_seul BEFORE UPDATE OR DELETE ON core.validations_ue
+  FOR EACH ROW EXECUTE FUNCTION public.beile_interdire_modification();
+DROP TRIGGER IF EXISTS ajout_seul ON core.deliberations_diplome;
+CREATE TRIGGER ajout_seul BEFORE UPDATE OR DELETE ON core.deliberations_diplome
+  FOR EACH ROW EXECUTE FUNCTION public.beile_interdire_modification();
+
+-- Diplômes : aucun champ signé ne bouge après l'émission, et une révocation est définitive. Sans cette
+-- barrière, un UPDATE de la colonne `revoque` (qui n'entre pas dans le sceau) réhabiliterait en silence
+-- un diplôme retiré. La seule transition admise est revoque false → true.
+CREATE OR REPLACE FUNCTION public.beile_certificat_immuable() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Diplôme %: suppression interdite — révoquer par un fait du registre', OLD.id USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF OLD.revoque AND NOT NEW.revoque THEN
+    RAISE EXCEPTION 'Diplôme %: une révocation est définitive', OLD.id USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF (NEW.id, NEW.apprenant_id, NEW.examen, NEW.session, NEW.mention, NEW.moyenne, NEW.delivre_le, NEW.empreinte, NEW.filiere_id, NEW.etablissement_id, NEW.office)
+     IS DISTINCT FROM (OLD.id, OLD.apprenant_id, OLD.examen, OLD.session, OLD.mention, OLD.moyenne, OLD.delivre_le, OLD.empreinte, OLD.filiere_id, OLD.etablissement_id, OLD.office) THEN
+    RAISE EXCEPTION 'Diplôme %: un champ signé ne se modifie pas après émission', OLD.id USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS certificat_immuable ON core.certificats;
+CREATE TRIGGER certificat_immuable BEFORE UPDATE OR DELETE ON core.certificats
+  FOR EACH ROW EXECUTE FUNCTION public.beile_certificat_immuable();
+
+-- Limite de débit partagée entre instances (compteurs par fenêtre ; purge des fenêtres échues).
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.compteurs_debit TO beile_app;
+
+-- Un justificatif d'absence se tranche UNE fois (validé ou refusé) : même sous décisions groupées ou
+-- double clic, la seconde décision est refusée par la base, pas seulement par l'API.
+CREATE UNIQUE INDEX IF NOT EXISTS evenements_decision_justification_uq ON ledger.evenements ((donnees->>'justificationId'))
+  WHERE type = 'DECISION_JUSTIFICATION';

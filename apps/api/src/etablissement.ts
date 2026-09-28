@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { NIVEAUX, type Habilitation, type Niveau } from "@beile/contracts";
+import { AUTORITE_EXAMEN, NIVEAUX, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { communeById } from "@beile/simulation/territoire";
@@ -8,9 +8,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, comparerFr, corps, journaliser, refuser, type Variables } from "./commun";
-import { sceauCertificat } from "./certification";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
-import { mentionDe } from "./examens";
 import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
 
 /**
@@ -181,7 +179,12 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
   if (idxNiveau < 0) throw new HTTPException(422, { message: "Niveau de classe non reconnu dans le référentiel national" });
   const niveauSuivant = NIVEAUX[idxNiveau + 1] as Niveau | undefined;
   const admisses = saisie.decisions.filter((d) => d.decision === "admis");
-  if (admisses.length && !niveauSuivant) throw new HTTPException(422, { message: `« ${classe.niveau} » est le niveau terminal : la sortie des admis relève de la certification des examens nationaux, pas du conseil de passage` });
+  // Fin de cycle : la suite ne relève pas du conseil de classe. L'entrée en 6e suit le CEP et une
+  // affectation, l'entrée en 2nde le BEPC et l'orientation, la sortie de terminale le baccalauréat.
+  const FIN_DE_CYCLE: Record<string, string> = { CM2: "CEP", "3e": "BEPC", Tle: "baccalauréat" };
+  if (admisses.length && (FIN_DE_CYCLE[classe.niveau] || !niveauSuivant)) {
+    throw new HTTPException(422, { message: `« ${classe.niveau} » termine un cycle : la suite relève du ${FIN_DE_CYCLE[classe.niveau] ?? "examen national"} et de l'affectation, pas du conseil de passage. Seul le redoublement se décide ici.` });
+  }
 
   // Les apprenants doivent être scolarisés dans cette classe.
   const courantes = await classesCourantes(saisie.decisions.map((d) => d.apprenantId));
@@ -192,6 +195,7 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
 
   const divisions = new Map<string, Division[]>();
   const divisionsCrees: string[] = [];
+  const nouvellesClasses: (typeof schema.classes.$inferInsert)[] = [];
   const faits = [] as NouveauFait[];
   for (const d of saisie.decisions) {
     const versNiveau: Niveau = d.decision === "admis" ? niveauSuivant! : (classe.niveau as Niveau);
@@ -201,7 +205,8 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
     let cible = pool.filter((x) => x.effectif < x.capacite).sort((a, b) => (b.capacite - b.effectif) - (a.capacite - a.effectif))[0];
     if (!cible) {
       const nouvelle = `CLS-${randomUUID()}`;
-      await base().insert(schema.classes).values({ id: nouvelle, etablissementId: id, niveau: versNiveau, libelle: `${versNiveau} — ${saisie.anneeScolaire}`, anneeScolaire: saisie.anneeScolaire, capacite: saisie.capaciteNouvelleDivision, enseignantPrincipalId: null });
+      // Créée dans la transaction du registre (plus bas) : un échec ne laisse aucune classe orpheline.
+      nouvellesClasses.push({ id: nouvelle, etablissementId: id, niveau: versNiveau, libelle: `${versNiveau} — ${saisie.anneeScolaire}`, anneeScolaire: saisie.anneeScolaire, capacite: saisie.capaciteNouvelleDivision, enseignantPrincipalId: null });
       cible = { id: nouvelle, capacite: saisie.capaciteNouvelleDivision, effectif: 0 };
       pool.push(cible);
       divisionsCrees.push(nouvelle);
@@ -210,7 +215,7 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
     faits.push({ type: "PASSAGE", auteurId: profil.id, etablissementId: id, apprenantId: d.apprenantId, donnees: { apprenantId: d.apprenantId, deNiveau: classe.niveau, versNiveau, decision: d.decision, anneeScolaire: saisie.anneeScolaire } });
     faits.push({ type: "REPRISE", auteurId: profil.id, etablissementId: id, apprenantId: d.apprenantId, donnees: { apprenantId: d.apprenantId, classeId: cible.id, anneeScolaire: saisie.anneeScolaire } });
   }
-  await inscrireAuRegistre(faits);
+  await inscrireAuRegistre(faits, nouvellesClasses.length ? async (tx) => { await tx.insert(schema.classes).values(nouvellesClasses); } : undefined);
   const admis = admisses.length, maintenus = saisie.decisions.length - admis;
   await journaliser(profil, "Conseil de passage", `${classeId} (${classe.libelle}) · ${admis} admis, ${maintenus} maintenus`, "gestion", true, null);
   return c.json({ classeId, anneeScolaire: saisie.anneeScolaire, admis, maintenus, divisionsCrees }, 201);
@@ -343,94 +348,55 @@ etablissement.post("/etablissements/:id/justificatifs/:justificationId/decision"
   return c.json({ enregistre: eid, decision: saisie.decision }, 201);
 });
 
-/* ------------------------------------------------------------------ Examens et certification */
+/* ------------------------------------------------------------------ Examens nationaux (lecture seule) */
 
-/** Examen national → niveau de classe dont les apprenants constituent le candidaturé. */
-const EXAMEN = z.enum(["CEP", "BEPC", "BAC"]);
-const NIVEAU_PAR_EXAMEN: Record<z.infer<typeof EXAMEN>, string> = { CEP: "CM2", BEPC: "3e", BAC: "Tle" };
-
-/** Session par défaut : la session de juin de l'année en cours ; le centre d'examen la précise en production. */
-const sessionParDefaut = () => `Juin ${aujourdhui().slice(0, 4)}`;
-const anneeDeSession = (session: string) => session.match(/\d{4}/)?.[0] ?? aujourdhui().slice(0, 4);
-
-async function candidatsPourExamen(etablissementId: string, niveau: string) {
-  const eleves = (await scolarisesEtablissement(etablissementId)).filter((e) => e.niveau === niveau);
-  const b = await bilans(eleves.map((e) => e.id));
-  return eleves.map((e) => ({ ...e, moyenne: b.get(e.id)?.moyenne ?? null }));
-}
-
+/**
+ * Examens nationaux, côté établissement : LECTURE SEULE. Un établissement ne délibère jamais un examen
+ * national (DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC, Office du Baccalauréat pour le BAC) et
+ * ne délivre aucun diplôme national. Il voit ses candidats (numéro de table, centre) et, une fois la
+ * session publiée par l'autorité, le verdict officiel et le diplôme délivré en son nom.
+ */
 etablissement.get("/etablissements/:id/examens", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, finalite } = await acces(c, id);
-  const examen = EXAMEN.parse(c.req.query("examen") ?? "BEPC");
-  const session = c.req.query("session")?.trim() || sessionParDefaut();
-  const [candidats, certificats] = await Promise.all([
-    candidatsPourExamen(id, NIVEAU_PAR_EXAMEN[examen]),
+  const eleves = sql`(select apprenant_id from core.scolarites where etablissement_id = ${id})`;
+  const [candidatures, diplomes] = await Promise.all([
+    base().select({
+      sessionId: schema.examensSessions.id, examen: schema.examensSessions.examen, session: schema.examensSessions.session,
+      statut: schema.examensSessions.statut, publieeLe: schema.examensSessions.publieeLe,
+      numeroTable: schema.examensCandidatures.numeroTable, centre: schema.examensCentres.nom,
+      apprenantId: schema.examensCandidatures.apprenantId, nom: sql<string>`${schema.apprenants.prenoms} || ' ' || ${schema.apprenants.nom}`,
+      decision: schema.examensCandidatures.decision, moyenne: schema.examensCandidatures.moyenne, mention: schema.examensCandidatures.mention,
+    }).from(schema.examensCandidatures)
+      .innerJoin(schema.examensSessions, eq(schema.examensSessions.id, schema.examensCandidatures.sessionId))
+      .innerJoin(schema.examensCentres, eq(schema.examensCentres.id, schema.examensCandidatures.centreId))
+      .innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.examensCandidatures.apprenantId))
+      .where(sql`${schema.examensCandidatures.apprenantId} in ${eleves}`)
+      .orderBy(sql`${schema.examensSessions.session} desc`, schema.examensCandidatures.numeroTable),
     // Diplômes délivrés aux apprenants passés par l'établissement (registre), y compris ceux qui l'ont quitté.
     base().select({ c: schema.certificats, titulaire: sql<string>`${schema.apprenants.prenoms} || ' ' || ${schema.apprenants.nom}` })
       .from(schema.certificats).innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.certificats.apprenantId))
       .where(sql`${schema.certificats.apprenantId} in (select apprenant_id from ledger.evenements where etablissement_id = ${id} and type in ('INSCRIPTION', 'TRANSFERT', 'REPRISE'))`),
   ]);
-  await journaliser(profil, "Consultation des examens", id, finalite, true, null);
+  const diplomeDe = new Map(diplomes.map((d) => [`${d.c.apprenantId}|${d.c.examen}|${d.c.session}`, d.c.id]));
+  const sessions = new Map<string, { sessionId: string; examen: string; session: string; statut: string; publieeLe: string | null; autorite: string; candidats: unknown[] }>();
+  for (const l of candidatures) {
+    const publiee = l.statut === "publiee";
+    const autorite = l.examen === "CEP" || l.examen === "BEPC" || l.examen === "BAC" ? AUTORITE_EXAMEN[l.examen].libelle : "Autorité d'examen";
+    const s = sessions.get(l.sessionId) ?? { sessionId: l.sessionId, examen: l.examen, session: l.session, statut: l.statut, publieeLe: l.publieeLe, autorite, candidats: [] as unknown[] };
+    // Avant publication, le verdict n'existe pas pour l'établissement : il appartient à l'autorité.
+    s.candidats.push({
+      apprenantId: l.apprenantId, nom: l.nom, numeroTable: l.numeroTable, centre: l.centre,
+      decision: publiee ? l.decision : null, mention: publiee ? l.mention : null, moyenne: publiee && l.moyenne !== null ? Number(l.moyenne) : null,
+      certificatId: publiee ? diplomeDe.get(`${l.apprenantId}|${l.examen}|${l.session}`) ?? null : null,
+    });
+    sessions.set(l.sessionId, s);
+  }
+  await journaliser(profil, "Consultation des examens nationaux de l'établissement", id, finalite, true, null);
   return c.json({
-    examen, session, niveau: NIVEAU_PAR_EXAMEN[examen],
-    classes: [...new Set(candidats.map((x) => x.classe))].sort(),
-    candidats: candidats.map((x) => ({ id: x.id, nom: `${x.prenoms} ${x.nom}`, classe: x.classe, moyenne: x.moyenne })).sort((x, y) => comparerFr(x.nom, y.nom)),
-    deliberee: certificats.some((x) => x.c.examen === examen && x.c.session === session),
-    certificats: certificats.map((x) => ({ ...x.c, titulaire: x.titulaire })).sort((x, y) => y.delivreLe.localeCompare(x.delivreLe)),
+    sessions: [...sessions.values()],
+    diplomes: diplomes.map((x) => ({ ...x.c, titulaire: x.titulaire })).sort((x, y) => y.delivreLe.localeCompare(x.delivreLe)),
   });
-});
-
-/**
- * Délibération d'un examen national (déléguée au centre d'examen) : résultats et diplômes vérifiables, en une transaction.
- * Honnêteté de la note : tant que le centre d'examen n'a pas transmis la note officielle de l'épreuve, la décision ne peut
- * s'appuyer que sur la moyenne annuelle de l'apprenant. Cette note est donc PROVISOIRE — elle n'est pas inventée (aucune
- * majoration, aucun bornage), et l'admission n'est jamais déduite d'une donnée absente : sans moyenne enregistrée, le
- * candidat n'est pas jugé et ne reçoit pas de diplôme.
- */
-etablissement.post("/etablissements/:id/examens/deliberation", authentifie, async (c) => {
-  const id = ID_ETAB.parse(c.req.param("id"));
-  const { profil } = await acces(c, id, true);
-  const saisie = await corps(c, z.object({ examen: EXAMEN.default("BEPC"), session: z.string().trim().min(1).max(40).optional() }).strict());
-  const examen = saisie.examen;
-  const session = saisie.session?.trim() || sessionParDefaut();
-  const candidats = await candidatsPourExamen(id, NIVEAU_PAR_EXAMEN[examen]);
-  if (!candidats.length) throw new HTTPException(422, { message: `Aucun candidat scolarisé au niveau requis pour le ${examen}` });
-  const [deja] = await base().select({ id: schema.certificats.id }).from(schema.certificats)
-    .where(and(eq(schema.certificats.examen, examen), eq(schema.certificats.session, session), inArray(schema.certificats.apprenantId, candidats.map((a) => a.id)))).limit(1);
-  if (deja) throw new HTTPException(409, { message: "Session déjà délibérée" });
-  const annee = anneeDeSession(session);
-  const delivreLe = aujourdhui();
-  const juges = candidats.filter((a) => a.moyenne != null);
-  const faits = juges.flatMap((a) => {
-    // Note provisoire = moyenne annuelle réelle, arrondie telle quelle ; la note officielle du centre s'y substituera par événement correctif.
-    const moyenne = Number(a.moyenne!.toFixed(2));
-    const admis = moyenne >= 10;
-    const f: NouveauFait[] = [{ type: "RESULTAT_EXAMEN", auteurId: profil.id, etablissementId: id, apprenantId: a.id, source: "examens", donnees: { apprenantId: a.id, examen, session, moyenne, admis } }];
-    if (admis) {
-      const mention = mentionDe(moyenne);
-      // Les trois colonnes du supérieur restent vides ici : pour un examen national du K-12, l'examen
-      // même nomme l'autorité qui délibère, et une certification d'établissement ne se dit pas « CEP ».
-      // Un sceau qui ne les nomme pas garde le format historique — les diplômes déjà imprimés se vérifient.
-      const brut = {
-        id: `CERT-${examen}-${annee}-${a.id.slice(4)}`, apprenantId: a.id, examen, session, mention, moyenne, delivreLe,
-        filiereId: null, etablissementId: null, office: null,
-      };
-      // Le sceau voyage dans le fait : la projection `core.certificats` se reconstruit du seul registre,
-      // et une rangee réécrite en base ne peut plus se donner un diplôme pour un autre.
-      f.push({
-        type: "CERTIFICATION", auteurId: profil.id, etablissementId: id, apprenantId: a.id, source: "examens",
-        donnees: {
-          apprenantId: a.id, certificatId: brut.id, examen, session, mention, moyenne, delivreLe,
-          filiereId: null, delivrePar: null, office: null, empreinte: sceauCertificat(brut, `${a.prenoms} ${a.nom}`),
-        },
-      });
-    }
-    return f;
-  });
-  await inscrireAuRegistre(faits);
-  await journaliser(profil, `Délibération du ${examen}`, `${id} · ${juges.length} candidat(s) jugé(s)`, "gestion", true, null);
-  return c.json({ examen, session, candidats: candidats.length, nonJuges: candidats.length - juges.length, diplomes: faits.filter((x) => x.type === "CERTIFICATION").length }, 201);
 });
 
 /* ------------------------------------------------------------------ Accompagnement (moteur de workflow) */

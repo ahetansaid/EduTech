@@ -116,6 +116,7 @@ export const LIBELLE_MODE_DELIBERATION: Record<ModeDeliberation, string> = {
 };
 
 export const LIBELLE_OFFICE: Record<OfficeDeliberant, string> = {
+  dec_memp: "DEC du MEMP", dec_mestfp: "DEC du MESTFP",
   office_du_bac: "Office du Baccalauréat", dec_sup: "DEC (examens et concours supérieurs)", etablissement: "Établissement",
 };
 

@@ -55,6 +55,26 @@ function decoderCurseur(brut: string): { h: string; id: string } {
 
 const echapperLike = (t: string) => t.replace(/[\\%_]/g, (m) => `\\${m}`);
 
+/**
+ * Journal des exports : un fichier qui quitte la plateforme est un accès aux données comme un autre.
+ * Le navigateur déclare l'export AVANT de produire le fichier ; si cette trace ne peut pas être écrite,
+ * le fichier n'est pas produit. Le journal retient qui, quoi (fichier, colonnes), combien de lignes.
+ */
+complementsGouvernance.post("/audit/exports", authentifie, async (c) => {
+  const profil = c.get("profil");
+  const r = z.object({
+    fichier: z.string().trim().min(1).max(120),
+    lignes: z.number().int().min(0).max(1_000_000),
+    colonnes: z.array(z.string().trim().max(80)).max(60),
+    nominatif: z.boolean(),
+  }).strict().safeParse(await c.req.json().catch(() => null));
+  if (!r.success) throw new HTTPException(422, { message: "Déclaration d'export non conforme" });
+  const e = r.data;
+  await journaliser(profil, e.nominatif ? "Export d'un fichier nominatif" : "Export d'un fichier agrégé",
+    `${e.fichier} · ${e.lignes} ligne(s) · ${e.colonnes.join(", ")}`.slice(0, 480), e.nominatif ? "gestion" : "statistique", true, null);
+  return c.json({ journalise: true }, 201);
+});
+
 complementsGouvernance.get("/audit/journal", authentifie, async (c) => {
   const profil = c.get("profil");
   await exigerDpo(profil, "audit.journal");

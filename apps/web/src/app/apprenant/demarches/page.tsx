@@ -17,13 +17,27 @@ import { classeChamp, classeSelect } from "@/app/(gestion)/etablissement/_compos
 import { cn } from "@/lib/cn";
 import { date, entier } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
+import { useSession } from "@/lib/session";
 
 /**
  * Espace de l'étudiant : ses démarches administratives. Le délai affiché est celui que l'administration
  * a publié (fiche CatIS citée), et le retard est calculé par le serveur — l'écran ne fait pas son
  * arithmetic avec l'horloge du téléphone.
  */
-export default function Demarches() {
+/** Le guichet des actes est celui de l'étudiant du supérieur : un élève du K-12 n'y a pas de dossier. */
+export default function Page() {
+  const { contexte } = useSession();
+  if (!contexte?.etudiantSuperieur) {
+    return (
+      <EntreePage>
+        <Card><EtatVide icone={FileClock} titre="Démarches de l'étudiant" texte="Ce guichet (relevés, attestations, allocations) ouvre avec votre inscription dans l'enseignement supérieur." /></Card>
+      </EntreePage>
+    );
+  }
+  return <Demarches />;
+}
+
+function Demarches() {
   const q = useMesActes();
   const attestation = useMonAttestation(null);
 

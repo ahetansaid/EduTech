@@ -95,8 +95,8 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
       { section: "Filles et garçons", indicateur: "Garçons — effectif", valeur: entier(s.garcons.effectif) },
       { section: "Filles et garçons", indicateur: "Garçons — moyenne", valeur: note(s.garcons.moyenne) },
       { section: "Filles et garçons", indicateur: "Garçons — sous 10/20", valeur: s.garcons.sous.taux != null ? pourcent(s.garcons.sous.taux * 100, 0) : "—" },
-      { section: "Vigilance", indicateur: "Urgent", valeur: entier(niveaux.urgent) },
-      { section: "Vigilance", indicateur: "À surveiller", valeur: entier(niveaux.a_surveiller) },
+      { section: "Vigilance", indicateur: "À examiner en priorité", valeur: entier(niveaux.urgent) },
+      { section: "Vigilance", indicateur: "À suivre", valeur: entier(niveaux.a_surveiller) },
       { section: "Vigilance", indicateur: "Au nominal", valeur: entier(niveaux.nominal) },
     );
     exporterStats("Statistiques promotion", lignes, `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — portrait descriptif de la promotion affichée à l'écran ; périmètre limité à la cohorte que votre habilitation autorise déjà à voir.`);
@@ -167,7 +167,7 @@ export function StatsPromotion({ eleves, niveaux }: { eleves: EleveLigne[]; nive
           <section>
             <Titre>Niveaux de vigilance</Titre>
             <p className="mt-1.5 text-[13px] text-ink-2">
-              {entier(niveaux.urgent)} urgent(s) · {entier(niveaux.a_surveiller)} à surveiller · {entier(niveaux.nominal)} au nominal.
+              {entier(niveaux.urgent)} à examiner en priorité · {entier(niveaux.a_surveiller)} à suivre · {entier(niveaux.nominal)} sans signal.
               Détail élève par élève dans le panneau « Vigilance décrochage ».
             </p>
           </section>
