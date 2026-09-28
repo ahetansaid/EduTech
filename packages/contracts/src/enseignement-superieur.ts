@@ -106,6 +106,11 @@ export const Filiere = z.object({
   accesConcours: z.boolean(),
   /** Durée cumulée de(s) stage(s) obligatoire(s), en mois. 0 si aucun. */
   stageObligatoireMois: z.number().int().nonnegative(),
+  /**
+   * Matières du secondaire qui éclairent l'orientation vers cette filière, et leur poids (somme 1).
+   * Indicatif : le moteur d'adéquation ne note une filière que sur les matières réellement évaluées.
+   */
+  criteresOrientation: z.array(z.object({ matiere: z.string(), poids: z.number().min(0).max(1) })),
 });
 export type Filiere = z.infer<typeof Filiere>;
 

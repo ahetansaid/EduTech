@@ -39,18 +39,19 @@ const s = postgres(url, { ssl: tls(url), max: 1, onnotice: () => {} });
 try {
   const debut = Date.now();
   await s.unsafe(`DROP SCHEMA IF EXISTS ${SCHEMAS.join(", ")} CASCADE`);
-  console.log(`1/7 Schémas supprimés (${SCHEMAS.length}) en ${Date.now() - debut} ms.`);
+  console.log(`1/8 Schémas supprimés (${SCHEMAS.length}) en ${Date.now() - debut} ms.`);
 } finally {
   await s.end();
 }
 
 const etapes: [string, string][] = [
-  ["2/7 Migrations et durcissement", "src/migrer.ts"],
-  ["3/7 Peuplement", "src/peupler.ts"],
-  ["4/7 Comptes (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
-  ["5/7 Projections de lecture", "src/projections.ts"],
-  ["6/7 Calendrier scolaire (dates provisoires)", "src/calendrier.ts"],
-  ["7/7 Vérification (ajout seul, droits, RLS)", "src/verifier.ts"],
+  ["2/8 Migrations et durcissement", "src/migrer.ts"],
+  ["3/8 Peuplement", "src/peupler.ts"],
+  ["4/8 Référentiel du supérieur (établissements, filières, étudiants)", "src/superieur.ts"],
+  ["5/8 Comptes (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
+  ["6/8 Projections de lecture", "src/projections.ts"],
+  ["7/8 Calendrier scolaire officiel", "src/calendrier.ts"],
+  ["8/8 Vérification (ajout seul, droits, RLS)", "src/verifier.ts"],
 ];
 for (const [libelle, script] of etapes) {
   console.log(`\n${libelle}…`);
