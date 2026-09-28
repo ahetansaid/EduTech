@@ -15,7 +15,8 @@ import { and, asc, count, desc, eq, inArray, isNotNull, sql } from "drizzle-orm"
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, corps, journaliser, limiteDebit, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, type Variables } from "./commun";
+import { lireEnv } from "./env";
 import { dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { inscriptionDe } from "./etudiants-superieur";
 import { accesEtablissement, bureauSup, ID_ETAB, monApprenant } from "./superieur";
@@ -74,9 +75,11 @@ type InscriptionLue = NonNullable<Awaited<ReturnType<typeof inscriptionCourante>
 /**
  * Empreinte d'un acte prêt : les champs qu'un tiers peut recompter sans notre base. Elle est posée à la
  * mise à disposition — le document scellé est celui de ce jour-là, pas une moyenne mobile.
+ * Avec `BEILE_CLE_SEAU`, le sceau devient un MAC : le rôle qui écrit dans la base ne connaît pas la
+ * clef, donc avancer en base une date de mise à disposition ne produirait plus un sceau valide.
  */
 const sceau = (d: { id: string; apprenantId: string; typeActe: string; anneeUniversitaire: string | null; periodeId: string | null; disponibleLe: string | null }) =>
-  empreinteContenu(["acte", d.id, d.apprenantId, d.typeActe, d.anneeUniversitaire, d.periodeId, d.disponibleLe]);
+  empreinteContenu(["acte", d.id, d.apprenantId, d.typeActe, d.anneeUniversitaire, d.periodeId, d.disponibleLe], lireEnv().CLE_SEAU);
 
 /**
  * Jours écoulés et retard sur le délai publié, calculés à la lecture et jamais stockés : un retard figé
@@ -186,7 +189,7 @@ guichet.get("/moi/actes", authentifie, async (c) => {
  * autorité et barème viennent du barème publié, l'établissement de l'inscription. Un délai laissé à la
  * main du demandeur serait un délai qu'aucun guichet ne devrait respecter.
  */
-guichet.post("/moi/actes/demande", authentifie, async (c) => {
+guichet.post("/moi/actes/demande", authentifie, limiteDebit(20, 60_000, cleUtilisateur), async (c) => {
   const profil = c.get("profil");
   const apprenantId = monApprenant(profil);
   const saisie = await corps(c, z.object({
@@ -431,13 +434,29 @@ guichet.get("/etablissements/:id/actes", authentifie, async (c) => {
  * contrat qui décident des champs obligatoires. La clause d'état de la projection (`ecriture.ts`) fait
  * le reste : une remise ne peut exister que sur un acte déclaré disponible.
  */
-async function decider(c: Context<{ Variables: Variables }>, demandeId: string, decision: DecisionGuichet, etablissementId: string | null, action: string) {
+async function decider(c: Context<{ Variables: Variables }>, demandeId: string, decision: DecisionGuichet, etablissementId: string | null, action: string, habilitationEtat = false) {
   const profil = c.get("profil");
   const [d] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
   if (!d) throw new HTTPException(404, { message: "Demande d'acte introuvable" });
   if (etablissementId && d.etablissementId !== etablissementId) {
     await journaliser(profil, action, `${demandeId} · hors de votre guichet`, "gestion", false, "perimetre");
     throw new HTTPException(403, { message: "Acte déposé dans un autre établissement : refus journalisé" });
+  }
+  /**
+   * Marquer un acte « prêt », c'est attester qu'il est signé. Or un diplôme se signe à la DEC, un
+   * duplicata de diplôme national à la DGES : laisser le guichet d'établissement sceller ces
+   * actes-là, ce serait publier via le service de vérification « authentique · autorité DEC » sans
+   * que la DEC ait agi. Le guichet garde la préparation et la remise (c'est son rôle physique), pas la
+   * signature d'autrui.
+   */
+  if (decision.statut === "disponible" && d.autorite !== "etablissement" && !habilitationEtat) {
+    await journaliser(profil, action, `${demandeId} · signature d'un acte relevant de ${d.autorite}`, "gestion", false, "autorite");
+    throw new HTTPException(403, { message: `« ${LIBELLE_ACTE[d.typeActe]} » se signe auprès de l'autorité ${d.autorite} : le guichet d'établissement prépare et remet, il ne scelle pas` });
+  }
+  // Symétrique : sceller l'acte d'un guichet depuis l'écran national produirait la même fausse attestation.
+  if (decision.statut === "disponible" && habilitationEtat && d.autorite === "etablissement") {
+    await journaliser(profil, action, `${demandeId} · signature à la place du guichet d'établissement`, "gestion", false, "autorite");
+    throw new HTTPException(403, { message: "Cet acte relève du guichet de l'établissement : l'écran national ne signe pas à sa place" });
   }
   if (!transitionValide(d.statut, decision.statut)) {
     await journaliser(profil, action, `${demandeId} · ${d.statut} vers ${decision.statut}`, "gestion", false, "transition");
@@ -567,13 +586,14 @@ guichet.get("/enseignement-superieur/actes/delais", authentifie, async (c) => {
 guichet.post("/enseignement-superieur/echeances", authentifie, async (c) => {
   const profil = await bureauSup(c, "Déclaration d'une échéance nationale de dépôt");
   const saisie = await corps(c, z.object({
-    echeanceId: ID_ECHEANCE.nullable().default(null),
     anneeUniversitaire: ANNEE, typeDecision: TypeDecisionAllocation, dateLimite: DATE,
     actesExiges: z.array(TypeActe).max(7).default([]),
     autorite: z.enum(["dbau", "mesrs"]),
     intitule: z.string().trim().min(3).max(120),
   }).strict());
-  const echeanceId = saisie.echeanceId ?? `ECH-${randomUUID()}`;
+  /** L'identité de la ligne se joue sur la clé naturelle (année, type de décision), pas sur un
+   *  identifiant venu du client : avec le sien, l'agent pourrait réécrire une autre ligne. */
+  const echeanceId = `ECH-${randomUUID()}`;
   const [evenementId] = await inscrireAuRegistre([{
     type: "ECHEANCE_DEPOT", auteurId: profil.id, etablissementId: null, apprenantId: null,
     donnees: {
@@ -605,7 +625,6 @@ guichet.get("/enseignement-superieur/echeances", authentifie, async (c) => {
 guichet.post("/enseignement-superieur/allocations", authentifie, async (c) => {
   const profil = await bureauSup(c, "Décision d'allocation étudiante");
   const saisie = await corps(c, z.object({
-    allocationId: z.string().regex(/^ALO-[A-Za-z0-9-]+$/).nullable().default(null),
     apprenantId: ID_APPRENANT, anneeUniversitaire: ANNEE,
     typeDecision: TypeDecisionAllocation, statutCompte: StatutCompte,
     autorite: z.enum(["dbau", "mesrs", "etablissement"]),
@@ -624,7 +643,9 @@ guichet.post("/enseignement-superieur/allocations", authentifie, async (c) => {
   if ((saisie.typeDecision === "secours") !== (saisie.statutCompte === "secours")) {
     throw new HTTPException(422, { message: "Un secours se statue « secours », et une bourse ne se statue pas « secours »" });
   }
-  const allocationId = saisie.allocationId ?? `ALO-${randomUUID()}`;
+  /** Comme pour l'échéance : la ligne d'allocation se joue sur (apprenant, année, type de décision),
+   *  et l'identité reste celle de la ligne déjà ouverte plutôt qu'un identifiant fourni. */
+  const allocationId = `ALO-${randomUUID()}`;
   const insc = await inscriptionCourante(saisie.apprenantId, saisie.anneeUniversitaire);
   const [evenementId] = await inscrireAuRegistre([{
     type: "ALLOCATION_DECIDEE", auteurId: profil.id, etablissementId: insc?.etablissementId ?? null, apprenantId: saisie.apprenantId,
@@ -670,7 +691,7 @@ guichet.post("/enseignement-superieur/actes/:demandeId/decision", authentifie, a
   const demandeId = ID_DEMANDE.parse(c.req.param("demandeId"));
   await bureauSup(c, "Décision de l'État sur une demande d'acte");
   const decision = await corps(c, DecisionGuichet);
-  const { acte, evenementId } = await decider(c, demandeId, decision, null, "Décision de l'État sur une demande d'acte");
+  const { acte, evenementId } = await decider(c, demandeId, decision, null, "Décision de l'État sur une demande d'acte", true);
   return c.json({ acte, evenementId });
 });
 

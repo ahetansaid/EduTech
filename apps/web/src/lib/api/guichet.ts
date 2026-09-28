@@ -193,6 +193,20 @@ export function useDelaisNationaux(actif = true) {
   return useQuery({ queryKey: ["guichet", "national", "delais"], queryFn: ({ signal }) => lire<DelaisConstates[]>("/enseignement-superieur/actes/delais", signal), enabled: actif });
 }
 
+/** L'État scelle un acte dont la signature ne relève pas de l'établissement (diplôme : DEC, duplicata
+ *  national : DGES) **par sa référence**, celle que l'étudiant lit sur son espace. Volontairement :
+ *  aucune liste nominative nationale ne se parcourt ici — le national ne voit que des effectifs. */
+export function useDecisionEtatMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { demandeId: string } & DecisionGuichet) => {
+      const { demandeId, ...corps } = v;
+      return ecrire<EffetDecision>(`/enseignement-superieur/actes/${encodeURIComponent(demandeId)}/decision`, corps);
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: ["guichet", "national", "delais"] }),
+  });
+}
+
 /** Le calendrier complet : l'écran filtre l'année côté lecture, sinon le sélecteur perd ses propres options. */
 export function useEcheances(actif = true) {
   return useQuery({

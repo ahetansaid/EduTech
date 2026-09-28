@@ -11,7 +11,7 @@ import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
 import {
   LIBELLE_AUTORITE_ALLOCATION, LIBELLE_TYPE_DECISION,
-  useDeclencheurEcheanceMutation, useDelaisNationaux, useEcheances, useEffectifsAllocations, useStaterAllocationMutation,
+  useDeclencheurEcheanceMutation, useDecisionEtatMutation, useDelaisNationaux, useEcheances, useEffectifsAllocations, useStaterAllocationMutation,
 } from "@/lib/api/guichet";
 import { classeChamp, classeSelect, EtatErreur } from "../../etablissement/_composants";
 import { cn } from "@/lib/cn";
@@ -123,6 +123,8 @@ export default function GuichetNational() {
               <Calendrier annee={annee} setAnnee={setAnnee} admin={admin} />
               <Allocations annee={annee} q={effectifs} admin={admin} />
             </div>
+
+            {admin && <Scellement />}
           </>
         )}
       </div>
@@ -210,6 +212,58 @@ function Declination({ anneeProposee }: { anneeProposee: string }) {
       {erreur && <p role="alert" className="rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">{erreur}</p>}
       <Button variante="primaire" taille="sm" type="submit" chargement={declarer.isPending} disabled={!pret}>Déclarer au registre</Button>
     </form>
+  );
+}
+
+/* ------------------------------------------------------------------ Signature de l'État sur un acte */
+
+/**
+ * Sceller un acte dont la signature ne relève pas de l'établissement : diplôme (DEC), duplicata national
+ * (DGES), allocation (DBAU). La référence suffit — c'est celle que l'étudiant lit sur son espace. Pas de
+ * liste à parcourir : le national ne voit que des effectifs, et un bureau qui chercherait « qui attend
+ * encore » n'a pas besoin d'un annuaire d'étudiants pour signer ce qu'on lui apporte.
+ */
+function Scellement() {
+  const [reference, setReference] = useState("");
+  const [refuser, setRefuser] = useState(false);
+  const [motif, setMotif] = useState("");
+  const sceller = useDecisionEtatMutation();
+  const erreur = sceller.error instanceof ErreurApi ? sceller.error.message : null;
+  const id = reference.trim().toUpperCase();
+  const pret = /^ACTE-[A-Za-z0-9-]{8,}$/.test(id) && (!refuser || motif.trim().length >= 5);
+
+  return (
+    <Card data-guide="guichet-national-scellement" className="min-w-0">
+      <CardHeader icon={ScrollText} title="Signer un acte qui ne relève pas de l'établissement"
+        subtitle="Le guichet d'établissement prépare et remet ; un diplôme se signe à la DEC, un duplicata national à la DGES. Tant que l'autorité compétente n'a pas scellé l'acte, l'écran du guichet ne propose pas « prêt à retirer »." />
+      <form className="mx-5 mb-5 space-y-3" onSubmit={(e) => {
+        e.preventDefault();
+        sceller.mutate({ demandeId: id, statut: refuser ? "refusee" : "disponible", ...(refuser ? { motif: motif.trim() } : {}) }, {
+          onSuccess: (r) => notifier({
+            ton: "succes", titre: refuser ? "Demande refusée" : "Acte scellé",
+            texte: refuser ? `La demande ${r.acte.id} est refusée ; l'étudiant en lit le motif sur son espace.` : `${LIBELLE_ACTE[r.acte.typeActe]} scellé${r.acte.disponibleLe ? ` le ${date(r.acte.disponibleLe)}` : ""} — vérifiable publiquement sous la référence ${r.acte.id}.`,
+          }),
+        });
+      }}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block"><span className="mb-1 block text-xs text-ink-muted">Référence de l'acte (ACTE-…)</span>
+            <input value={reference} onChange={(e) => setReference(e.target.value.slice(0, 60))} placeholder="ACTE-0b1c…" className={cn(classeChamp, "font-mono")} aria-label="Référence de l'acte à signer" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-ink-muted">Décision</span>
+            <select value={refuser ? "refusee" : "disponible"} onChange={(e) => setRefuser(e.target.value === "refusee")} className={classeSelect} aria-label="Décision de l'autorité">
+              <option value="disponible">Sceller : prêt à retirer au guichet</option>
+              <option value="refusee">Refuser, motif écrit</option>
+            </select></label>
+        </div>
+        {refuser && (
+          <label className="block"><span className="mb-1 block text-xs text-ink-muted">Motif du refus, lu par l'étudiant</span>
+            <input value={motif} onChange={(e) => setMotif(e.target.value.slice(0, 200))} placeholder="Pièce manquante au dossier de l'année considérée" className={classeChamp} aria-label="Motif du refus" /></label>
+        )}
+        {erreur && <p role="alert" className="rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">{erreur}</p>}
+        <Button variante="primaire" taille="sm" type="submit" chargement={sceller.isPending} disabled={!pret}>
+          {refuser ? "Refuser au registre" : "Sceller au registre"}
+        </Button>
+      </form>
+    </Card>
   );
 }
 

@@ -112,7 +112,7 @@
 - La remise exige le mode de retrait (titulaire, géniteur, mandataire, autorité académique, dématérialisé) et la pièce d'identité présentée ; pour un mandataire, la procuration est nommée.
 - Un refus se motive (5 caractères minimum) : le texte est transmis à l'étudiant, qui le lit sur son espace.
 - « Délais par acte » : nombre de demandes, remises dans le barème et médiane constatée. Sous dix demandes, la ligne est marquée « sous le seuil » — un délai sur trois dossiers réidentifierait son auteur.
-- Les demandes relevant d'une autorité nationale (attestation de succès, diplôme, duplicata) ne se ferment pas ici : elles s'y suivent, et se statue au niveau compétent.
+- Les demandes relevant d'une autorité nationale (attestation de succès, diplôme, duplicata) ne se ferment pas ici : le bouton « prêt à retirer » y est masqué, l'acte se scelle à l'écran national « Guichet & délais », puis la ligne revient en « Prêtes » et la remise se constate chez vous.
 
 ### Enseignement supérieur
 
@@ -258,10 +258,11 @@
 2. Filtrez sur « À préparer » : ce sont les dépôts qu'aucun agent n'a encore pris en charge.
 3. Touchez « Prendre en charge » pour arrêter la première étape — le compteur du délai publié continue jusqu'à la mise à disposition.
 4. Touchez « Marquer prêt à retirer » en indiquant la date de mise à disposition (jamais future) : l'étudiant est notifié et lit le mode de retrait.
-5. Le jour du retrait, « Constat de remise » : mode de retrait, pièce d'identité présentée, nom du réceptionnaire si ce n'est pas l'intéressé, référence de la quittance.
-6. Pour un mandataire, la procuration (notariée ou établie au tribunal) est exigée : sans elle, la remise ne se constate pas.
-7. Si la pièce demandée ne peut pas être délivrée, « Refuser » avec un motif d'au moins 5 caractères — il est transmis à l'étudiant tel quel.
-8. Chaque décision est définitive : un agent qui a déjà fait avancer la demande reçoit un refus explicite, et l'écran se rafraîchit.
+5. Ce bouton n'apparaît pas sur une ligne dont l'autorité est DEC, DGES ou DBAU : votre guichet prépare et remet, il ne signe pas l'acte d'une autre autorité. La demande reste chez vous en « En cours » jusqu'à ce que l'écran national « Guichet & délais » la scelle ; la ligne repasse alors en « Prêtes » et vous constatez la remise.
+6. Le jour du retrait, « Constat de remise » : mode de retrait, pièce d'identité présentée, nom du réceptionnaire si ce n'est pas l'intéressé, référence de la quittance.
+7. Pour un mandataire, la procuration (notariée ou établie au tribunal) est exigée : sans elle, la remise ne se constate pas.
+8. Si la pièce demandée ne peut pas être délivrée, « Refuser » avec un motif d'au moins 5 caractères — il est transmis à l'étudiant tel quel.
+9. Chaque décision est définitive : un agent qui a déjà fait avancer la demande reçoit un refus explicite, et l'écran se rafraîchit.
 
 ## Questions fréquentes
 

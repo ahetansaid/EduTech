@@ -124,6 +124,7 @@
 - Sous dix demandes, la ligne est signalée « sous le seuil » — le signalement ne masque rien, il prévient le lecteur.
 - « Calendrier des dépôts » : les dates limites déclarées par la DBAU ou le MESRS, avec les pièces exigées à chaque échéance.
 - « Effet des allocations » : effectifs par statut de compte, par nature de décision et par autorité — aucun montant, aucun RIB, aucun échéancier.
+- « Signer un acte qui ne relève pas de l'établissement » : une autorité nationale scelle, à partir de la référence de l'acte (ACTE-…), ce que le guichet d'établissement ne peut pas signer — un diplôme à la DEC, un duplicata national à la DGES. Aucune liste nominative n'est parcourue ici : la référence vient du guichet de l'établissement ou de l'espace de l'étudiant.
 - « Exporter (CSV) » : les lignes affichées, avec la médiane (jamais la moyenne) et la provenance du barème.
 
 ## Tâches pas à pas
@@ -188,6 +189,18 @@
 4. Signalez les lignes « sous le seuil » (moins de dix demandes) : leur médiane est instable et peut réidentifier un demandeur dans une petite composante.
 5. Touchez « Exporter (CSV) » pour préparer une note : la médiane y figure, jamais la moyenne, et le fichier porte la provenance du barème.
 
+### Sceller un acte qu'aucun guichet d'établissement ne peut signer
+
+> « Prêt à retirer » affirme que l'acte est signé. Un diplôme se signe à la DEC, un duplicata national à la DGES : si la plateforme scellait à leur place, elle publierait une signature qui n'a pas eu lieu — et si personne ne scelle, l'étudiant attend sans autorité identifiable.
+
+1. Ouvrez « Enseignement supérieur », puis l'onglet « Guichet & délais » (habilitation d'administration centrale au périmètre national).
+2. Récupérez la référence de l'acte (ACTE-…) : elle est donnée par le guichet de l'établissement, où la ligne attend son autorité signataire, et par l'espace de l'étudiant.
+3. Dans la carte « Signer un acte qui ne relève pas de l'établissement », saisissez cette référence.
+4. Choisissez « Sceller : prêt à retirer au guichet » — la date de mise à disposition est celle du jour, jamais une date future — ou « Refuser, motif écrit » : le motif, d'au moins 5 caractères, se lit tel quel par l'étudiant.
+5. Touchez « Sceller au registre ». La ligne repasse en « Prête » du côté du guichet, qui constatera la remise ; le compteur de délai de l'autorité s'arrête net.
+6. Relisez le comparateur : la médiane de l'autorité concernée intègre l'acte sitôt scellé, et c'est ce chiffre qui se cite.
+7. Un acte dont l'autorité est « établissement » est refusé par cet écran : le guichet le signe lui-même, et l'écran national n'écrit pas à sa place.
+
 ### Déclarer une échéance de dépôt de dossier d'allocation
 
 > Tant que la date n'est pas déclarée, un dossier « hors délai » n'est imputable à personne — et l'étudiant lit « aucune échéance ».
@@ -237,6 +250,9 @@ Non, elle est signalée. Les dix demandes et plus ne sont pas une protection abs
 
 **Un établissement peut-il modifier une décision d'allocation ?**  
 Non. Seule une habilitation d'administration centrale au périmètre national peut statuer, et chaque décision s'ajoute au registre sans effacer la précédente. Un établissement, lui, ne voit que les pièces que ses étudiants retirent chez lui.
+
+**Pourquoi l'écran national refuse-t-il de sceller certains actes ?**  
+Parce que « prêt à retirer » vaut signature. Un acte dont l'autorité est « établissement » se signe au guichet de l'établissement ; un acte relevant de la DEC ou de la DGES se scelle à l'écran national. Laisser une habilitation signer à la place de l'autre publierait, via le service de vérification, une signature qui n'a pas eu lieu — et fausserait l'imputation du retard, qui se lit par autorité.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.

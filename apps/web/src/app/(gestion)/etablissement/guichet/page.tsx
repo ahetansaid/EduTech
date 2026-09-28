@@ -141,7 +141,10 @@ function Medianes({ id }: { id: string }) {
 }
 
 function Ligne({ d, onStatuer }: { d: DemandeGuichet; onStatuer: (s: StatutViseParGuichet) => void }) {
-  const ouvrables = TRANSITIONS_ACTE[d.statut].filter((s): s is StatutViseParGuichet => s !== "retiree");
+  // Un acte signé par une autre autorité que l'établissement ne se scelle pas ici : le serveur le
+  // refuserait, donc le bouton ne doit pas le proposer. La préparation et la remise restent au guichet.
+  const signeAilleurs = d.autorite !== "etablissement";
+  const ouvrables = TRANSITIONS_ACTE[d.statut].filter((s): s is StatutViseParGuichet => s !== "retiree" && !(signeAilleurs && s === "disponible"));
   const retard = (d.statut === "demandee" || d.statut === "en_instruction") && (d.retardJours ?? 0) > 0;
   return (
     <li className="flex flex-wrap items-start gap-x-3 gap-y-2 px-5 py-3.5 hover:bg-surface-2/40">
@@ -159,6 +162,9 @@ function Ligne({ d, onStatuer }: { d: DemandeGuichet; onStatuer: (s: StatutViseP
         </p>
         {d.joursEcoules !== null && <p className="mt-1 text-[13px] text-ink-2">{d.joursEcoules} jours écoulés{retard ? ` · ${d.retardJours} jours au-delà du délai publié` : ""}</p>}
         {d.statut === "refusee" && d.motifRefus && <p className="mt-1 text-xs text-critical">Refus : {d.motifRefus}</p>}
+        {signeAilleurs && d.statut !== "remise" && d.statut !== "refusee" && (
+          <p className="mt-1 text-xs text-ink-muted">À préparer ici ; « prêt à retirer » se pose à l'écran « Guichet & délais », l'acte relevant de {LIBELLE_AUTORITE[d.autorite].toLowerCase()}.</p>
+        )}
         {d.statut === "remise" && <p className="mt-1 text-xs text-ink-muted">Remise le {d.remisLe ? date(d.remisLe) : "—"} · {d.modeRetrait ? LIBELLE_MODE_RETRAIT[d.modeRetrait] : "—"}{d.piecePresentee ? ` · ${LIBELLE_PIECE[d.piecePresentee]}` : ""}{d.remisA ? ` · à ${d.remisA}` : ""}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">

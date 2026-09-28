@@ -820,6 +820,12 @@ export const GUIDES: Guide[] = [
         texte: "Effectifs par statut de compte, par nature de décision et par autorité. Aucun montant, aucun RIB : un statut daté, signé, avec la référence de l'arrêté.",
         pourquoi: "La liquidation reste à l'administration payeuse ; ici on suit le droit, pas la paie.",
       },
+      {
+        cible: "guichet-national-scellement",
+        titre: "Signer ce que l'établissement ne peut pas signer",
+        texte: "Un diplôme se scelle à la DEC, un duplicata national à la DGES : saisissez la référence de l'acte (ACTE-…, celle que l'étudiant lit sur son espace) pour le déclarer prêt à retirer, ou le refuser avec un motif.",
+        pourquoi: "Le guichet d'établissement prépare et remet ; s'il scellait l'acte d'une autre autorité, la plateforme affirmerait une signature qui n'a pas eu lieu.",
+      },
       COMPTE,
     ],
   },
