@@ -21,10 +21,11 @@ import { publique } from "./public";
 import { interop } from "./interop";
 import { empreintePresentee, sceauCorrespond, sceauxAdmis } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
-import { RequeteSemantique } from "@beile/contracts";
+import { QuestionAnalyse, RequeteSemantique } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { decider } from "@beile/simulation/abac";
 import { repondre } from "@beile/simulation/ask";
+import { analyser } from "@beile/simulation/analyse";
 import { indexer, notesApprenant, situationApprenant } from "@beile/simulation/projections";
 import { calculer, DICTIONNAIRE, estCalculeParLeRegistre, priorites } from "@beile/simulation/semantique";
 import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
@@ -184,6 +185,26 @@ app.post("/ask", authentifie, limiteDebit(20, 60_000, cleUtilisateur), async (c)
     await journaliser(profil, "Ask Education — requête refusée", question, "statistique", false, reponse.motif === "hors_perimetre" ? "perimetre" : "relation");
   } else if (reponse.statut === "repondu") {
     await journaliser(profil, "Ask Education — requête agrégée", reponse.resultat.definition.nom, "statistique", true, null);
+  }
+  return c.json(reponse);
+});
+
+/**
+ * Moteur d'analyse (famille de question → algorithme → figures → constats rédigés) : déterministe, sans
+ * modèle de langage. Même garde que /ask (droits, périmètre, débit, journal) ; la réponse est mémoïsée par
+ * cube, périmètre et question, puisqu'elle en est une fonction pure.
+ */
+app.post("/analyse", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
+  const { question } = await corps(c, QuestionAnalyse);
+  const profil = c.get("profil");
+  const perimetre = perimetrePilotage(profil);
+  const couches = await chargerCouches(base());
+  const reponse = memo(couches, `analyse:${JSON.stringify(perimetre)}:${question}`, () => analyser(couches, question, perimetre));
+  if (reponse.statut === "refuse") {
+    const securite = reponse.motif === "hors_perimetre" || reponse.motif === "donnee_individuelle";
+    await journaliser(profil, "Analyse — question refusée", question, "statistique", false, securite ? (reponse.motif === "hors_perimetre" ? "perimetre" : "relation") : "definition");
+  } else {
+    await journaliser(profil, `Analyse — ${reponse.famille}`, reponse.resultats[0]?.definition.nom ?? question, "statistique", true, null);
   }
   return c.json(reponse);
 });

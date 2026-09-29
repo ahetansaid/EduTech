@@ -1,6 +1,6 @@
 "use client";
 
-import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAsk, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
+import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAnalyse, ReponseAsk, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
 
@@ -243,6 +243,11 @@ export function usePlanification(id: string | null) {
 /* ================================================================== Écritures */
 
 /** Ask Education : traduction, contrôle des droits, calcul et journalisation côté serveur. */
+/** Moteur d'analyse déterministe : famille de question, figures et constats rédigés (POST /analyse). */
+export function useAnalyseMutation() {
+  return useMutation({ mutationFn: (question: string) => ecrire<ReponseAnalyse>("/analyse", { question }) });
+}
+
 export function useAskMutation() {
   return useMutation({ mutationFn: (question: string) => ecrire<ReponseAsk>("/ask", { question }) });
 }

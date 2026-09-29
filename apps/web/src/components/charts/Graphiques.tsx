@@ -14,12 +14,16 @@ export const SERIES = ["var(--series-1)", "var(--series-2)", "var(--series-3)", 
 
 /* ------------------------------------------------------------------ Courbe temporelle */
 
-export interface Serie { nom: string; points: { x: string; y: number | null }[] }
+/** `pointille` : série estimée (projection) ; `discret` : repère secondaire (fourchette), sans point ni étiquette. */
+export interface Serie { nom: string; points: { x: string; y: number | null }[]; pointille?: boolean; discret?: boolean }
 
 export function Courbes({ series, formater = (v) => String(v), hauteur = 240, min: minForce, className }: { series: Serie[]; formater?: (v: number) => string; hauteur?: number; min?: number; className?: string }) {
   const [survol, setSurvol] = useState<number | null>(null);
   const [tableau, setTableau] = useState(false);
-  const xs = series[0]?.points.map((p) => p.x) ?? [];
+  // Abscisses : union ordonnée des séries (une projection prolonge l'axe au-delà des années observées).
+  const xs = [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))];
+  const yDe = (s: Serie, i: number) => s.points.find((p) => p.x === xs[i])?.y ?? null;
+  const couleurDe = (s: Serie, i: number) => (s.discret ? SERIES[Math.max(0, series.findIndex((t) => t.pointille && !t.discret))] ?? SERIES[i] : SERIES[i]);
   const toutes = series.flatMap((s) => s.points.map((p) => p.y)).filter((v): v is number => v != null);
   if (!xs.length || !toutes.length) return null;
   const vmin = minForce ?? Math.min(...toutes) * 0.9, vmax = Math.max(...toutes) * 1.06;
@@ -31,9 +35,9 @@ export function Courbes({ series, formater = (v) => String(v), hauteur = 240, mi
   return (
     <div className={cn("relative", className)}>
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-        {series.length > 1 && series.map((s, i) => (
+        {series.length > 1 && series.filter((s) => !s.discret).map((s) => (
           <span key={s.nom} className="inline-flex items-center gap-1.5 text-[12px] text-ink-2">
-            <span className="h-2 w-2 rounded-full" style={{ background: SERIES[i] }} aria-hidden /> {s.nom}
+            {s.pointille ? <span className="w-3 border-t-2 border-dashed" style={{ borderColor: SERIES[series.indexOf(s)] }} aria-hidden /> : <span className="h-2 w-2 rounded-full" style={{ background: SERIES[series.indexOf(s)] }} aria-hidden />} {s.nom}
           </span>
         ))}
         <button onClick={() => setTableau((t) => !t)} className="ml-auto inline-flex items-center gap-1 text-[12px] font-medium text-blue hover:underline">
@@ -41,7 +45,7 @@ export function Courbes({ series, formater = (v) => String(v), hauteur = 240, mi
         </button>
       </div>
       {tableau ? (
-        <TableauDonnees colonnes={["Période", ...series.map((s) => s.nom)]} lignes={xs.map((xv, i) => [xv, ...series.map((s) => (s.points[i]?.y != null ? formater(s.points[i]!.y!) : "—"))])} />
+        <TableauDonnees colonnes={["Période", ...series.map((s) => s.nom)]} lignes={xs.map((xv, i) => [xv, ...series.map((s) => { const v = yDe(s, i); return v != null ? formater(v) : "—"; })])} />
       ) : (
         <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full overflow-visible" role="img" aria-label={`Évolution : ${series.map((s) => s.nom).join(", ")}`} onMouseLeave={() => setSurvol(null)}>
           {graduations.map((v) => (
@@ -55,18 +59,20 @@ export function Courbes({ series, formater = (v) => String(v), hauteur = 240, mi
           ))}
           {survol != null && <line x1={x(survol)} x2={x(survol)} y1={h} y2={H - b} stroke="var(--text-muted)" strokeDasharray="3 3" />}
           {series.map((s, i) => {
-            const pts = s.points.map((p, k) => (p.y != null ? `${x(k)},${y(p.y)}` : null)).filter(Boolean).join(" ");
-            const dernier = [...s.points].reverse().find((p) => p.y != null);
-            const k = s.points.lastIndexOf(dernier!);
+            const valeurs = xs.map((_, k) => yDe(s, k));
+            const pts = valeurs.map((v, k) => (v != null ? `${x(k)},${y(v)}` : null)).filter(Boolean).join(" ");
+            const k = valeurs.findLastIndex((v) => v != null);
+            const dernier = k >= 0 ? valeurs[k]! : null;
+            const couleur = couleurDe(s, i);
             return (
               <g key={s.nom}>
-                <motion.polyline key={pts} points={pts} fill="none" stroke={SERIES[i]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
+                <motion.polyline key={pts} points={pts} fill="none" stroke={couleur} strokeWidth={s.discret ? 1.25 : 2} strokeOpacity={s.discret ? 0.55 : 1} strokeDasharray={s.pointille ? "6 5" : undefined} strokeLinejoin="round" strokeLinecap="round"
                   initial={{ pathLength: 0, opacity: 0.4 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 1.1, ease: EASE, delay: i * 0.12 }} />
-                {s.points.map((p, j) => p.y != null && (
-                  <motion.circle key={j} cx={x(j)} cy={y(p.y)} fill={SERIES[i]} stroke="var(--surface)" strokeWidth={2}
+                {!s.discret && valeurs.map((v, j) => v != null && (
+                  <motion.circle key={j} cx={x(j)} cy={y(v)} fill={s.pointille ? "var(--surface)" : couleur} stroke={s.pointille ? couleur : "var(--surface)"} strokeWidth={2}
                     initial={{ r: 0 }} animate={{ r: survol === j ? 5.5 : 3.5 }} transition={{ type: "spring", stiffness: 500, damping: 26, delay: survol === null ? 0.25 + j * 0.08 + i * 0.12 : 0 }} />
                 ))}
-                {dernier?.y != null && <motion.text initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.9 + i * 0.12 }} x={x(k) + 10} y={y(dernier.y) + 4} className="fill-[var(--text)] text-[12px] font-semibold tabular">{formater(dernier.y)}</motion.text>}
+                {dernier != null && !s.discret && <motion.text initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.9 + i * 0.12 }} x={x(k) + 10} y={y(dernier) + 4} className="fill-[var(--text)] text-[12px] font-semibold tabular">{formater(dernier)}</motion.text>}
               </g>
             );
           })}
@@ -78,11 +84,11 @@ export function Courbes({ series, formater = (v) => String(v), hauteur = 240, mi
       {!tableau && survol != null && (
         <div className="pointer-events-none absolute top-8 z-10 rounded-md border border-line/70 bg-surface px-3 py-2 text-[12px] shadow-pop" style={{ left: `calc(${(x(survol) / W) * 100}% + ${survol > xs.length / 2 ? -150 : 12}px)` }}>
           <p className="font-semibold text-ink">{xs[survol]}</p>
-          {series.map((s, i) => (
+          {series.map((s, i) => { const v = yDe(s, survol); return v == null ? null : (
             <p key={s.nom} className="flex items-center gap-1.5 tabular text-ink-2">
-              <span className="h-2 w-2 rounded-full" style={{ background: SERIES[i] }} /> {s.nom} : <span className="font-semibold text-ink">{s.points[survol]?.y != null ? formater(s.points[survol]!.y!) : "—"}</span>
+              <span className="h-2 w-2 rounded-full" style={{ background: couleurDe(s, i) }} /> {s.nom} : <span className="font-semibold text-ink">{formater(v)}</span>
             </p>
-          ))}
+          ); })}
         </div>
       )}
     </div>
@@ -235,6 +241,55 @@ export function TableauDonnees({ colonnes, lignes, className }: { colonnes: stri
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Haltères (écart entre deux groupes) */
+
+/**
+ * Deux groupes par ligne (filles/garçons, urbain/rural, public/privé), reliés par leur écart : l'œil lit
+ * d'abord la longueur du trait, c'est-à-dire l'inégalité, puis sa position.
+ */
+export function Halteres({ lignes, libelleA, libelleB, formater = (v) => String(v), className }: {
+  lignes: { cle: string; libelle: string; a: number | null; b: number | null }[]; libelleA: string; libelleB: string; formater?: (v: number) => string; className?: string;
+}) {
+  const [tableau, setTableau] = useState(false);
+  const toutes = lignes.flatMap((l) => [l.a, l.b]).filter((v): v is number => v != null);
+  if (!toutes.length) return null;
+  const vmin = Math.min(...toutes), vmax = Math.max(...toutes), marge = (vmax - vmin) * 0.08 || 1;
+  const pos = (v: number) => ((v - (vmin - marge)) / (vmax - vmin + 2 * marge)) * 100;
+  return (
+    <div className={className}>
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: SERIES[0] }} aria-hidden /> {libelleA}</span>
+        <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: SERIES[1] }} aria-hidden /> {libelleB}</span>
+        <button onClick={() => setTableau((t) => !t)} className="ml-auto inline-flex items-center gap-1 text-[12px] font-medium text-blue hover:underline">
+          <Table2 size={13} aria-hidden /> {tableau ? "Graphique" : "Tableau"}
+        </button>
+      </div>
+      {tableau ? (
+        <TableauDonnees colonnes={["Territoire", libelleA, libelleB]} lignes={lignes.map((l) => [l.libelle, l.a != null ? formater(l.a) : "—", l.b != null ? formater(l.b) : "—"])} />
+      ) : (
+        <ul className="space-y-2">
+          {lignes.map((l, i) => (
+            <li key={l.cle} className="grid grid-cols-[minmax(6rem,9rem)_1fr] items-center gap-3" title={`${l.libelle} — ${libelleA} : ${l.a != null ? formater(l.a) : "—"} · ${libelleB} : ${l.b != null ? formater(l.b) : "—"}`}>
+              <span className="truncate text-[13px] text-ink-2">{l.libelle}</span>
+              <span className="relative h-5">
+                <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--grid)]" aria-hidden />
+                {l.a != null && l.b != null && (
+                  <motion.span className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-ink/25" style={{ left: `${Math.min(pos(l.a), pos(l.b))}%` }}
+                    initial={{ width: 0 }} animate={{ width: `${Math.abs(pos(l.a) - pos(l.b))}%` }} transition={{ duration: 0.7, ease: EASE, delay: Math.min(i, 15) * 0.04 }} />
+                )}
+                {([[l.a, SERIES[0]], [l.b, SERIES[1]]] as const).map(([v, c], k) => v != null && (
+                  <motion.span key={k} className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[var(--surface)]" style={{ left: `${pos(v)}%`, background: c }}
+                    initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 22, delay: 0.2 + Math.min(i, 15) * 0.04 }} />
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
