@@ -21,6 +21,8 @@ export interface Onglet {
   href: string; libelle: string; icone: LucideIcon; roles?: Role[];
   /** Réservé à un apprenant inscrit dans le supérieur (guichet des actes, allocations). */
   etudiantSuperieur?: boolean;
+  /** Onglet du primaire et du secondaire seulement (masqué pour un étudiant du supérieur). */
+  scolaire?: boolean;
 }
 
 /** Couleur propre à chaque espace : l'utilisateur sait d'un coup d'œil où il se trouve. */
@@ -47,7 +49,8 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
   const a = ACCENTS[espace];
   const autorise = profil.habilitations.some((h) => roles.includes(h.role));
   const visibles = onglets.filter((o) => (!o.roles || o.roles.some((r) => profil.habilitations.some((h) => h.role === r)))
-    && (!o.etudiantSuperieur || !!contexte?.etudiantSuperieur));
+    && (!o.etudiantSuperieur || !!contexte?.etudiantSuperieur)
+    && (!o.scolaire || !contexte?.etudiantSuperieur));
   useTitre([...visibles].sort((x, y) => y.href.length - x.href.length).find((o) => pathname === o.href || pathname.startsWith(`${o.href}/`))?.libelle ?? a.nom);
   const actif = (href: string) => (href === visibles[0]?.href ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
 

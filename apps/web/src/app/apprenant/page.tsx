@@ -9,7 +9,10 @@ import { useMemo, useState } from "react";
 import { Courbes } from "@/components/charts/Graphiques";
 import { Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { TuileIndicateur } from "@/components/ui/donnees";
-import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Squelette } from "@/components/ui/primitives";
+import { BandeauAccueil, WidgetEcheances, type ATraiter } from "@/components/tableau/Tableau";
+import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, Squelette } from "@/components/ui/primitives";
+import { useCalendrier } from "@/lib/api/public";
+import { jours as joursEntre } from "@/lib/calendrier";
 import { Bulletin } from "@/components/bulletin/Bulletin";
 import {
   absencesParJour, jalonsParcours, libelleTrimestre, moyennesParMatiere, NOM_EXAMEN, nomComplet, syntheseScolaire, usePasseport,
@@ -30,7 +33,6 @@ export default function Passeport() {
   return (
     <EntreePage>
       <div className="space-y-5">
-        <PageHeader surtitre="Passeport éducatif" titre="Mon parcours" sousTitre="Tout votre parcours scolaire, reconstitué à partir de faits vérifiables, quelle que soit l'école fréquentée." />
         {q.isPending ? <Chargement /> : q.isError ? <Erreur erreur={q.error} onReessayer={() => q.refetch()} /> : <Contenu d={q.data} />}
       </div>
     </EntreePage>
@@ -48,8 +50,20 @@ function Contenu({ d }: { d: Dossier }) {
   const [trimestre, setTrimestre] = useState<number | null>(null);
   const tBulletin = trimestre ?? s.courant;
 
+  // Examen national de fin de cycle : seulement s'il figure au calendrier officiel publié (jamais une date supposée).
+  const calendrier = useCalendrier();
+  const examen = { CM2: "CEP", "3e": "BEPC", Tle: "BAC" }[d.situation.classe?.niveau as string] as string | undefined;
+  const auj = calendrier.data?.aujourdhui ?? "";
+  const motifExamen = examen === "BAC" ? /\bbac\b|baccalaur/i : examen ? new RegExp(String.raw`\b${examen}\b`, "i") : null;
+  const dateExamen = motifExamen ? calendrier.data?.evenements.find((e) => e.categorie === "examen" && e.debut >= auj && motifExamen.test(e.titre)) : undefined;
+  const aTraiter: ATraiter[] = [
+    ...(s.courant != null ? [{ cle: "bulletin", libelle: `Bulletin du ${libelleTrimestre(s.courant)}`, href: "/apprenant/bulletins" }] : []),
+    ...(dateExamen ? [{ cle: "examen", libelle: `${examen} dans ${joursEntre(auj, dateExamen.debut)} jours`, href: "/calendrier", ton: "alerte" as const }] : []),
+  ];
+
   return (
     <>
+      <BandeauAccueil prenom={a.prenoms.split(" ")[0]} contexte={d.situation.classe?.libelle ?? null} aTraiter={aTraiter} />
       <motion.div data-guide="apprenant-passeport" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5, ease: EASE }}
         className="relative overflow-hidden rounded-2xl text-white shadow-pop" style={{ background: "linear-gradient(135deg, var(--acc), #0a3764)" }}>
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" aria-hidden />
@@ -105,6 +119,8 @@ function Contenu({ d }: { d: Dossier }) {
       ) : (
         <Card><EtatVide icone={NotebookPen} titre="Pas encore de note cette année" texte="Vos moyennes apparaîtront dès la première évaluation saisie par vos enseignants." /></Card>
       )}
+
+      <WidgetEcheances nombre={3} />
 
       {d.certificats.length > 0 && (
         <Link href="/apprenant/preuves" className="flex items-center gap-3 rounded-xl border border-line/70 bg-surface p-4 shadow-float transition hover:-translate-y-1 hover:shadow-pop">
