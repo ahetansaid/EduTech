@@ -10,7 +10,7 @@ import { AnimatePresence, EASE, motion } from "@/components/motion";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { ErreurApi, requete } from "@/lib/http";
-import { accueilPour, CLE_SESSION, useSessionServeur, type Session } from "@/lib/session";
+import { accueilDeSession, CLE_SESSION, useSessionServeur, type Session } from "@/lib/session";
 import { useThemeEspace } from "@/lib/useSombre";
 
 const ENONCES = [
@@ -48,7 +48,7 @@ function Connexion() {
 
   const destination = (s: Session) => {
     const sur = retour && retour.startsWith("/") && !retour.startsWith("//") && !retour.startsWith("/connexion") ? retour : null;
-    return s.compte.doitChangerMotDePasse ? `/mot-de-passe${sur ? `?retour=${encodeURIComponent(sur)}` : ""}` : sur ?? accueilPour(s.profil.habilitations.map((h) => h.role));
+    return s.compte.doitChangerMotDePasse ? `/mot-de-passe${sur ? `?retour=${encodeURIComponent(sur)}` : ""}` : sur ?? accueilDeSession(s);
   };
 
   // Déjà connecté : on ouvre directement l'espace.

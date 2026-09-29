@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "verifier": "tsx verifier.ts"
+    "verifier": "tsx verifier.ts",
+    "verifier:analyse": "tsx verifier-analyse.ts"
   },
   "dependencies": {
     "@beile/contracts": "*"

@@ -7,7 +7,7 @@ import { useState, type ReactNode } from "react";
 import { AnimatePresence, EASE, motion } from "@/components/motion";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { accueilPour, useSessionServeur } from "@/lib/session";
+import { accueilDeSession, useSessionServeur } from "@/lib/session";
 import { useThemeEspace } from "@/lib/useSombre";
 
 /** Navigation des services publics : ce que chacun peut faire sans compte. */
@@ -22,7 +22,7 @@ export const LIENS_PUBLICS = [
 
 export function useMonEspace() {
   const { data: session } = useSessionServeur();
-  return session ? accueilPour(session.profil.habilitations.map((h) => h.role)) : null;
+  return session ? accueilDeSession(session) : null;
 }
 
 /** En-tête des pages publiques : logo, services, accès à l'espace. Menu plein écran sur téléphone. */

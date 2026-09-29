@@ -1,10 +1,9 @@
 "use client";
 
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, BellRing, Check, ChevronRight, Clock, Droplet, GitMerge, GraduationCap, Map as IconeCarte,
+  ArrowDown, ArrowUp, ArrowUpDown, BellRing, Check, ChevronRight, Clock, Droplet, GraduationCap, Map as IconeCarte,
   School, TrendingUp, UserX, Users, Wifi, X, Zap, type LucideIcon,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { Courbes } from "@/components/charts/Graphiques";
@@ -109,7 +108,6 @@ function OuAgir() {
         surtitre={`Pilotage territorial · P3 · périmètre ${libellePerimetre(hab?.perimetre)}`}
         titre="Où agir ?"
         sousTitre="Zones prioritaires selon cinq facteurs objectivés : croissance des effectifs, occupation, encadrement, absentéisme et résultats. Descendez du pays jusqu'aux établissements."
-        actions={commune ? <Link href={`/simulation?commune=${commune}`}><Button data-guide="carte-simuler" icone={GitMerge}>Simuler une mesure</Button></Link> : undefined}
       />
 
       <nav data-guide="carte-fil" aria-label="Fil de descente" className="flex flex-wrap items-center gap-1 text-[13px]">

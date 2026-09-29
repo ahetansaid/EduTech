@@ -15,7 +15,7 @@ import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import type { QuestionReponse, Tache } from "@/lib/aide";
 import { guideParId, type Guide } from "@/lib/guides";
-import { accueilPour, useSessionServeur } from "@/lib/session";
+import { accueilDeSession, useSessionServeur } from "@/lib/session";
 
 /* ------------------------------------------------------------------ Icônes */
 
@@ -35,7 +35,7 @@ export function Pictogramme({ nom, size, className }: { nom: string; size: numbe
 
 export function EnveloppeAide({ children }: { children: ReactNode }) {
   const { data: session } = useSessionServeur();
-  const monEspace = session ? accueilPour(session.profil.habilitations.map((h) => h.role)) : null;
+  const monEspace = session ? accueilDeSession(session) : null;
   return (
     <div className="flex min-h-screen flex-col bg-bg">
       <BandeNationale className="h-[4px]" />

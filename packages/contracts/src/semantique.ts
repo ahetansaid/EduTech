@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { Matiere, Milieu, Niveau, Sexe, StatutEtablissement } from "./referentiels";
+import { Cycle, Matiere, Milieu, Niveau, Sexe, StatutEtablissement } from "./referentiels";
 
 /**
  * Couche sémantique et dictionnaire national des données (§11.2).
  * Aucun indicateur n'est calculé sans définition publiée.
  */
 
-export const Dimension = z.enum(["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"]);
+export const Dimension = z.enum(["sexe", "departement", "commune", "milieu", "statut", "niveau", "cycle", "examen", "annee"]);
 export type Dimension = z.infer<typeof Dimension>;
 
 export const DIMENSION_LIBELLE: Record<Dimension, string> = {
@@ -16,7 +16,46 @@ export const DIMENSION_LIBELLE: Record<Dimension, string> = {
   milieu: "Milieu",
   statut: "Statut de l'établissement",
   niveau: "Niveau",
+  cycle: "Cycle d'enseignement",
+  examen: "Examen",
   annee: "Année scolaire",
+};
+
+/** Examen national rendu par la couche statistique. Un par fin de cycle : CEP, BEPC, BAC. */
+export const EXAMENS_NATIONAUX_K12 = ["CEP", "BEPC", "BAC"] as const;
+export type ExamenNationalK12 = (typeof EXAMENS_NATIONAUX_K12)[number];
+
+/** Équipement d'un établissement dont on peut mesurer la part d'accès. */
+export const INFRASTRUCTURES = ["eau", "electricite", "internet", "latrines", "bibliotheque"] as const;
+export type Infrastructure = (typeof INFRASTRUCTURES)[number];
+export const INFRASTRUCTURE_LIBELLE: Record<Infrastructure, string> = {
+  eau: "Point d'eau",
+  electricite: "Raccordement électrique",
+  internet: "Accès internet",
+  latrines: "Latrines",
+  bibliotheque: "Bibliothèque",
+};
+
+/**
+ * Ce qu'un calculateur observe pour rendre sa valeur. Le driver de la couche statistique ne connaît
+ * que ces quatre assiettes : un indicateur qui demanderait une cinquième n'a rien à calculer ici, et
+ * le registre le dit au lieu de rendre un nombre approximé.
+ */
+export const AssietteCalcul = z.enum(["cellule", "commune", "etablissement", "examen"]);
+export type AssietteCalcul = z.infer<typeof AssietteCalcul>;
+
+/**
+ * La voie de formation dont relève l'indicateur. Publier le périmètre, c'est permettre à un décideur
+ * de savoir d'un coup d'œil si l'outil peut répondre à sa question — et à l'équipe, quels calculateurs
+ * restent à écrire.
+ */
+export const PerimetreIndicateur = z.enum(["k12", "superieur", "eftp", "pilotage"]);
+export type PerimetreIndicateur = z.infer<typeof PerimetreIndicateur>;
+export const PERIMETRE_LIBELLE: Record<PerimetreIndicateur, string> = {
+  k12: "Primaire et secondaire",
+  superieur: "Enseignement supérieur (LMD)",
+  eftp: "EFTP et apprentissage",
+  pilotage: "Pilotage transverse",
 };
 
 /**
@@ -45,17 +84,87 @@ export const CodeIndicateur = z.enum([
   "taux_reussite_examen",
   "credits_ects_acquis",
   "taux_capitalisation_ects",
+  /* Périmètre primaire + secondaire, ajouté au registre du 2026-09-29. */
+  "taux_scolarisation_brut",
+  "population_scolarisable",
+  "taux_surage",
+  "indice_parite",
+  "part_enseignants_qualifies",
+  "ratio_apprenants_salle",
+  "taux_acces_infrastructure",
+  "places_disponibles",
+  "taux_presence_examen",
+  "dispersion_moyennes",
+  "croissance_effectifs",
+  "effectif_projete_2030",
+  /* Périmètre pilotage transverse : la qualité de la donnée elle-même, mesurée comme les autres. */
+  "taux_depot_donnees",
+  "fraicheur_donnees",
 ]);
 export type CodeIndicateur = z.infer<typeof CodeIndicateur>;
+
+/**
+ * La recette d'illustration. Elle est dans le contrat et non dans l'écran, parce que c'est le
+ * propriétaire de l'indicateur qui sait comment sa valeur se lit : un taux d'abandon et un effectif
+ * n'ont pas la même échelle, le même repère, ni le même sens. Une IA ne choisissait pas cela — le
+ * registre le porte, et n'importe quelle interface (écran, CSV, impression) rend la même figure.
+ */
+export const FormeIllustration = z.enum([
+  "jauge",
+  "serie",
+  "classement",
+  "repartition",
+  "carte",
+  "matrice",
+  "decomposition",
+]);
+export type FormeIllustration = z.infer<typeof FormeIllustration>;
+export const FORME_LIBELLE: Record<FormeIllustration, string> = {
+  jauge: "Jauge de référence",
+  serie: "Série temporelle",
+  classement: "Classement territorial",
+  repartition: "Répartition",
+  carte: "Carte choroplèthe",
+  matrice: "Croisement de deux dimensions",
+  decomposition: "Numérateur sur dénominateur",
+};
+
+/** Sens dans lequel la valeur s'améliore : c'est la moitié de la lecture d'un chiffre. */
+export const SensValeur = z.enum(["hausse_favorable", "baisse_favorable", "neutre"]);
+export type SensValeur = z.infer<typeof SensValeur>;
+
+export const PalierIllustration = z.object({
+  /** Borné inclus. `null` = borne supérieure ouverte (« et plus »). */
+  max: z.number().nullable(),
+  mention: z.string(),
+});
+export type PalierIllustration = z.infer<typeof PalierIllustration>;
+
+export const Illustration = z.object({
+  forme: FormeIllustration,
+  /** Étendue réellement rendue par le calcul, pour que la figure ne mente pas sur ses bords. */
+  echelle: z.string(),
+  sens: SensValeur,
+  /** Repère d'interprétation : valeur nationale, cible, norme publiée. */
+  reference: z.string().nullable(),
+  paliers: z.array(PalierIllustration).min(1),
+  /** Ce que le décideur doit retenir, formulé sans la valeur : la lectrice, pas le chiffre. */
+  lecture: z.string(),
+});
+export type Illustration = z.infer<typeof Illustration>;
 
 export const DefinitionIndicateur = z.object({
   code: CodeIndicateur,
   nom: z.string(),
   definition: z.string(),
   formule: z.string(),
-  unite: z.enum(["nombre", "pourcentage", "note", "ratio"]),
+  unite: z.enum(["nombre", "pourcentage", "note", "ratio", "indice", "jours"]),
   /** Le moteur qui rend le chiffre. Un indicateur « registre » n'est pas interrogeable par Ask Education. */
   moteur: MoteurCalcul,
+  /** La voie de formation couverte. Sert à répondre « cet outil sait-il mesurer ce que je demande ? ». */
+  perimetre: PerimetreIndicateur,
+  /** L'observation que le calculateur exige : ce qu'on doit avoir enregistré pour que le chiffre existe. */
+  assiette: AssietteCalcul,
   source: z.string(),
   frequence: z.string(),
   proprietaire: z.string(),
@@ -63,6 +172,10 @@ export const DefinitionIndicateur = z.object({
   dimensions: z.array(Dimension),
   /** Seuil de publication : en dessous, la cellule est masquée (protection contre la réidentification). */
   effectifMinimalPublication: z.number().int(),
+  /** De quoi le numérateur et le dénominateur sont faits, en mots : un ratio sans assiette nommée se relit mal. */
+  libelleNumerateur: z.string().nullable(),
+  libelleDenominateur: z.string().nullable(),
+  illustration: Illustration,
 });
 export type DefinitionIndicateur = z.infer<typeof DefinitionIndicateur>;
 
@@ -78,6 +191,9 @@ export const RequeteSemantique = z.object({
       milieu: Milieu.optional(),
       statut: StatutEtablissement.optional(),
       niveau: Niveau.optional(),
+      cycle: Cycle.optional(),
+      examen: z.enum(EXAMENS_NATIONAUX_K12).optional(),
+      infrastructure: z.enum(INFRASTRUCTURES).optional(),
       ageMin: z.number().int().optional(),
       ageMax: z.number().int().optional(),
       matiere: Matiere.optional(),

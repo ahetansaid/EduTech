@@ -2,7 +2,7 @@ import type { Role } from "@beile/contracts";
 
 /**
  * Visites guidées de BEILE : une par espace (démarrée à la première visite), plus quelques écrans
- * riches (carnet de classe, « Où agir ? », simulation, Ask Education, assistance).
+ * riches (carnet de classe, « Où agir ? », Ask Education, assistance).
  *
  * Une étape vise un élément marqué `data-guide="…"` dans la page. Si l'élément n'existe pas
  * (donnée absente, rôle différent, écran pas encore livré), l'étape est ignorée sans bruit.
@@ -166,52 +166,9 @@ export const GUIDES: Guide[] = [
         titre: "Le détail qui explique",
         texte: "Ce panneau liste les zones à examiner, puis les facteurs et les établissements de la commune choisie.",
       },
-      {
-        cible: "carte-simuler",
-        titre: "Passez à la décision",
-        texte: "« Simuler une mesure » ouvre la simulation pour cette commune : construire, affecter des enseignants, voir l'effet en 2030.",
-      },
       BOUTON_GUIDE,
     ],
   },
-  {
-    id: "simulation",
-    titre: "Simulation « et si ? »",
-    roles: ["administration_centrale", "direction_departementale"],
-    depart: "/simulation",
-    ecrans: /^\/simulation/,
-    nature: "ecran",
-    profil: "administration_centrale",
-    etapes: [
-      {
-        titre: "Mesurer avant de décider",
-        texte: "Cet écran projette une commune jusqu'en 2030 : effectifs attendus, places disponibles, enseignants en poste.",
-      },
-      {
-        cible: "simulation-scenario",
-        titre: "Choisissez la commune",
-        texte: "Prenez une commune dans la liste, ou touchez l'une des plus saturées. « Réinitialiser » revient aux valeurs de départ.",
-      },
-      {
-        cible: "simulation-curseurs",
-        titre: "Réglez votre scénario",
-        texte: "Établissements à construire, enseignants à affecter, croissance des effectifs. Le résultat se recalcule à chaque mouvement.",
-        pourquoi: "« Appliquer la tendance observée » reprend la croissance réelle des dernières années, sans hypothèse arbitraire.",
-      },
-      {
-        cible: "simulation-resultats",
-        titre: "Lisez l'avant / après",
-        texte: "La courbe des apprenants passe-t-elle au-dessus de celle des places ? Les besoins indiquent ce qu'il faut pour revenir à 100 %.",
-      },
-      {
-        selecteur: "#hypotheses",
-        titre: "Les hypothèses sont visibles",
-        texte: "Chaque formule est écrite en clair. Une simulation éclaire une décision ; elle ne la remplace pas.",
-      },
-      BOUTON_GUIDE,
-    ],
-  },
-
   /* ---------------------------------------------------------------- Direction départementale et inspection */
   {
     id: "territoire",
