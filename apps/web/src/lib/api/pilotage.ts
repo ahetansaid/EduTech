@@ -83,17 +83,6 @@ export interface FicheCommune {
 }
 export type EtablissementCommune = FicheCommune["etablissements"][number];
 
-/** GET /pilotage/communes/:id/contexte */
-export interface ContexteCommune {
-  communeId: string;
-  annee: string;
-  populationScolarisable: number;
-  enseignantsQualifies: number;
-  confiance: IndiceConfiance;
-  couverture: { etablissementsAyantTransmis: number; etablissementsAttendus: number };
-  source: string;
-}
-
 /** GET /pilotage/territoire */
 export interface ConsoleTerritoriale {
   perimetre: PerimetreLibelle;
@@ -125,18 +114,6 @@ export interface AbsencesDuJour { date: string; horodatage: string; etablissemen
 export interface ComplementsTerritoire {
   references: { maths: number | null; ratio: number | null; occupation: number | null; absenteisme: number | null };
   etablissements: { id: string; infrastructures: Infrastructures }[];
-}
-
-/** GET /pilotage/planification/:id */
-export interface Planification {
-  commune: { id: string; nom?: string; milieu: "urbain" | "rural" };
-  effectif: number;
-  capacite: number;
-  enseignants: number;
-  etablissements: number;
-  croissanceAnnuelle: number;
-  serie: { annee: string; effectif: number }[];
-  communesSaturees: { id: string; nom?: string; occupation: number }[];
 }
 
 /** POST /plateforme/relances */
@@ -185,15 +162,6 @@ export function useFicheCommune(id: string | null) {
   });
 }
 
-export function useContexteCommune(id: string | null) {
-  return useQuery({
-    queryKey: ["pilotage", "commune", id, "contexte"],
-    queryFn: ({ signal }) => lire<ContexteCommune>(`/pilotage/communes/${encodeURIComponent(id!)}/contexte`, signal),
-    enabled: !!id,
-    staleTime: CINQ_MINUTES,
-  });
-}
-
 /** Indicateur à la demande (POST /indicateurs) : même moteur et même périmètre que le reste du pilotage. */
 export function useIndicateurPilotage(requete: RequeteSemantique, actif = true) {
   return useQuery({
@@ -227,16 +195,6 @@ export function useComplementsTerritoire(actif = true) {
     queryFn: ({ signal }) => lire<ComplementsTerritoire>("/pilotage/territoire/complements", signal),
     enabled: actif,
     staleTime: CINQ_MINUTES,
-  });
-}
-
-export function usePlanification(id: string | null) {
-  return useQuery({
-    queryKey: ["pilotage", "planification", id],
-    queryFn: ({ signal }) => lire<Planification>(`/pilotage/planification/${encodeURIComponent(id!)}`, signal),
-    enabled: !!id,
-    staleTime: CINQ_MINUTES,
-    placeholderData: keepPreviousData,
   });
 }
 

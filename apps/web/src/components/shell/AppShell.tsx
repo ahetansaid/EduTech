@@ -10,7 +10,7 @@ import { AnimatePresence, IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { NAVIGATION, navigationPour } from "@/lib/navigation";
-import { accueilPour, useProfil, useSession } from "@/lib/session";
+import { accueilDeSession, useProfil, useSession } from "@/lib/session";
 import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
@@ -206,13 +206,14 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
 }
 
 function AccesEspaceRefuse() {
-  const profil = useProfil();
+  const session = useSession();
+  const profil = session.profil;
   return (
     <div className="mx-auto max-w-lg rounded-xl border border-line/70 bg-surface p-8 text-center shadow-float">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-critical">Espace non autorisé</p>
       <h1 className="mt-2 text-xl font-bold">Cet espace ne correspond à aucune de vos habilitations</h1>
       <p className="mt-2 text-sm text-ink-2">Connecté en tant que {profil.nomAffiche} — {profil.fonction}. Si vous pensez devoir y accéder, adressez-vous à l'administrateur de la plateforme.</p>
-      <Link href={accueilPour(profil.habilitations.map((h) => h.role))} className="mt-5 inline-flex h-10 items-center rounded-md bg-navy px-4 text-sm font-medium text-white">Retour à mon espace</Link>
+      <Link href={accueilDeSession(session)} className="mt-5 inline-flex h-10 items-center rounded-md bg-navy px-4 text-sm font-medium text-white">Retour à mon espace</Link>
     </div>
   );
 }

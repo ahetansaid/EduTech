@@ -80,12 +80,6 @@
 
 - Facteurs de priorité, capacité d'accueil, liste des établissements.
 
-### Simulation « et si ? »
-
-`/simulation` — Mesurer l'effet d'une construction ou d'une affectation.
-
-- Limitée aux communes de votre département.
-
 ### Ask Education, qualité, dictionnaire
 
 `/ask` — Interroger les données et vérifier leur complétude.

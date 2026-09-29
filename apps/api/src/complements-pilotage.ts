@@ -1,15 +1,12 @@
 import type { Perimetre } from "@beile/contracts";
 import type { CouchesNationales } from "@beile/simulation/macro";
 import { schema } from "@beile/db";
-import { ANNEE_COURANTE } from "@beile/simulation/macro";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { calculer, communesDuPerimetre, priorites } from "@beile/simulation/semantique";
-import { communeById } from "@beile/simulation/territoire";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, journaliser, refuser, type Variables } from "./commun";
+import { authentifie, base, refuser, type Variables } from "./commun";
 import { chargerCouches, memo } from "./donnees";
 import { perimetrePilotage } from "./pilotage";
 
@@ -23,7 +20,6 @@ export const complementsPilotage = new Hono<{ Variables: Variables }>();
 const clePerimetre = (p: Perimetre) => JSON.stringify(p);
 /** Même clé de mémo que pilotage.ts : le calcul des priorités est partagé. */
 const prioritesDe = (couches: CouchesNationales) => memo(couches, "priorites", () => priorites(couches));
-const IdCommune = z.string().regex(/^[a-z0-9-]{2,60}$/);
 
 /** Niveaux d'alerte et facteurs, restreints aux communes du périmètre (la carte « Où agir ? » n'affiche que ce qu'on peut ouvrir). */
 complementsPilotage.get("/pilotage/priorites", authentifie, async (c) => {
@@ -72,34 +68,6 @@ complementsPilotage.get("/pilotage/flux", authentifie, async (c) => {
     parType: parType.sort((a, b) => b.n - a.n),
     derniers,
   });
-});
-
-/** Qualité des données de base d'une commune (planification « et si ? ») : confiance, couverture, source. */
-complementsPilotage.get("/pilotage/communes/:id/contexte", authentifie, async (c) => {
-  const profil = c.get("profil");
-  const perimetre = perimetrePilotage(profil);
-  const id = IdCommune.parse(c.req.param("id"));
-  const commune = communeById.get(id);
-  if (!commune) throw new HTTPException(404, { message: "Commune inconnue" });
-  const autorisees = communesDuPerimetre(perimetre);
-  if (autorisees && !autorisees.has(id)) {
-    await journaliser(profil, "Consultation d'une commune", id, "statistique", false, "perimetre");
-    refuser("Commune hors de votre périmètre : refus journalisé");
-  }
-  const couches = await chargerCouches(base());
-  return c.json(memo(couches, `contexte-commune:${id}`, () => {
-    const a = couches.communes.get(id)!.annees[ANNEE_COURANTE];
-    const effectif = calculer(couches, { indicateur: "effectif_apprenants", filtres: { communeId: id }, ventilation: [] });
-    return {
-      communeId: id,
-      annee: ANNEE_COURANTE,
-      populationScolarisable: a.populationScolarisable,
-      enseignantsQualifies: a.enseignantsQualifies,
-      confiance: effectif.confiance,
-      couverture: effectif.couverture,
-      source: effectif.definition.source,
-    };
-  }));
 });
 
 /**

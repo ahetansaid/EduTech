@@ -1,6 +1,4 @@
 import type {
-  CodeIndicateur,
-  DefinitionIndicateur,
   Dimension,
   IndiceConfiance,
   LigneResultat,
@@ -11,132 +9,57 @@ import type {
 } from "@beile/contracts";
 import { NIVEAUX } from "@beile/contracts";
 import {
-  AGE_THEORIQUE,
   ANNEE_COURANTE,
   ANNEES,
   cycleDuNiveau,
-  partAuDessus,
-  RETARD,
   type Annee,
   type CommuneStats,
   type CouchesNationales,
   type MatiereSuivie,
+  type StatCommuneAnnee,
 } from "./macro";
 import { DATE_SIMULEE } from "./micro";
+import {
+  type Contribution,
+  EXAMENS_RENDES,
+  examenDuNiveau,
+  type Filtres,
+  type Observation,
+  partAge,
+  REGISTRE,
+} from "./registre";
 import { COMMUNES, communeById, departementById } from "./territoire";
 
 const fr = (v: number, d = 1) => v.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /**
- * Couche sémantique : le dictionnaire national porte la définition officielle de chaque indicateur,
- * et le moteur la compile en calcul. Deux directions qui interrogent le même indicateur obtiennent
- * nécessairement le même chiffre.
+ * Couche sémantique : le dictionnaire national publie les définitions, `registre.ts` en porte les
+ * calculateurs, ce fichier n'est que le driver. Il ne connaît aucune formule — il construit les
+ * observations que l'assiette déclarée autorise, appelle la contribution de l'indicateur, accumule
+ * numérateur et dénominateur par groupe de ventilation, puis applique le seuil de publication.
+ *
+ * Deux questions qui interrogent le même indicateur obtiennent donc le même chiffre, et un indicateur
+ * sans calculateur ne peut pas être déclaré : `Record<CodeIndicateur, EntreeRegistre>` est vérifié à la
+ * compilation, pas à l'usage.
  */
 
-const SOURCE = "Registre des événements BEILE, EducMaster, système d'examens (données simulées)";
-const SOURCE_REGISTRE = "Registre des écritures du supérieur (BEILE, module scolarité) — aucune donnée simulée";
-
-export const DICTIONNAIRE: Record<CodeIndicateur, DefinitionIndicateur> = {
-  effectif_apprenants: {
-    code: "effectif_apprenants", nom: "Effectif des apprenants",
-    definition: "Nombre d'apprenants inscrits et non sortis (abandon ou transfert hors système) à la date d'observation.",
-    formule: "Σ inscriptions + reprises + transferts entrants − abandons − transferts sortants",
-    unite: "nombre", moteur: "simulation", source: SOURCE, frequence: "Quasi temps réel", proprietaire: "Direction de la programmation et de la prospective",
-    version: "1.2", dimensions: ["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"], effectifMinimalPublication: 5,
-  },
-  taux_seuil_moyenne: {
-    code: "taux_seuil_moyenne", nom: "Proportion d'apprenants atteignant un seuil de moyenne",
-    definition: "Part des apprenants évalués dont la moyenne annuelle dans la matière est supérieure ou égale au seuil.",
-    formule: "apprenants évalués avec moyenne ≥ seuil ÷ apprenants évalués × 100",
-    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Périodique (trimestre)", proprietaire: "Direction des examens et concours",
-    version: "2.0", dimensions: ["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"], effectifMinimalPublication: 10,
-  },
-  moyenne_generale: {
-    code: "moyenne_generale", nom: "Moyenne des apprenants",
-    definition: "Moyenne arithmétique des moyennes annuelles des apprenants évalués dans la matière.",
-    formule: "Σ moyennes des apprenants évalués ÷ apprenants évalués",
-    unite: "note", moteur: "simulation", source: SOURCE, frequence: "Périodique (trimestre)", proprietaire: "Direction des examens et concours",
-    version: "1.1", dimensions: ["sexe", "departement", "commune", "milieu", "statut", "niveau", "annee"], effectifMinimalPublication: 10,
-  },
-  taux_absenteisme: {
-    code: "taux_absenteisme", nom: "Taux d'absentéisme",
-    definition: "Part des demi-journées de classe manquées, justifiées ou non, sur les demi-journées dues.",
-    formule: "demi-journées d'absence ÷ demi-journées dues × 100",
-    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Quotidienne", proprietaire: "Direction de l'enseignement secondaire",
-    version: "1.0", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 10,
-  },
-  ratio_apprenants_enseignant: {
-    code: "ratio_apprenants_enseignant", nom: "Ratio apprenants par enseignant",
-    definition: "Nombre d'apprenants pour un enseignant en poste, tous statuts confondus.",
-    formule: "effectif des apprenants ÷ enseignants en poste",
-    unite: "ratio", moteur: "simulation", source: SOURCE, frequence: "Mensuelle", proprietaire: "Direction des ressources humaines",
-    version: "1.1", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 1,
-  },
-  taux_occupation: {
-    code: "taux_occupation", nom: "Taux d'occupation des établissements",
-    definition: "Rapport entre l'effectif accueilli et la capacité d'accueil déclarée des établissements.",
-    formule: "effectif ÷ capacité d'accueil × 100",
-    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Mensuelle", proprietaire: "Direction de la programmation et de la prospective",
-    version: "1.0", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 1,
-  },
-  taux_abandon: {
-    code: "taux_abandon", nom: "Taux d'abandon",
-    definition: "Part des apprenants inscrits en début d'année ayant quitté le système sans transfert au cours de l'année.",
-    formule: "abandons de l'année ÷ inscrits en début d'année × 100",
-    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Annuelle", proprietaire: "Direction de la programmation et de la prospective",
-    version: "1.0", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 10,
-  },
-  taux_reussite_examen: {
-    code: "taux_reussite_examen", nom: "Taux de réussite à l'examen",
-    definition: "Nombre de candidats admis rapporté au nombre de candidats effectivement évalués (présents).",
-    formule: "candidats admis ÷ candidats présents × 100",
-    unite: "pourcentage", moteur: "simulation", source: SOURCE, frequence: "Annuelle (après délibération)", proprietaire: "Direction des examens et concours",
-    version: "3.1", dimensions: ["departement", "commune", "milieu", "annee"], effectifMinimalPublication: 10,
-  },
-  /* ------------------------------------------------------------------ Crédits ECTS — l'unité de compte du supérieur.
-   * Ces deux définitions sont publiées avec leur calculateur : le service de scolarité du supérieur
-   * (`/enseignement-superieur/scolarite/credits-ects`, apps/api/src/etudiants-superieur.ts) les rend à
-   * partir des écritures enregistrées, par période pour un établissement et par voie pour le pilotage.
-   * Le moteur est `registre`, pas `simulation` : la couche statistique nationale n'a aucune UE, aucune
-   * période ni aucun crédit — lui demander de les calculer produirait un chiffre vide sous un nom vrai.
-   * Leurs `dimensions` sont celles que ce calculateur agrège vraiment. Ni sexe ni territoire : la
-   * ventilation communale des crédits attendrait une jointure que le service ne publie pas encore, et
-   * une dimension annoncée sans rendu serait une promesse de plus qu'un dictionnaire n'en peut tenir.
-   */
-  credits_ects_acquis: {
-    code: "credits_ects_acquis", nom: "Crédits ECTS acquis",
-    definition: "Somme des crédits ECTS attachés aux acquisitions d'unité d'enseignement encore en cours de validité, pour la population et la période observées. Une UE s'acquiert en bloc, jamais au prorata : le crédit entier est compté à la date d'acquisition, et un acquis périmé selon la règle de validité sort du compte sans disparaître du registre.",
-    formule: "Σ crédits acquis des validations d'UE dont l'acquis est en cours de validité",
-    unite: "nombre", moteur: "registre", source: SOURCE_REGISTRE, frequence: "À chaque décision de validation",
-    proprietaire: "Direction générale de l'enseignement supérieur (MESRS)",
-    version: "1.0", dimensions: ["annee"], effectifMinimalPublication: 10,
-  },
-  taux_capitalisation_ects: {
-    code: "taux_capitalisation_ects", nom: "Taux de capitalisation des crédits ECTS",
-    definition: "Part, en pourcentage, des crédits attendus sur la période qui ont été réellement acquis par les étudiants sous contrat signé. C'est la mesure du parcours LMD : un étudiant qui valide sa période a capitalisé 30 crédits sur 30. Le dénominateur est la population contractée, pas la population inscrite : un étudiant sans contrat signé n'a rien eu à valider, et le compter ferait baisser le taux pour une raison administrative.",
-    formule: "crédits ECTS acquis ÷ (crédits attendus de la période × étudiants sous contrat signé) × 100",
-    unite: "pourcentage", moteur: "registre", source: SOURCE_REGISTRE, frequence: "Périodique (à la clôture de période)",
-    proprietaire: "Direction générale de l'enseignement supérieur (MESRS)",
-    version: "1.0", dimensions: ["annee"], effectifMinimalPublication: 10,
-  },
-};
-
-/** Les indicateurs qu'un moteur donné est capable de rendre. Le dictionnaire ne promet jamais un calcul absent. */
-export const codesDuMoteur = (moteur: DefinitionIndicateur["moteur"]): CodeIndicateur[] =>
-  (Object.values(DICTIONNAIRE) as DefinitionIndicateur[]).filter((d) => d.moteur === moteur).map((d) => d.code);
-
-/** Un indicateur se calcule-t-il sur les écritures du supérieur, hors de la couche statistique nationale ? */
-export const estCalculeParLeRegistre = (code: CodeIndicateur) => DICTIONNAIRE[code].moteur === "registre";
-
-/** Part de l'effectif d'un niveau dont l'âge (au 31/12 de l'année d'observation) est dans l'intervalle. */
-export function partAge(niveau: Niveau, ageMin?: number, ageMax?: number) {
-  if (ageMin === undefined && ageMax === undefined) return 1;
-  const base = AGE_THEORIQUE[niveau];
-  return RETARD.reduce((s, p, k) => {
-    const age = base + k;
-    return s + ((ageMin === undefined || age >= ageMin) && (ageMax === undefined || age <= ageMax) ? p : 0);
-  }, 0);
-}
+export {
+  CODES,
+  DICTIONNAIRE,
+  ECARTS_PERIMETRE,
+  REGISTRE,
+  codesDuMoteur,
+  codesInterrogeables,
+  estCalculeParLeRegistre,
+  examenDuNiveau,
+  evoque,
+  evocateurEcarte,
+  indicatorReconnu,
+  partAge,
+  serviceRendant,
+  tauxDeCapitalisation,
+} from "./registre";
+export type { Contribution, EcartPerimetre, EntreeRegistre, Observation } from "./registre";
 
 function libelleCle(dim: Dimension, cle: string) {
   switch (dim) {
@@ -145,6 +68,7 @@ function libelleCle(dim: Dimension, cle: string) {
     case "commune": return communeById.get(cle)?.nom ?? cle;
     case "milieu": return cle === "urbain" ? "Urbain" : "Rural";
     case "statut": return cle === "public" ? "Public" : cle === "prive" ? "Privé" : "Confessionnel";
+    case "cycle": return cle === "primaire" ? "Primaire" : "Secondaire";
     default: return cle;
   }
 }
@@ -184,15 +108,24 @@ export function confiance(stats: CommuneStats[], annee: Annee): IndiceConfiance 
   return { completude: r(couverture), fraicheur: r(fraicheur), coherence: r(coherence), validation: r(validation), score: r(score) };
 }
 
+const STATUTS = ["public", "prive", "confessionnel"] as const;
+const effectifAnnee = (a: StatCommuneAnnee) =>
+  NIVEAUX.reduce((s, n) => s + a.niveaux[n].effectifF + a.niveaux[n].effectifM, 0);
+
+/**
+ * Le calcul : une boucle, quatre assiettes — cellule (niveau × sexe × statut), commune-année, parc
+ * d'établissements, examen national. Une contribution qui ne peut pas observer sa cellule rend `null`
+ * et n'entre dans aucun cumul : un dénominateur nul se rend `null`, jamais 0.
+ */
 export function calculer(couches: CouchesNationales, requete: RequeteSemantique, perimetre: Perimetre | null = null): ResultatIndicateur {
-  const def = DICTIONNAIRE[requete.indicateur];
-  const f = requete.filtres;
+  const entree = REGISTRE[requete.indicateur];
+  const def = entree.definition;
+  const f: Filtres = requete.filtres;
   const annees: Annee[] = f.anneeScolaire ? [f.anneeScolaire as Annee] : requete.ventilation.includes("annee") ? [...ANNEES] : [ANNEE_COURANTE];
   const restreintes = communesDuPerimetre(perimetre);
   const parts = cacheStatut.get(couches) ?? partsStatut(couches);
   cacheStatut.set(couches, parts);
   const matiere: MatiereSuivie = f.matiere === "Français" ? "Français" : "Mathématiques";
-  const seuil = f.seuil ?? 10;
 
   const communes = [...couches.communes.values()].filter((c) =>
     (!restreintes || restreintes.has(c.communeId)) &&
@@ -201,56 +134,97 @@ export function calculer(couches: CouchesNationales, requete: RequeteSemantique,
     (!f.milieu || c.milieu === f.milieu),
   );
 
-  const groupes = new Map<string, { num: number; den: number; effectif: number }>();
-  const cle = (c: CommuneStats, annee: Annee, niveau?: Niveau, sexe?: "F" | "M", statut?: string) =>
-    requete.ventilation.map((d) =>
-      d === "sexe" ? sexe ?? "?" : d === "departement" ? c.departementId : d === "commune" ? c.communeId : d === "milieu" ? c.milieu
-        : d === "statut" ? statut ?? "?" : d === "niveau" ? niveau ?? "?" : annee,
-    ).join("¦");
-  const ajouter = (k: string, num: number, den: number, effectif: number) => {
+  const groupes = new Map<string, Contribution>();
+  const cle = (o: Observation) =>
+    requete.ventilation
+      .map((d) =>
+        d === "sexe" ? o.sexe ?? "?"
+          : d === "departement" ? o.departementId
+          : d === "commune" ? o.communeId
+          : d === "milieu" ? o.milieu
+          : d === "statut" ? o.statut ?? "?"
+          : d === "niveau" ? o.niveau ?? "?"
+          : d === "cycle" ? (o.niveau ? cycleDuNiveau(o.niveau) : "?")
+          : d === "examen" ? o.examen?.nom ?? "?"
+          : o.annee,
+      )
+      .join("¦");
+  const ajouter = (k: string, c: Contribution | null) => {
+    if (!c) return;
     const g = groupes.get(k) ?? { num: 0, den: 0, effectif: 0 };
-    g.num += num; g.den += den; g.effectif += effectif;
+    g.num += c.num; g.den += c.den; g.effectif += c.effectif;
     groupes.set(k, g);
   };
 
-  const parCellule = ["effectif_apprenants", "taux_seuil_moyenne", "moyenne_generale"].includes(requete.indicateur);
-  const statuts = requete.ventilation.includes("statut") ? (["public", "prive", "confessionnel"] as const) : f.statut ? [f.statut] : [null];
+  // Un indicateur rendu par un service métier n'a pas d'assiette ici : le driver s'arrête au lieu
+  // d'approximer, sur une couche qui ne porte ni UE, ni période, ni crédit.
+  const rendre = entree.rend.sorte === "couche-statistique" ? entree.rend.contribution : null;
+  // Une assiette communale pondère elle-même ses statuts — la parité a besoin des deux sexes ; les
+  // assiettes à granulométrie fine se découpent vraiment, parce qu'elles portent des établissements distincts.
+  const decoupeStatut = def.assiette === "cellule" || def.assiette === "etablissement";
+  const statutsObserves = decoupeStatut
+    ? requete.ventilation.includes("statut") ? STATUTS : f.statut ? [f.statut] : [null]
+    : [null];
 
-  for (const c of communes) {
-    for (const annee of annees) {
-      const a = c.annees[annee];
-      if (parCellule) {
-        for (const niveau of NIVEAUX) {
-          if (f.niveau && niveau !== f.niveau) continue;
-          const pAge = partAge(niveau, f.ageMin, f.ageMax);
-          if (pAge === 0) continue;
-          const cell = a.niveaux[niveau];
-          for (const sexe of ["F", "M"] as const) {
-            if (f.sexe && sexe !== f.sexe) continue;
-            for (const statut of statuts) {
-              const pStatut = statut ? parts.get(c.communeId)?.[cycleDuNiveau(niveau)][statut] ?? 0 : 1;
-              const eff = (sexe === "F" ? cell.effectifF : cell.effectifM) * pAge * pStatut;
-              if (eff <= 0) continue;
-              const n = cell.notes[matiere][sexe];
-              const k = cle(c, annee, niveau, sexe, statut ?? undefined);
-              if (requete.indicateur === "effectif_apprenants") ajouter(k, eff, 1, eff);
-              else if (requete.indicateur === "taux_seuil_moyenne") ajouter(k, eff * partAuDessus(seuil, n.moy, n.et), eff, eff);
-              else ajouter(k, eff * n.moy, eff, eff);
+  if (rendre) {
+    for (const c of communes) {
+      for (const annee of annees) {
+        const a = c.annees[annee];
+        const tronc: Observation = {
+          communeId: c.communeId,
+          departementId: c.departementId,
+          milieu: c.milieu,
+          annee,
+          niveau: null,
+          sexe: null,
+          statut: null,
+          effectif: 0,
+          poidsAge: 1,
+          stats: a,
+          annees: c.annees,
+          projection2030: c.projection2030,
+          etabs: [],
+          examen: null,
+          notes: null,
+          matiere,
+          partsStatut: parts.get(c.communeId) ?? null,
+        };
+
+        if (def.assiette === "cellule") {
+          for (const niveau of NIVEAUX) {
+            if (f.niveau && niveau !== f.niveau) continue;
+            if (f.cycle && cycleDuNiveau(niveau) !== f.cycle) continue;
+            const pAge = partAge(niveau, f.ageMin, f.ageMax);
+            if (pAge === 0) continue;
+            const cell = a.niveaux[niveau];
+            for (const sexe of ["F", "M"] as const) {
+              if (f.sexe && sexe !== f.sexe) continue;
+              for (const statut of statutsObserves) {
+                const pStatut = statut ? parts.get(c.communeId)?.[cycleDuNiveau(niveau)][statut] ?? 0 : 1;
+                const effectif = (sexe === "F" ? cell.effectifF : cell.effectifM) * pAge * pStatut;
+                if (effectif <= 0) continue;
+                const o: Observation = { ...tronc, niveau, sexe, statut, effectif, poidsAge: pAge, notes: cell.notes[matiere][sexe] };
+                ajouter(cle(o), rendre(o, f));
+              }
             }
           }
-        }
-      } else {
-        const eff = NIVEAUX.reduce((s, n) => s + a.niveaux[n].effectifF + a.niveaux[n].effectifM, 0);
-        const k = cle(c, annee);
-        switch (requete.indicateur) {
-          case "taux_absenteisme": ajouter(k, eff * a.tauxAbsenteisme, eff, eff); break;
-          case "taux_abandon": ajouter(k, eff * a.tauxAbandon, eff, eff); break;
-          case "ratio_apprenants_enseignant": ajouter(k, eff, a.enseignants, eff); break;
-          case "taux_occupation": ajouter(k, eff, a.capacite, eff); break;
-          case "taux_reussite_examen": {
-            const ex = c.examens[annee][f.niveau === "CM2" ? "CEP" : f.niveau === "Tle" ? "BAC" : "BEPC"];
-            ajouter(k, ex.admis, ex.presents, ex.presents);
-            break;
+        } else if (def.assiette === "commune") {
+          const o: Observation = { ...tronc, effectif: effectifAnnee(a) };
+          ajouter(cle(o), rendre(o, f));
+        } else if (def.assiette === "etablissement") {
+          const tous = couches.etablissementsParCommune.get(c.communeId) ?? [];
+          for (const statut of statutsObserves) {
+            const etabs = statut ? tous.filter((e) => e.statut === statut) : tous;
+            if (!etabs.length) continue;
+            const o: Observation = { ...tronc, statut, etabs, effectif: etabs.reduce((s, e) => s + e.effectif, 0) };
+            ajouter(cle(o), rendre(o, f));
+          }
+        } else {
+          const noms = f.examen ? [f.examen] : requete.ventilation.includes("examen") ? EXAMENS_RENDES : [examenDuNiveau(f.niveau)];
+          for (const nom of noms) {
+            const ex = c.examens[annee][nom];
+            const o: Observation = { ...tronc, effectif: ex.presents, examen: { nom, inscrits: ex.inscrits, presents: ex.presents, admis: ex.admis } };
+            ajouter(cle(o), rendre(o, f));
           }
         }
       }
@@ -258,11 +232,11 @@ export function calculer(couches: CouchesNationales, requete: RequeteSemantique,
   }
 
   const valeurDe = (num: number, den: number) => {
-    if (requete.indicateur === "effectif_apprenants") return Math.round(num);
+    if (def.unite === "nombre") return Math.round(num);
     if (den === 0) return null;
     const v = num / den;
     if (def.unite === "pourcentage") return Math.round(v * 1000) / 10;
-    if (def.unite === "ratio") return Math.round(v * 10) / 10;
+    if (def.unite === "ratio" || def.unite === "jours") return Math.round(v * 10) / 10;
     return Math.round(v * 100) / 100;
   };
 
@@ -280,9 +254,14 @@ export function calculer(couches: CouchesNationales, requete: RequeteSemantique,
           effectif: Math.round(g.effectif),
           masquee,
         };
-      }).sort((a, b) => (requete.ventilation[0] === "annee" || requete.ventilation[0] === "niveau" ? 0 : (b.valeur ?? -1) - (a.valeur ?? -1)))
+      }).sort((a, b) => (["annee", "niveau", "cycle", "examen"].includes(requete.ventilation[0] ?? "") ? 0 : (b.valeur ?? -1) - (a.valeur ?? -1)))
     : [];
   if (requete.ventilation[0] === "niveau") lignes.sort((a, b) => NIVEAUX.indexOf(a.cle.split("¦")[0] as Niveau) - NIVEAUX.indexOf(b.cle.split("¦")[0] as Niveau));
+  if (requete.ventilation[0] === "cycle") lignes.sort((a, b) => Number(a.cle !== "primaire") - Number(b.cle !== "primaire"));
+  if (requete.ventilation[0] === "examen") {
+    const rang = (c: string) => EXAMENS_RENDES.indexOf(c as (typeof EXAMENS_RENDES)[number]);
+    lignes.sort((a, b) => rang(a.cle) - rang(b.cle));
+  }
   if (requete.ventilation[0] === "annee") lignes.sort((a, b) => a.cle.localeCompare(b.cle));
 
   // Série temporelle : le chiffre principal est celui de la dernière année, pas un cumul.
@@ -293,8 +272,8 @@ export function calculer(couches: CouchesNationales, requete: RequeteSemantique,
     requete,
     definition: def,
     valeur: derniereAnnee ? derniereAnnee.valeur : valeurDe(totalNum, totalDen),
-    numerateur: requete.indicateur === "taux_seuil_moyenne" ? Math.round(totalNum) : null,
-    denominateur: Math.round(requete.indicateur === "effectif_apprenants" ? totalNum : totalDen),
+    numerateur: def.libelleNumerateur && def.unite !== "nombre" ? Math.round(totalNum) : null,
+    denominateur: Math.round(def.libelleDenominateur === null ? totalNum : totalDen),
     lignes,
     periode: annees.length > 1 ? `${annees[0]} à ${annees[annees.length - 1]}` : anneeConf,
     couverture: {
@@ -343,3 +322,16 @@ export function priorites(couches: CouchesNationales) {
   }
   return res;
 }
+
+/**
+ * La couverture du moteur en chiffres : ce que le dictionnaire publie contre ce que le registre sait
+ * calculer. Servi par l'API pour qu'un auditeur vérifie l'absence de promesse non tenue sans lire le code.
+ */
+export const couvertureRegistre = () => {
+  const entrees = Object.values(REGISTRE);
+  return {
+    publiees: entrees.length,
+    calculables: entrees.filter((e) => e.rend.sorte === "couche-statistique").length,
+    renduesParUnService: entrees.filter((e) => e.rend.sorte === "service-metier").length,
+  };
+};

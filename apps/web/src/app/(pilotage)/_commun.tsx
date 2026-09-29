@@ -13,7 +13,7 @@ import { communeById, departementById } from "@beile/simulation/territoire";
 import type { NiveauAlerte } from "@/lib/api/pilotage";
 
 /**
- * Éléments partagés des écrans de pilotage (cockpit, « Où agir ? », console territoriale, Ask, simulation).
+ * Éléments partagés des écrans de pilotage (cockpit, « Où agir ? », console territoriale, Ask).
  * Mappings centraux des statuts, états obligatoires (chargement, refus, erreur) et feuille modale.
  */
 

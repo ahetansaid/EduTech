@@ -10,7 +10,7 @@ import {
 } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
-import { communesDuPerimetre, DICTIONNAIRE } from "@beile/simulation/semantique";
+import { communesDuPerimetre, DICTIONNAIRE, tauxDeCapitalisation } from "@beile/simulation/semantique";
 import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -1550,8 +1550,8 @@ async function periodesBrutes(etablissements: Set<string> | null, annee: string 
   }));
 }
 
-/** Le taux, arrondi au dixième : une virgule de plus n'ajouterait rien à une somme de crédits entiers. */
-const tauxDe = (acquis: number, attendus: number) => (attendus > 0 ? Math.round((acquis / attendus) * 1000) / 10 : null);
+/** L'arrondi est celui du registre des calculateurs : la projection d'écran et le dictionnaire publient le même dixième. */
+const tauxDe = tauxDeCapitalisation;
 
 /**
  * Cellule établissement : une ligne par période, effectif = population sous contrat. Rien n'est masqué

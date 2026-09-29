@@ -67,6 +67,17 @@ export function useDeconnexion() {
   });
 }
 
+/**
+ * Page d'accueil à partir de la session complète : comme `accueilPour`, mais le directeur d'un
+ * établissement du supérieur arrive dans son espace du supérieur, pas sur le tableau de bord scolaire.
+ */
+export function accueilDeSession(s: Pick<Session, "profil" | "contexte">): string {
+  const roles = s.profil.habilitations.map((h) => h.role);
+  const accueil = accueilPour(roles);
+  const chefSuperieur = s.profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && s.contexte?.cycles[h.perimetre.etablissementId] === "superieur");
+  return accueil === "/etablissement" && chefSuperieur ? "/enseignement-superieur" : accueil;
+}
+
 /** Page d'accueil d'un utilisateur selon ses habilitations (la première qui s'applique). */
 export function accueilPour(roles: Role[]): string {
   const ordre: [Role, string][] = [

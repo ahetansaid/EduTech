@@ -4,7 +4,7 @@
 **Votre espace :** Cockpit national — vous y arrivez directement après la connexion (`/cockpit`).  
 **Accès :** https://edu-tech-api-rho.vercel.app/cockpit · centre d'aide en ligne : https://edu-tech-api-rho.vercel.app/aide/administration-centrale
 
-> Voir en un écran la situation du pays, repérer les territoires qui demandent une action, mesurer l'effet d'une décision avant de la prendre, et interroger les données en français.
+> Voir en un écran la situation du pays, repérer les territoires qui demandent une action et interroger les données en français.
 
 ## Sommaire
 
@@ -89,13 +89,6 @@
 - Réponse avec définition, source, couverture et indice de confiance.
 - Refus expliqué et journalisé pour une question sur une personne ou hors périmètre.
 
-### Simulation « et si ? »
-
-`/simulation` — Mesurer l'effet d'une décision jusqu'en 2030.
-
-- Établissements à construire, enseignants à affecter, croissance des effectifs.
-- Avant / après et hypothèses écrites en clair.
-
 ### Données et service
 
 `/plateforme/qualite` — Qualité des données, dictionnaire national, interopérabilité, état du service.
@@ -164,13 +157,6 @@
 4. Dépliez « D'où vient la confiance ? » : le verdict nomme la composante la plus faible de chaque indicateur — une complétude basse se rattrape par la relance, une fraîcheur basse par la transmission, une cohérence basse par la vérification des saisies.
 5. Notez que les communes masquées (effectif sous le seuil de confidentialité) sont exclues du calcul, pas seulement de l'affichage.
 6. Touchez « Exporter (CSV) » pour conserver ce portrait : l'export reprend les mêmes exclusions — une commune masquée ne figure ni dans les statistiques ni dans le fichier.
-
-### Simuler une mesure
-
-1. Dans « Où agir ? », choisissez une commune, puis touchez « Simuler une mesure ».
-2. Réglez les curseurs : « Établissements à construire », « Enseignants à affecter », « Croissance des effectifs d'ici 2030 ».
-3. Lisez « Avant / après, en toute transparence » et les besoins pour ramener l'occupation à 100 %.
-4. « Réinitialiser » revient au scénario de départ.
 
 ### Poser une question à Ask Education
 
@@ -305,7 +291,7 @@ Chaque indicateur suit la définition du dictionnaire national et porte un indic
 ## Bons réflexes
 
 - Citez toujours un chiffre avec sa source et son indice de confiance.
-- Une simulation éclaire une décision ; elle ne la remplace pas. Vérifiez les hypothèses affichées.
+- Une analyse éclaire une décision ; elle ne la remplace pas. Lisez sa source et sa confiance.
 - **Votre identifiant est personnel.** Ne le prêtez jamais, même à un collègue ou à un supérieur. Tout ce qui est fait avec votre compte est inscrit à votre nom.
 - **Un mot de passe solide et secret.** 12 caractères au moins, avec majuscule, minuscule et chiffre. Ne l'écrivez pas sur un papier visible, ne le dites à personne.
 - **Personne ne vous demandera votre mot de passe.** Ni l'administrateur, ni l'assistance, ni le ministère. Un message qui le demande est une tentative de fraude : signalez-le.
