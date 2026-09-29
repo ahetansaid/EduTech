@@ -42,7 +42,8 @@ export function Element({ children, className }: { children: ReactNode; classNam
 /** Compteur : le chiffre défile jusqu'à sa valeur quand il entre à l'écran, puis suit ses changements. */
 export function Compteur({ valeur, format, duree = 1.1 }: { valeur: number; format: (n: number) => string; duree?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const visible = useInView(ref, { once: true, margin: "-40px" });
+  // Marge en bas seulement : un « 0 » étroit collé au bord gauche (téléphone) doit compter comme visible.
+  const visible = useInView(ref, { once: true, margin: "0px 0px -40px 0px" });
   const reduit = useReducedMotion();
   const [affiche, setAffiche] = useState(0);
   const precedent = useRef(0);

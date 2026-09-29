@@ -6,7 +6,7 @@ import { EASE, motion } from "@/components/motion";
 import { BandeNationale } from "@/components/ui/primitives";
 import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
-import { SectionCalendrier, SectionChiffres, SectionEtablissements, SectionInscription, SectionResultats } from "@/components/public/SectionsAccueil";
+import { ChiffresHeros, SectionCalendrier, SectionChiffres, SectionCoucheNationale, SectionEtablissements, SectionInscription, SectionResultats, ServicesDirects } from "@/components/public/SectionsAccueil";
 
 /** Un espace pour chaque acteur, chacun avec son guide. */
 const ESPACES = [
@@ -79,6 +79,7 @@ export default function Accueil() {
               <LogIn size={17} className="text-accent-ink" aria-hidden /> {monEspace ? "Ouvrir mon espace" : "Se connecter"}
             </Link>
           </motion.div>
+          <ChiffresHeros />
         </div>
 
         <div className="relative mx-auto w-full max-w-[340px] sm:max-w-[440px] lg:max-w-[520px]">
@@ -111,11 +112,15 @@ export default function Accueil() {
         </div>
       </main>
 
-      {/* Chaque service public, présenté par un aperçu vivant de sa page */}
+      {/* Les services publics, directement : aucun compte n'est nécessaire */}
+      <ServicesDirects />
+
+      {/* Chaque service public, présenté par un aperçu vivant de sa page (texte à gauche, puis à droite, en alternance) */}
       <SectionCalendrier />
       <SectionEtablissements />
-      <SectionInscription />
       <SectionResultats />
+      <SectionInscription />
+      <SectionCoucheNationale />
       <SectionChiffres />
 
       {/* Un espace pour chaque acteur */}
