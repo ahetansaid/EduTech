@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Award, Baby, CalendarClock, CalendarDays, ChartColumn, CircleCheck, FileCheck2, Fingerprint, GraduationCap, HandCoins, Landmark, LocateFixed, MapPin, School, Search, ShieldCheck, Smartphone, UserPlus, UserRoundCheck, Users } from "lucide-react";
+import { ArrowRight, Award, Baby, CalendarClock, CalendarDays, CircleCheck, FileCheck2, Fingerprint, GraduationCap, HandCoins, Landmark, LocateFixed, MapPin, School, Search, ShieldCheck, Smartphone, UserPlus, UserRoundCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -8,7 +8,7 @@ import { Compteur, EASE, motion } from "@/components/motion";
 import { CarteBenin, RAMPE_CLAIRE } from "@/components/map/CarteBenin";
 import { DEPARTEMENTS } from "@beile/simulation/territoire";
 import { cn } from "@/lib/cn";
-import { NIVEAUX_PUBLICS, useAnnuaire, useCalendrier, useChiffres, useSessionsPubliees, type Echeance } from "@/lib/api/public";
+import { NIVEAUX_PUBLICS, useCalendrier, useSessionsPubliees, type Echeance } from "@/lib/api/public";
 import { avancement, CATEGORIES, dateCourte, dateLongue, enDate, jours, moisDeLAnnee, periode, position, prochaine } from "@/lib/calendrier";
 
 /**
@@ -55,7 +55,7 @@ export function SectionEtablissements() {
   const [q, setQ] = useState("");
   return (
     <Section id="etablissements" surtitre="Annuaire national" titre="Trouver un établissement"
-      texte="Écoles, collèges, lycées et centres de formation : par nom, par lieu ou autour de vous."
+      texte="Par nom, par lieu ou autour de vous."
       lien={{ href: "/etablissements", libelle: "Ouvrir l'annuaire" }}
       apercu={
         <Carte>
@@ -75,8 +75,8 @@ export function SectionEtablissements() {
             <Link href="/etablissements?autour=1" className="inline-flex items-center gap-1.5 rounded-full bg-teal/10 px-3.5 py-1.5 text-[13px] font-semibold text-teal transition hover:bg-teal/15"><LocateFixed size={14} aria-hidden /> Autour de moi</Link>
           </div>
           <div className="mt-4 rounded-2xl bg-bg px-2 py-3">
-            <div className="mx-auto w-full max-w-[190px] sm:max-w-[210px]">
-              <CarteBenin niveau="departements" hauteur={250} couleurs={COULEURS_DEPARTEMENTS} onSelect={(id) => router.push(`/etablissements?departement=${id}`)} className="w-full" />
+            <div className="mx-auto w-full max-w-[150px] sm:max-w-[165px]">
+              <CarteBenin niveau="departements" hauteur={200} couleurs={COULEURS_DEPARTEMENTS} onSelect={(id) => router.push(`/etablissements?departement=${id}`)} className="w-full" />
             </div>
           </div>
           <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-ink-muted"><School size={14} aria-hidden /> Touchez un département pour voir ses établissements.</p>
@@ -287,7 +287,7 @@ const ETAPES = [
 export function SectionInscription() {
   return (
     <Section id="inscription" surtitre="Démarche" titre="Inscrire son enfant"
-      texte="Quatre étapes, et un dossier qui suit l'enfant d'une école à l'autre, sans ressaisie."
+      texte="Quatre étapes. Un dossier qui suit l'enfant."
       lien={{ href: "/inscription-scolaire", libelle: "Voir les étapes et les pièces" }}
       apercu={
         <Carte>
@@ -305,7 +305,7 @@ export function SectionInscription() {
           </ol>
           <div className="mt-4 flex items-start gap-3 rounded-2xl bg-teal p-4 text-white">
             <Baby size={20} className="mt-0.5 shrink-0" aria-hidden />
-            <p className="text-[14px] leading-relaxed"><strong>Pas d&apos;acte de naissance ?</strong> L&apos;enfant est inscrit quand même ; son identité est régularisée ensuite.</p>
+            <p className="text-[14px] leading-relaxed"><strong>Sans acte de naissance</strong>, l&apos;enfant est inscrit quand même.</p>
           </div>
         </Carte>
       }
@@ -335,7 +335,7 @@ export function SectionResultats() {
   const session = examen ? derniere(examen) : undefined;
   return (
     <Section id="resultats" inverse fond surtitre="Examens nationaux" titre="Consulter les résultats"
-      texte="CEP, BEPC, Baccalauréat : le verdict officiel publié par l'autorité de l'examen, avec votre seul numéro de table."
+      texte="Le verdict officiel, avec votre numéro de table."
       lien={{ href: "/resultats", libelle: "Ouvrir le service des résultats" }}
       apercu={
         <Carte>
@@ -365,72 +365,10 @@ export function SectionResultats() {
             {session ? <>Session <strong className="font-semibold text-ink-2">{session.session}</strong>{session.publieeLe ? `, publiée le ${dateLongue(session.publieeLe)}` : ""}</>
               : isPending ? " " : "Aucune session publiée pour le moment."}
           </p>
-          <p className="mt-3 flex items-start gap-2 rounded-2xl bg-bg px-3.5 py-3 text-[13px] text-ink-2"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden /> Gratuit, sans compte. Seul le verdict s&apos;affiche : ni nom, ni établissement, ni note détaillée.</p>
+          <p className="mt-3 flex items-start gap-2 rounded-2xl bg-bg px-3.5 py-3 text-[13px] text-ink-2"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden /> Gratuit, sans compte.</p>
         </Carte>
       }
     />
-  );
-}
-
-/* ------------------------------------------------------------------ 5. L'éducation en chiffres */
-
-export function SectionChiffres() {
-  const { data } = useChiffres();
-  const eleves = data?.indicateurs.find((i) => i.cle === "effectif");
-  const top = [...(eleves?.departements ?? [])].sort((a, b) => (b.valeur ?? 0) - (a.valeur ?? 0)).slice(0, 6);
-  const max = Math.max(1, ...top.map((d) => d.valeur ?? 0));
-  return (
-    <Section id="chiffres" inverse surtitre="Données ouvertes" titre="L'éducation en chiffres"
-      texte="Les indicateurs clés par département, avec leur définition, leur source et leur indice de confiance."
-      lien={{ href: "/donnees", libelle: "Explorer les données" }}
-      apercu={
-        <Carte>
-          <p className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><ChartColumn size={16} className="text-accent-ink" aria-hidden /> Élèves par département</p>
-          <ul className="mt-4 space-y-3">
-            {(top.length ? top : Array.from({ length: 6 }, (_, i) => ({ id: String(i), nom: "", valeur: null }))).map((d, i) => (
-              <li key={d.id} className="grid grid-cols-[6.5rem_1fr_3.5rem] items-center gap-3 text-[13px]">
-                <span className="truncate text-ink-2">{d.nom || "…"}</span>
-                <span className="h-2.5 overflow-hidden rounded-full bg-surface-2">
-                  <motion.span className="block h-full rounded-full bg-blue" initial={{ width: 0 }} whileInView={{ width: `${((d.valeur ?? 0) / max) * 100}%` }} viewport={{ once: true }} transition={{ delay: i * 0.07, duration: 0.8, ease: EASE }} />
-                </span>
-                <span className="text-right font-semibold tabular-nums text-ink">{d.valeur != null ? `${Math.round(d.valeur / 1000).toLocaleString("fr-FR")} k` : ""}</span>
-              </li>
-            ))}
-          </ul>
-          {eleves && <p className="mt-4 text-[12px] text-ink-muted">{eleves.periode} · indice de confiance {eleves.confiance} %</p>}
-        </Carte>
-      }
-    />
-  );
-}
-
-/* ------------------------------------------------------------------ Héros : trois chiffres du registre */
-
-const compact = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} M` : Math.round(v).toLocaleString("fr-FR"));
-
-/** Trois chiffres lus en direct (registre et annuaire) ; la place est réservée pour qu'aucun contenu ne saute. */
-export function ChiffresHeros() {
-  const { data } = useChiffres();
-  const { data: annuaire } = useAnnuaire({});
-  const eleves = data?.indicateurs.find((i) => i.cle === "effectif");
-  const ratio = data?.indicateurs.find((i) => i.cle === "ratio");
-  const items = [
-    { valeur: eleves?.valeur ?? null, format: compact, libelle: "élèves suivis" },
-    { valeur: annuaire?.total ?? null, format: compact, libelle: "établissements" },
-    { valeur: ratio?.valeur ?? null, format: (v: number) => v.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), libelle: "élèves par enseignant" },
-  ];
-  return (
-    <motion.dl initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55, duration: 0.6, ease: EASE }}
-      className="mt-10 grid max-w-lg grid-cols-3 divide-x divide-line/80 border-t border-line/70 pt-5">
-      {items.map((x, i) => (
-        <div key={x.libelle} className={cn("flex min-w-0 flex-col-reverse", i > 0 && "pl-4 sm:pl-6", i < 2 && "pr-3")}>
-          <dt className="mt-1.5 text-[12px] leading-snug text-ink-muted sm:text-[13px]">{x.libelle}</dt>
-          <dd className="font-display text-[22px] font-extrabold leading-none tracking-tight text-ink sm:text-[28px]">
-            {x.valeur != null ? <Compteur valeur={x.valeur} format={x.format} /> : <span className="inline-block h-[22px] w-16 animate-pulse rounded-md bg-surface-2 align-top sm:h-7" />}
-          </dd>
-        </div>
-      ))}
-    </motion.dl>
   );
 }
 
@@ -455,13 +393,13 @@ export function ServicesDirects() {
             <motion.li key={x.href} initial={{ y: 16 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-30px" }} transition={{ delay: i * 0.06, duration: 0.5, ease: EASE }}
               className={cn(i === 4 && "sm:col-span-2 lg:col-span-1")}>
               <Link href={x.href}
-                className="group flex h-full items-center gap-3.5 rounded-2xl border border-line/70 bg-surface p-3.5 shadow-sm outline-none transition duration-200 hover:-translate-y-0.5 hover:border-blue/30 hover:shadow-float focus-visible:ring-4 focus-visible:ring-blue/20 lg:flex-col lg:items-start lg:gap-0 lg:p-5">
+                className="group relative flex h-full items-center gap-3.5 rounded-2xl border border-line/70 bg-surface p-3.5 shadow-sm outline-none transition duration-200 hover:-translate-y-0.5 hover:border-blue/30 hover:shadow-float focus-visible:ring-4 focus-visible:ring-blue/20 lg:flex-col lg:items-start lg:gap-0 lg:p-4">
                 <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105", x.teinte)}><x.icone size={21} aria-hidden /></span>
-                <span className="min-w-0 flex-1 lg:mt-4">
+                <span className="min-w-0 flex-1 lg:mt-3">
                   <span className="block text-[14.5px] font-semibold leading-tight text-ink">{x.titre}</span>
                   <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-muted lg:mt-1">{x.texte}</span>
                 </span>
-                <ArrowRight size={17} className="shrink-0 text-ink-muted transition-all duration-200 group-hover:translate-x-1 group-hover:text-accent-ink lg:mt-4" aria-hidden />
+                <ArrowRight size={17} className="shrink-0 text-ink-muted transition-all duration-200 group-hover:translate-x-1 group-hover:text-accent-ink lg:absolute lg:right-4 lg:top-5" aria-hidden />
               </Link>
             </motion.li>
           ))}
@@ -536,8 +474,8 @@ export function SectionCoucheNationale() {
       <div className="relative mx-auto w-full max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
         <motion.div initial={{ y: 16 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-60px" }} transition={{ duration: 0.6, ease: EASE }} className="max-w-2xl">
           <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-accent-ink">Couche nationale</p>
-          <h2 className="mt-2 font-display text-[28px] font-extrabold leading-tight tracking-tight text-ink sm:text-[34px]">Relier l&apos;existant, pas le remplacer</h2>
-          <p className="mt-3 text-[16px] leading-relaxed text-ink-2">Les systèmes déjà en service transmettent leurs faits par connecteur signé. BEILE les rattache à l&apos;identité de chaque apprenant (NPI), les scelle au registre et les rend utiles à chacun.</p>
+          <h2 className="mt-2 font-display text-[28px] font-extrabold leading-tight tracking-tight text-ink sm:text-[34px]">Relier l&apos;existant</h2>
+          <p className="mt-3 text-[16px] leading-relaxed text-ink-2">Les systèmes en place alimentent un registre unique.</p>
         </motion.div>
 
         <div className="mt-10 grid items-center gap-2 lg:grid-cols-[minmax(0,1fr)_64px_minmax(0,0.95fr)_64px_minmax(0,1fr)] lg:gap-0">
@@ -547,9 +485,9 @@ export function SectionCoucheNationale() {
             className="relative overflow-hidden rounded-3xl bg-navy p-6 text-white shadow-float">
             <span className="absolute inset-x-0 top-0 flex h-1" aria-hidden><span className="flex-1 bg-flag-green" /><span className="flex-1 bg-flag-yellow" /><span className="flex-1 bg-flag-red" /></span>
             <p className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/60"><Fingerprint size={15} aria-hidden /> Registre BEILE</p>
-            <p className="mt-2 font-display text-[21px] font-bold leading-tight">Un fait reçu, contrôlé, scellé</p>
+            <p className="mt-2 font-display text-[21px] font-bold leading-tight">Chaque fait contrôlé</p>
             <ul className="mt-4 space-y-2.5 text-[13.5px] text-white/85">
-              {["Signature et horodatage vérifiés à chaque lot", "Rattachement à l'apprenant par son NPI", "Rejeu sans doublon, provenance tracée", "Diplômes scellés, vérifiables par tous"].map((t) => (
+              {["Signé et horodaté", "Rattaché au NPI", "Sans doublon", "Scellé, vérifiable"].map((t) => (
                 <li key={t} className="flex items-start gap-2"><CircleCheck size={16} className="mt-0.5 shrink-0 text-flag-yellow" aria-hidden /> {t}</li>
               ))}
             </ul>
@@ -557,7 +495,7 @@ export function SectionCoucheNationale() {
           <Flux />
           <Pile titre="Au service de" items={USAGES} delai={0.35} />
         </div>
-        <p className="mt-6 text-[12px] text-ink-muted">Connecteurs démontrés sur données de recette ; le raccordement effectif de chaque système suit la convention signée avec son opérateur.</p>
+        <p className="mt-6 text-[12px] text-ink-muted">Connecteurs démontrés sur données de test.</p>
       </div>
     </section>
   );

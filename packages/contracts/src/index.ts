@@ -8,3 +8,4 @@ export * from "./examens";
 export * from "./enseignement-superieur";
 export * from "./etudiants-superieur";
 export * from "./delivrance-actes";
+export * from "./analyse";

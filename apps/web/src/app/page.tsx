@@ -6,7 +6,7 @@ import { EASE, motion } from "@/components/motion";
 import { BandeNationale } from "@/components/ui/primitives";
 import { EnTetePublic, PiedPublic, useMonEspace } from "@/components/public/CadrePublic";
 import { useThemeEspace } from "@/lib/useSombre";
-import { ChiffresHeros, SectionCalendrier, SectionChiffres, SectionCoucheNationale, SectionEtablissements, SectionInscription, SectionResultats, ServicesDirects } from "@/components/public/SectionsAccueil";
+import { SectionCalendrier, SectionCoucheNationale, SectionEtablissements, SectionInscription, SectionResultats, ServicesDirects } from "@/components/public/SectionsAccueil";
 
 /** Un espace pour chaque acteur, chacun avec son guide. */
 const ESPACES = [
@@ -69,7 +69,7 @@ export default function Accueil() {
             <span className="sm:whitespace-nowrap">Chaque parcours suivi.</span><br /><span className="sm:whitespace-nowrap">Chaque décision <span className="text-blue">éclairée.</span></span>
           </motion.h1>
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6, ease: EASE }} className="mt-5 max-w-md text-[16.5px] leading-relaxed text-ink-2">
-            Élèves, familles, enseignants, établissements et administration : un seul registre, un espace pour chacun.
+            Un registre national. Un espace pour chacun.
           </motion.p>
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.6, ease: EASE }} className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Link href="/etablissements" className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-navy px-7 text-[15px] font-semibold text-white shadow-pop transition hover:-translate-y-0.5 hover:bg-navy-deep">
@@ -79,7 +79,6 @@ export default function Accueil() {
               <LogIn size={17} className="text-accent-ink" aria-hidden /> {monEspace ? "Ouvrir mon espace" : "Se connecter"}
             </Link>
           </motion.div>
-          <ChiffresHeros />
         </div>
 
         <div className="relative mx-auto w-full max-w-[340px] sm:max-w-[440px] lg:max-w-[520px]">
@@ -121,7 +120,6 @@ export default function Accueil() {
       <SectionResultats />
       <SectionInscription />
       <SectionCoucheNationale />
-      <SectionChiffres />
 
       {/* Un espace pour chaque acteur */}
       <section className="relative bg-navy">

@@ -14,7 +14,7 @@ import { authentifie, base, journaliser, refuser, type Variables } from "./commu
 import { chargerCouches, memo } from "./donnees";
 
 /**
- * Pilotage : cockpit national, console territoriale, fiche commune, planification.
+ * Pilotage : cockpit national, console territoriale, fiche commune.
  * Tout est calculé par la couche sémantique sous le PÉRIMÈTRE de l'habilitation (national, département,
  * circonscription). Aucune donnée individuelle : seulement des agrégats et des faits anonymes.
  */
@@ -203,26 +203,3 @@ pilotage.get("/pilotage/territoire", authentifie, async (c) => {
   });
 });
 
-/** Données de base de la planification « et si ? » d'une commune (le calcul des scénarios est explicite côté interface). */
-pilotage.get("/pilotage/planification/:id", authentifie, async (c) => {
-  const perimetre = perimetrePilotage(c.get("profil"));
-  const id = c.req.param("id");
-  if (!communeById.get(id) || !communeAutorisee(perimetre, id)) return refuser("Commune hors de votre périmètre");
-  const couches = await chargerCouches(base());
-  const stats = couches.communes.get(id)!;
-  const serie = ANNEES.map((an) => NIVEAUX.reduce((s, n) => s + stats.annees[an].niveaux[n].effectifF + stats.annees[an].niveaux[n].effectifM, 0));
-  const a = stats.annees[ANNEE_COURANTE];
-  const croissanceAnnuelle = Math.pow(serie[serie.length - 1]! / serie[0]!, 1 / (serie.length - 1)) - 1;
-  const saturees = [...couches.communes.values()]
-    .filter((x) => communeAutorisee(perimetre, x.communeId))
-    .map((x) => ({ id: x.communeId, nom: communeById.get(x.communeId)?.nom, occupation: (NIVEAUX.reduce((s, n) => s + x.annees[ANNEE_COURANTE].niveaux[n].effectifF + x.annees[ANNEE_COURANTE].niveaux[n].effectifM, 0) / x.annees[ANNEE_COURANTE].capacite) * 100 }))
-    .sort((p, q) => q.occupation - p.occupation)
-    .slice(0, 6);
-  return c.json({
-    commune: { id, nom: communeById.get(id)?.nom, milieu: stats.milieu },
-    effectif: serie[serie.length - 1], capacite: a.capacite, enseignants: a.enseignants,
-    etablissements: couches.etablissementsParCommune.get(id)?.length ?? 0,
-    croissanceAnnuelle, serie: ANNEES.map((an, i) => ({ annee: an, effectif: serie[i] })),
-    communesSaturees: saturees,
-  });
-});

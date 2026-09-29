@@ -18,6 +18,8 @@ const UNITE_LIBELLE: Record<DefinitionIndicateur["unite"], string> = {
   pourcentage: "Pourcentage",
   note: "Note sur 20",
   ratio: "Ratio",
+  indice: "Indice sans unité",
+  jours: "Jours",
 };
 
 type FiltreUnite = "toutes" | DefinitionIndicateur["unite"];
@@ -27,6 +29,8 @@ const FILTRES_UNITE: { valeur: FiltreUnite; libelle: string }[] = [
   { valeur: "nombre", libelle: "Effectifs" },
   { valeur: "ratio", libelle: "Ratios" },
   { valeur: "note", libelle: "Notes" },
+  { valeur: "indice", libelle: "Indices" },
+  { valeur: "jours", libelle: "Délais" },
 ];
 
 type FiltreMoteur = "tous" | MoteurCalcul;

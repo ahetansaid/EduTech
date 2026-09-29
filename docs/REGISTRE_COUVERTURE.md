@@ -30,7 +30,7 @@ Les fonctionnalités s'appuient sur ces moteurs ; aucun module ne réimplémente
 | 7 | SIG | Carte, distances, accessibilité, planification | Prototype : carte SVG, 77 communes ; PostGIS au schéma |
 | 8 | Notifications | Multicanal (application, courriel, SMS, push), dérivées des faits | Prototype : notifications dérivées des événements |
 | 9 | Documents et certificats | Coffre numérique, empreinte, signature, QR, révocation | Prototype : diplômes vérifiables, détection d'altération |
-| 10 | Intelligence éducative | Couche sémantique, requête contrôlée, simulation, alerte précoce | Prototype : dictionnaire, Ask Education, simulation « et si ? » |
+| 10 | Intelligence éducative | Couche sémantique, requête contrôlée, analyse déterministe, alerte précoce | Prototype : dictionnaire, Ask Education (neuf familles d'analyse, projection tendancielle) |
 
 ## 3. Registre des processus
 
@@ -72,7 +72,7 @@ Prototype : ✅ démontré · 🟡 partiel · ⬜ non couvert.
 | Conformité | Dossier numérique de l'établissement, non-conformités, actions correctives | Inspection | Inspections | À identifier | D | 3 | 2 | P2 | ⬜ |
 | Inspection | Missions sur tablette, grilles, recommandations, hors connexion | Inspecteurs, conseillers | Observations | À identifier | D | 3, 5 | 2 | P2 | ⬜ |
 | Territoire | Carte scolaire, zones prioritaires, accessibilité (distance, temps d'accès) | Pilotage | Géographie, agrégats | Portail statistique MEMP | D | 7, 10 | 1 | P1 | ✅ |
-| Territoire | Planification et simulation (« si 2 000 élèves arrivent… ») | Pilotage | Projections | — | D | 10, 7 | 1 | P2 | ✅ |
+| Territoire | Planification : projection tendancielle des effectifs et des indicateurs | Pilotage | Projections | — | D | 10, 7 | 1 | P2 | ✅ (Ask Education, famille « projection ») |
 | Transport | Localisation approximative et temps d'accès (données individuelles très protégées) | Pilotage | Distances agrégées | — | D | 7 | 4 | P3 | ⬜ |
 
 ### 3.3 Examens, orientation, emploi

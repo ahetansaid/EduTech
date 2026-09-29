@@ -1,6 +1,9 @@
 import { genererCoucheNationale } from "./src/macro";
 import { genererMicroMonde } from "./src/micro";
-import { calculer, priorites } from "./src/semantique";
+import { calculer, couvertureRegistre, priorites } from "./src/semantique";
+import type { CodeIndicateur } from "@beile/contracts";
+import type { EntreeRegistre, Filtres } from "./src/registre";
+import { CODES, REGISTRE, serviceRendant } from "./src/registre";
 import { sha256 } from "./src/empreinte";
 import { decider } from "./src/abac";
 import { elevesEnBaisse, situationApprenant } from "./src/projections";
@@ -37,6 +40,72 @@ console.log("aicha situation", situationApprenant(m, m.evenements, aicha.id).cla
 const ron = new Set(m.apprenants.filter(a => situationApprenant(m, m.evenements, a.id).etablissementId === "ETB-PAR-PILOTE-CEG").map(a => a.id));
 console.log("roniers", ron.size, "en baisse", elevesEnBaisse(m.evenements, ron).length, m.etablissements.map(e => e.nom + ":" + e.effectif));
 console.log("certs", m.certificats.length, m.certificats.filter(x=>x.revoque).length);
+/* ------------------------------------------------------------------ Cohérence du registre des calculateurs.
+ * Le typage garantit déjà qu'un code publié a une entrée ; ce bloc vérifie ce qu'il ne peut pas garantir :
+ * qu'un indicateur rende réellement une valeur avec ses paramètres par défaut, que deux indicateurs ne se
+ * disputent pas le même mot du lexique, qu'une ventilation déclarée rende des lignes, et que le seuil de
+ * publication soit honoré dans le résultat et pas seulement à l'affichage. Une promesse du dictionnaire non
+ * tenue est un incident de donnée publique : elle fait échouer la vérification, elle ne se signale pas.
+ */
+const echecs: string[] = [];
+const exiger = (cond: boolean, dit: string) => { if (!cond) echecs.push(dit); };
+
+const filtresParDefaut = (e: EntreeRegistre): Filtres => {
+  const f: Filtres = {};
+  for (const p of e.parametres) {
+    if (p === "seuil") f.seuil = 10;
+    if (p === "matiere") f.matiere = "Mathématiques";
+    if (p === "infrastructure") f.infrastructure = "eau";
+  }
+  return f;
+};
+
+const couverture = couvertureRegistre();
+exiger(couverture.calculables + couverture.renduesParUnService === couverture.publiees, `${couverture.publiees} définitions publiées mais ${couverture.calculables + couverture.renduesParUnService} rendues : le dictionnaire promet un calcul absent`);
+
+const motAppartient = new Map<string, CodeIndicateur>();
+for (const code of CODES) {
+  const e = REGISTRE[code];
+  exiger(e.definition.code === code, `${code} : la définition portée par l'entrée n'est pas la sienne`);
+  exiger(e.evocateurs.length > 0, `${code} : aucun évocateur, donc interrogeable par personne`);
+  const paliers = e.definition.illustration.paliers;
+  exiger(paliers.length > 0 && paliers[paliers.length - 1]!.max === null, `${code} : l'illustration ne couvre pas le haut de son échelle`);
+  for (const mot of e.evocateurs) {
+    const proprietaire = motAppartient.get(mot);
+    // Deux calculateurs peuvent nommer le même mot (« moyenne » sert au seuil comme à la note moyenne)
+    // seulement si l'un des deux porte une garde : sinon c'est l'ordre du tableau qui répondrait, et
+    // deux questions identiques selon la position de l'entrée dans le registre rendraient deux chiffres.
+    exiger(!proprietaire || proprietaire === code || !!REGISTRE[proprietaire].garde || !!e.garde, `${code} et ${proprietaire} se disputent l'évocateur « ${mot} » sans garde pour les départager`);
+    motAppartient.set(mot, code);
+  }
+  if (e.rend.sorte === "service-metier") {
+    exiger(!!serviceRendant(code), `${code} : rendu par un service qui n'est pas nommé — un refus silencieux n'est pas une définition`);
+    continue;
+  }
+  const national = calculer(c, { indicateur: code, filtres: filtresParDefaut(e), ventilation: [] });
+  exiger(national.valeur !== null && Number.isFinite(national.valeur), `${code} : aucune valeur rendue au niveau national avec ses paramètres par défaut`);
+  if (e.definition.libelleDenominateur !== null && e.definition.unite !== "nombre") {
+    exiger(national.denominateur > 0, `${code} : une valeur sort d'un dénominateur nul`);
+  }
+  for (const dim of e.definition.dimensions) {
+    const lignes = calculer(c, { indicateur: code, filtres: filtresParDefaut(e), ventilation: [dim] }).lignes;
+    exiger(lignes.length > 0, `${code} : la dimension publiée « ${dim} » ne rend aucune ligne`);
+    exiger(lignes.every((l) => !l.masquee || l.valeur === null), `${code} : une cellule masquée rend pourtant une valeur`);
+  }
+}
+
+const codesTouches = new Set<CodeIndicateur>();
+for (const question of QUESTIONS_EXEMPLES) {
+  const r = repondre(c, question, { niveau: "national" });
+  if (r.statut === "repondu") { codesTouches.add(r.requete.indicateur); continue; }
+  // Un refus est une réponse ; le refus générique, non : il dirait que le lexique a un trou non documenté.
+  exiger(!r.explication.startsWith("Aucun indicateur du dictionnaire"), `question type sans calculateur désigné : ${question}`);
+}
+console.log(`registre ${couverture.publiees} définitions, ${codesTouches.size} indicateurs touchés par les ${QUESTIONS_EXEMPLES.length} questions types`);
+exiger(codesTouches.size >= 20, `les questions types ne couvrent que ${codesTouches.size} calculateurs sur ${couverture.calculables} : le guide n'illustre plus le registre`);
+console.log(echecs.length ? `ÉCHECS (${echecs.length}):\n- ${echecs.join("\n- ")}` : "registre coherent");
+if (echecs.length) throw new Error(`${echecs.length} promesse(s) du registre des calculateurs non tenues`);
+
 const qs = [...QUESTIONS_EXEMPLES, "Combien d'élèves de 12 à 15 ans ont abandonné dans les communes rurales de l'Atacora ?", "Quel est le taux de réussite au BEPC par département ?", "Quelle est la météo à Cotonou ?", "Taux d'occupation à Parakou", "Compare les filles et les garçons en français, moyenne ≥ 12/20 dans le Borgou"];
 for (const q of qs) {
   for (const p of [{ niveau: "national" as const }, { niveau: "departement" as const, departementId: "borgou" }]) {

@@ -40,6 +40,8 @@ jobs:
         run: npm audit --audit-level=high
       - name: Cohérence du moteur de simulation
         run: npm run verifier --workspace=@beile/simulation
+      - name: "Moteur d'analyse : familles, déterminisme, refus, suggestions"
+        run: npm run verifier:analyse --workspace=@beile/simulation
       - name: Schéma et migrations alignés (aucune table « déclarée seulement »)
         run: |
           npm run generer --workspace=@beile/db
