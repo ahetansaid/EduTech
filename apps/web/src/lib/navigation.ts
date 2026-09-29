@@ -1,7 +1,7 @@
 import type { Profil, Role } from "@beile/contracts";
 import {
   Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Database, FileSearch, GraduationCap,
-  Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Sparkles, Stamp, UserPlus, Users, type LucideIcon,
+  Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Sparkles, UsersRound, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
 export interface EntreeNav {
@@ -36,6 +36,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/etablissement", libelle: "Mon établissement", icone: Building2, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5" , cycles: K12 },
   { href: "/etablissement/inscription", libelle: "Inscrire un apprenant", icone: UserPlus, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6" , cycles: K12 },
   { href: "/etablissement/eleves", libelle: "Apprenants", icone: Users, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7 · P9" , cycles: K12 },
+  { href: "/etablissement/personnel", libelle: "Personnel enseignant", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
   { href: "/etablissement/justificatifs", libelle: "Justificatifs d'absence", icone: ClipboardCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7" , cycles: K12 },
   { href: "/etablissement/examens", libelle: "Examens et certification", icone: BookOpenCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P8" , cycles: K12 },
   { href: "/etablissement/guichet", libelle: "Guichet de l'étudiant", icone: Stamp, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6", cycles: ["superieur"] },

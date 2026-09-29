@@ -111,6 +111,50 @@ etablissement.get("/etablissements/:id/enseignants", authentifie, async (c) => {
 });
 
 /**
+ * Personnel enseignant : grade, ancienneté, classes et matières tenues, charge (élèves), formations
+ * suivies, et suivi des notes du trimestre par classe et matière. Le registre ne rattache pas une note à
+ * la personne qui l'a saisie : l'activité se lit donc sur la relation pédagogique (telle classe, telle
+ * matière), jamais attribuée à un individu.
+ */
+etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await acces(c, id);
+  const [enseignants, enseignements, effectifs, notes, formations] = await Promise.all([
+    base().select().from(schema.enseignants).where(eq(schema.enseignants.etablissementId, id)),
+    base().select({ enseignantId: schema.enseignements.enseignantId, classeId: schema.enseignements.classeId, matiere: schema.enseignements.matiere, libelle: schema.classes.libelle, niveau: schema.classes.niveau, principal: schema.classes.enseignantPrincipalId })
+      .from(schema.enseignements).innerJoin(schema.classes, eq(schema.classes.id, schema.enseignements.classeId))
+      .where(eq(schema.classes.etablissementId, id)),
+    base().execute<{ classe_id: string; n: number }>(sql`select classe_id, count(*)::int as n from core.scolarites where statut = 'scolarise' and classe_id in (select id from core.classes where etablissement_id = ${id}) group by classe_id`),
+    base().execute<{ classe_id: string; matiere: string; n: number; derniere: string | null }>(sql`
+      select n.classe_id, n.matiere, count(*)::int as n, max(n.survenu_le)::text as derniere from core.notes n
+      where n.trimestre = ${TRIMESTRE_COURANT} and n.classe_id in (select id from core.classes where etablissement_id = ${id})
+      group by n.classe_id, n.matiere`),
+    base().select({ enseignantId: schema.evenements.enseignantId, formation: sql<string>`${schema.evenements.donnees}->>'formation'`, le: schema.evenements.survenuLe })
+      .from(schema.evenements).where(and(eq(schema.evenements.type, "FORMATION_ENSEIGNANT"), eq(schema.evenements.etablissementId, id))),
+  ]);
+  const effectif = new Map(effectifs.map((x) => [x.classe_id, x.n]));
+  const suivi = new Map(notes.map((x) => [`${x.classe_id}|${x.matiere}`, x]));
+  const annee = Number(aujourdhui().slice(0, 4));
+  await journaliser(profil, "Consultation du personnel enseignant", id, finalite, true, null);
+  const personnel = enseignants.map((e) => {
+    const tenues = enseignements.filter((x) => x.enseignantId === e.id).map((x) => {
+      const s = suivi.get(`${x.classeId}|${x.matiere}`);
+      return { classeId: x.classeId, classe: x.libelle, niveau: x.niveau, matiere: x.matiere, principal: x.principal === e.id, effectif: effectif.get(x.classeId) ?? 0, notesTrimestre: s?.n ?? 0, derniereNote: s?.derniere ?? null };
+    }).sort((a, b) => comparerFr(a.classe, b.classe));
+    const suivies = formations.filter((f) => f.enseignantId === e.id).sort((a, b) => b.le.toISOString().localeCompare(a.le.toISOString()));
+    return {
+      id: e.id, nom: e.nom, prenoms: e.prenoms, sexe: e.sexe, grade: e.grade, matieres: e.matieres,
+      anciennete: e.dateRecrutement ? Math.max(0, annee - Number(String(e.dateRecrutement).slice(0, 4))) : null,
+      classes: tenues,
+      eleves: [...new Set(tenues.map((t) => t.classeId))].reduce((s, cid) => s + (effectif.get(cid) ?? 0), 0),
+      formations: suivies.map((f) => ({ intitule: f.formation, le: f.le.toISOString().slice(0, 10) })),
+      formationObligatoire: suivies.some((f) => f.formation?.startsWith(FORMATION_OBLIGATOIRE)),
+    };
+  }).sort((a, b) => comparerFr(a.nom, b.nom));
+  return c.json({ trimestre: TRIMESTRE_COURANT, formationObligatoire: FORMATION_OBLIGATOIRE, personnel });
+});
+
+/**
  * Édition d'une classe par le chef de l'établissement : capacité et professeur principal.
  * La capacité peut être abaissée sous l'effectif courant : la surcharge est une alerte de pilotage,
  * pas une interdiction (on ne supprime aucun élève pour faire rentrer le chiffre). Le professeur
