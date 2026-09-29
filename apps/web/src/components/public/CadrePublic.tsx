@@ -13,6 +13,7 @@ import { useThemeEspace } from "@/lib/useSombre";
 /** Navigation des services publics : ce que chacun peut faire sans compte. */
 export const LIENS_PUBLICS = [
   { href: "/etablissements", libelle: "Établissements" },
+  { href: "/resultats", libelle: "Résultats" },
   { href: "/inscription-scolaire", libelle: "Inscrire son enfant" },
   { href: "/calendrier", libelle: "Calendrier" },
   { href: "/donnees", libelle: "En chiffres" },
@@ -83,7 +84,7 @@ export function PiedPublic() {
           <Logo />
           <p className="max-w-xs text-[13px] leading-relaxed text-ink-muted">Plateforme nationale des parcours éducatifs et du pilotage du système éducatif.</p>
         </div>
-        <ColonnePied titre="Services" liens={[["/etablissements", "Trouver un établissement"], ["/inscription-scolaire", "Inscrire son enfant"], ["/calendrier", "Calendrier scolaire"], ["/donnees", "L'éducation en chiffres"]]} />
+        <ColonnePied titre="Services" liens={[["/etablissements", "Trouver un établissement"], ["/resultats", "Résultats d'examens"], ["/verifier", "Vérifier un diplôme"], ["/inscription-scolaire", "Inscrire son enfant"], ["/calendrier", "Calendrier scolaire"], ["/donnees", "L'éducation en chiffres"]]} />
         <ColonnePied titre="S'informer" liens={[["/aide", "Centre d'aide"], ["/confidentialite", "Protection des données"]]} />
         <ColonnePied titre="Espaces" liens={[["/connexion", "Connexion"], ["/aide/enseignant", "Guide enseignant"], ["/aide/parent", "Guide famille"], ["/aide/chef-etablissement", "Guide établissement"]]} />
       </div>
