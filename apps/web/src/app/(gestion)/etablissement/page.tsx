@@ -9,8 +9,11 @@ import { BarresClassees, SERIES, type Barre } from "@/components/charts/Graphiqu
 import { DialogueStatuer } from "@/components/demandes/DialogueStatuer";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
+import { BandeauAccueil, type ATraiter } from "@/components/tableau/Tableau";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
-import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
+import { tachesEtablissement } from "@/lib/taches";
+import { useProfil } from "@/lib/session";
+import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useJustificatifs, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, ETAPES_ACCOMPAGNEMENT, etapesDuCircuit } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
 import { entier, nombre, note, pourcent } from "@/lib/format";
@@ -26,7 +29,10 @@ export default function MonEtablissement() {
 /* ================================================================== Tableau de bord */
 
 function TableauDeBord({ id }: { id: string }) {
+  const profil = useProfil();
   const tableau = useTableau(id);
+  const justificatifs = useJustificatifs(id);
+  const demandes = useDemandes(id);
   const absences = useAbsencesDuJour(id);
   const eleves = useEleves(id);
   const t = tableau.data;
@@ -51,26 +57,29 @@ function TableauDeBord({ id }: { id: string }) {
   }
 
   const commune = t ? communeById.get(t.etablissement.communeId)?.nom ?? t.etablissement.communeId : null;
+  // Même moteur de tâches que le poste de pilotage : seules les urgences et les échéances de la semaine remontent au bandeau.
+  const aTraiter: ATraiter[] = tachesEtablissement(t, justificatifs.data, demandes.data)
+    .filter((x) => x.urgence <= 1 && x.href)
+    .sort((a, b) => a.urgence - b.urgence || a.ts - b.ts)
+    .slice(0, 5)
+    .map((x) => ({ cle: x.cle, libelle: x.libelle, href: x.href!, ton: x.urgence === 0 ? "alerte" : "info" }));
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        surtitre={t ? `Mon établissement · ${commune} · ${t.etablissement.circonscription}` : "Mon établissement"}
-        titre={t ? t.etablissement.nom : <Squelette className="h-8 w-64" />}
-        sousTitre="Ce que l'établissement saisit lui revient en temps réel : effectifs, absences, alertes et décisions à prendre."
+      <BandeauAccueil prenom={profil.nomAffiche.split(" ")[0]} contexte={t ? `${t.etablissement.nom} · ${commune}` : null}
+        aTraiter={aTraiter} chargement={!t || justificatifs.isPending}
         actions={
           <>
             <LienBouton href="/etablissement/eleves" variante="secondaire" icone={Users}>Apprenants</LienBouton>
-            <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
+            <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire</LienBouton>
           </>
-        }
-      />
+        } />
 
       {/* Chiffres clés */}
       {!t ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{Array.from({ length: 5 }, (_, i) => <Squelette key={i} className="h-[104px] rounded-lg" />)}</div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{Array.from({ length: 5 }, (_, i) => <Squelette key={i} className="h-[104px] rounded-lg" />)}</div>
       ) : (
-        <Cascade data-guide="etab-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Cascade data-guide="etab-indicateurs" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={t.chiffres.apprenants} format={entier} />} indice={`${t.classes.length} classes`} /></Element>
           <Element><TuileIndicateur libelle="Occupation" icone={Percent} accent={t.chiffres.apprenants > t.chiffres.capacite ? "critique" : "sarcelle"} valeur={<Compteur valeur={(t.chiffres.apprenants / Math.max(1, t.chiffres.capacite)) * 100} format={(v) => nombre(v, 0)} />} unite="%" indice={`capacité ${entier(t.chiffres.capacite)} places`} /></Element>
           <Element><TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={<Compteur valeur={t.chiffres.enseignants} format={entier} />} indice={t.chiffres.enseignants ? `${nombre(t.chiffres.apprenants / t.chiffres.enseignants, 0)} élèves par enseignant` : undefined} /></Element>

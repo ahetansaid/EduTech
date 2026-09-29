@@ -5,12 +5,14 @@ import {
   History, Lock, NotebookPen, Printer, RefreshCw, School, Send, ShieldAlert, Sigma, TrendingUp, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { useNotifications } from "@/components/shell/Cloche";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
-import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
+import { BandeauAccueil, WidgetEcheances, type ATraiter } from "@/components/tableau/Tableau";
+import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
 import { Bulletin } from "@/components/bulletin/Bulletin";
 import {
   absencesParJour, ageAu, initiales, jalonsParcours, libelleTrimestre, nomComplet, syntheseScolaire, useEnfants, useJustifierAbsenceMutation,
@@ -26,10 +28,17 @@ import { useProfil } from "@/lib/session";
 const TON_ABSENCE: Record<JourAbsence["statut"], Ton> = { a_justifier: "avertissement", transmise: "info", refusee: "critique", justifiee: "succes" };
 const LIBELLE_ABSENCE: Record<JourAbsence["statut"], string> = { a_justifier: "À justifier", transmise: "Justificatif transmis", refusee: "Justificatif refusé", justifiee: "Justifiée" };
 
-export default function EspaceFamille() {
+export default function PageFamille() {
+  return <Suspense><EspaceFamille /></Suspense>;
+}
+
+function EspaceFamille() {
   const profil = useProfil();
   const q = useEnfants();
-  const [choisi, setChoisi] = useState<string | null>(null);
+  const notifs = useNotifications();
+  const params = useSearchParams();
+  // `?enfant=` : une pastille « À traiter » ouvre directement la fiche de l'enfant concerné.
+  const [choisi, setChoisi] = useState<string | null>(params.get("enfant"));
   const enfants = useMemo(() => q.data ?? [], [q.data]);
   const enfant = enfants.find((e) => e.apprenant.id === choisi) ?? enfants[0];
 
@@ -45,14 +54,20 @@ export default function EspaceFamille() {
     connues.current = new Set(absences.map((a) => a.id));
   }, [q.data]);
 
+  // À traiter, sur tous les enfants rattachés : absences à justifier, messages non lus.
+  const aTraiter: ATraiter[] = [
+    ...enfants.flatMap((d) => {
+      const n = absencesParJour(d.evenements).filter((a) => a.statut === "a_justifier").length;
+      return n ? [{ cle: `abs-${d.apprenant.id}`, libelle: `${d.apprenant.prenoms} : ${n} absence${n > 1 ? "s" : ""} à justifier`, href: `/famille?enfant=${d.apprenant.id}#absences`, ton: "alerte" as const }] : [];
+    }),
+    ...((notifs.data?.nonLues ?? 0) > 0 ? [{ cle: "notifs", libelle: `${notifs.data!.nonLues} message${notifs.data!.nonLues > 1 ? "s" : ""} non lu${notifs.data!.nonLues > 1 ? "s" : ""}`, href: "/famille/notifications" }] : []),
+  ];
+
   return (
     <EntreePage>
       <div className="space-y-5">
-        <PageHeader
-          titre={`Bonjour ${profil.nomAffiche.split(" ")[0]}`}
-          sousTitre="Vos enfants sont rattachés à votre identité par le registre national : vous ne voyez qu'eux."
-          actions={q.data ? <Fraicheur maj={q.dataUpdatedAt} actif={q.isFetching} onRafraichir={() => q.refetch()} /> : undefined}
-        />
+        <BandeauAccueil prenom={profil.nomAffiche.split(" ")[0]} aTraiter={aTraiter} chargement={q.isPending}
+          actions={q.data ? <Fraicheur maj={q.dataUpdatedAt} actif={q.isFetching} onRafraichir={() => q.refetch()} /> : undefined} />
 
         {enfants.length > 1 && enfant && (
           <div data-guide="famille-enfants" className="-mx-4 overflow-x-auto px-4">
@@ -133,6 +148,7 @@ function FicheEnfant({ d }: { d: Dossier }) {
 
       {/* L'espace famille est en colonne étroite (téléphone d'abord) : une seule colonne, ordre de priorité. */}
       <Absences d={d} jours={absences} />
+      <WidgetEcheances nombre={3} />
       <Resultats s={s} onBulletin={s.courant != null ? () => setBulletinOuvert(true) : undefined} />
       <DernieresNotes s={s} />
       <Parcours d={d} />
@@ -240,7 +256,7 @@ function DernieresNotes({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
 function Absences({ d, jours }: { d: Dossier; jours: JourAbsence[] }) {
   const [cible, setCible] = useState<JourAbsence | null>(null);
   return (
-    <Card data-guide="famille-absences" className="min-w-0">
+    <Card id="absences" data-guide="famille-absences" className="min-w-0 scroll-mt-24">
       <CardHeader icon={CalendarX2} title="Absences" subtitle="Justifiez en un geste : l'établissement reçoit le motif dans le registre" />
       {jours.length === 0 ? (
         <div className="flex items-center gap-3 rounded-lg bg-success-bg px-4 py-3 text-sm text-success"><Check size={17} aria-hidden /> Aucune absence enregistrée cette année.</div>

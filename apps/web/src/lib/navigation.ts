@@ -25,7 +25,7 @@ const K12: Cycle[] = ["primaire", "secondaire"];
 
 /** Navigation déterminée par les habilitations. Masquer une entrée est cosmétique : l'accès aux données reste décidé par le moteur ABAC. */
 export const NAVIGATION: EntreeNav[] = [
-  { href: "/aujourd-hui", libelle: "Poste de pilotage", icone: ListChecks, roles: ["chef_etablissement", "inspecteur", "direction_departementale", "administration_centrale"], groupe: "Aujourd'hui", processus: "P9", cycles: K12 },
+  { href: "/aujourd-hui", libelle: "Poste de pilotage", icone: ListChecks, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Aujourd'hui", processus: "P9" },
   { href: "/cockpit", libelle: "Cockpit national", icone: ChartNoAxesCombined, roles: ["administration_centrale"], groupe: "Pilotage", processus: "P3" },
   { href: "/cockpit/carte", libelle: "Où agir ?", icone: Map, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/territoire", libelle: "Console territoriale", icone: Landmark, roles: ["direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },

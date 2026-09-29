@@ -13,9 +13,12 @@ import { CarteBenin, COULEUR_ALERTE, type PointCarte } from "@/components/map/Ca
 import { StatsCirconscription } from "@/components/stats/Circonscription";
 import { notifier } from "@/components/ui/Notifications";
 import { BadgeConfiance, TuileIndicateur } from "@/components/ui/donnees";
+import { BandeauAccueil, type ATraiter } from "@/components/tableau/Tableau";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
+import { useDemandesATraiter } from "@/lib/api/etablissement";
+import { useProfil } from "@/lib/session";
 import { cn } from "@/lib/cn";
-import { compact, dateLongue, entier, heure, nombre, pourcent } from "@/lib/format";
+import { compact, entier, heure, nombre, pourcent } from "@/lib/format";
 import {
   useAbsencesTerritoire, useComplementsTerritoire, useFicheCommune, useIndicateurPilotage, usePrioritesPilotage, useRelanceMutation, useTerritoire,
   type ConsoleTerritoriale, type EtablissementTerritoire, type Infrastructures,
@@ -87,17 +90,23 @@ function Console({ t }: { t: ConsoleTerritoriale }) {
   const scores = useMemo(() => new Map(Object.entries(prio.data?.communes ?? {}).map(([id, p]) => [id, p.score])), [prio.data]);
   const attendus = r.effectif.couverture.etablissementsAttendus;
   const ayantTransmis = r.effectif.couverture.etablissementsAyantTransmis;
+  const profil = useProfil();
+  const file = useDemandesATraiter(true);
+  const critiques = t.communes.filter((c) => c.priorite === "critique").length;
+  const nonTransmis = attendus - ayantTransmis;
+  const aTraiter: ATraiter[] = [
+    ...(file.data?.length ? [{ cle: "file", libelle: `${file.data.length} demande${file.data.length > 1 ? "s" : ""} à statuer`, href: "/demandes", ton: "alerte" as const }] : []),
+    ...(critiques ? [{ cle: "critiques", libelle: `${critiques} commune${critiques > 1 ? "s" : ""} en situation critique`, href: communeCirco ? `/cockpit/carte?commune=${communeCirco}` : "/cockpit/carte", ton: "alerte" as const }] : []),
+    ...(nonTransmis > 0 ? [{ cle: "transmission", libelle: `${entier(nonTransmis)} établissement${nonTransmis > 1 ? "s" : ""} sans transmission`, href: "#retardataires" }] : []),
+  ];
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        surtitre={`Console territoriale · P3 · ${dateLongue(t.date)}`}
-        titre={libelle}
-        sousTitre="Indicateurs calculés par la couche sémantique nationale, restreints au périmètre de votre habilitation : la direction centrale obtient le même chiffre pour le même territoire."
+      <BandeauAccueil prenom={profil.nomAffiche.split(" ")[0]} contexte={libelle} aTraiter={aTraiter} chargement={file.isPending}
         actions={!inspecteur ? <Link href="/cockpit/carte"><Button data-guide="territoire-carte-lien" icone={ArrowRight}>Où agir ?</Button></Link> : <Link href={`/cockpit/carte?commune=${communeCirco ?? ""}`}><Button data-guide="territoire-carte-lien" variante="secondaire" icone={IconeCarte}>Voir sur la carte</Button></Link>}
       />
 
-      <Cascade data-guide="territoire-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <Cascade data-guide="territoire-indicateurs" className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={r.effectif.valeur ?? 0} format={compact} />} indice={<span>{entier(attendus)} établissements</span>} confiance={r.effectif.confiance} /></Element>
         <Element><TuileIndicateur libelle="Occupation" icone={School} accent={(r.occupation.valeur ?? 0) > 112 ? "critique" : "ambre"} valeur={<Compteur valeur={r.occupation.valeur ?? 0} format={(v) => nombre(v, 1)} />} unite="%" indice={ref ? <span>national : {pourcent(ref.occupation)}</span> : undefined} confiance={r.occupation.confiance} /></Element>
         <Element><TuileIndicateur libelle="Élèves / enseignant" icone={GraduationCap} accent="sarcelle" valeur={<Compteur valeur={r.ratio.valeur ?? 0} format={(v) => nombre(v, 1)} />} indice={ref ? <span>national : {nombre(ref.ratio, 1)}</span> : undefined} confiance={r.ratio.confiance} /></Element>
@@ -328,7 +337,7 @@ function TableauCirconscription({ etabs, infra }: { etabs: EtablissementTerritoi
   );
 
   return (
-    <Card data-guide="territoire-etablissements" className="min-w-0 overflow-hidden p-0">
+    <Card id="retardataires" data-guide="territoire-etablissements" className="min-w-0 scroll-mt-24 overflow-hidden p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold text-ink">Établissements de la circonscription</h2>
@@ -445,7 +454,7 @@ function Retardataires({ etabs, attendus, nonTransmis }: { etabs: EtablissementT
   };
 
   return (
-    <Card data-guide="territoire-retardataires" className="min-w-0">
+    <Card id="retardataires" data-guide="territoire-retardataires" className="min-w-0 scroll-mt-24">
       <CardHeader
         icon={Clock}
         title="Établissements n'ayant pas transmis"
