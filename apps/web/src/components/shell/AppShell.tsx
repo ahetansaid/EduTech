@@ -10,7 +10,7 @@ import { AnimatePresence, IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
 import { NAVIGATION, navigationPour } from "@/lib/navigation";
-import { accueilDeSession, useProfil, useSession } from "@/lib/session";
+import { accueilDeSession, useSession } from "@/lib/session";
 import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
 import { EtatReseau } from "./EtatReseau";
