@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Baby, CalendarClock, ChartColumn, CircleCheck, FileCheck2, Fingerprint, LocateFixed, School, Search, Smartphone } from "lucide-react";
+import { ArrowRight, Award, Baby, CalendarClock, CalendarDays, ChartColumn, CircleCheck, FileCheck2, Fingerprint, GraduationCap, HandCoins, Landmark, LocateFixed, MapPin, School, Search, ShieldCheck, Smartphone, UserPlus, UserRoundCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -8,7 +8,7 @@ import { Compteur, EASE, motion } from "@/components/motion";
 import { CarteBenin, RAMPE_CLAIRE } from "@/components/map/CarteBenin";
 import { DEPARTEMENTS } from "@beile/simulation/territoire";
 import { cn } from "@/lib/cn";
-import { NIVEAUX_PUBLICS, useCalendrier, useChiffres, type Echeance } from "@/lib/api/public";
+import { NIVEAUX_PUBLICS, useAnnuaire, useCalendrier, useChiffres, useSessionsPubliees, type Echeance } from "@/lib/api/public";
 import { avancement, CATEGORIES, dateCourte, dateLongue, enDate, jours, moisDeLAnnee, periode, position, prochaine } from "@/lib/calendrier";
 
 /**
@@ -72,7 +72,7 @@ export function SectionEtablissements() {
             {NIVEAUX_PUBLICS.slice(0, 4).map((n) => (
               <Link key={n.valeur} href={`/etablissements?niveau=${n.valeur}`} className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-ink-2 ring-1 ring-inset ring-line transition hover:bg-blue-soft hover:text-accent-ink">{n.libelle}</Link>
             ))}
-            <Link href="/etablissements" className="inline-flex items-center gap-1.5 rounded-full bg-teal/10 px-3.5 py-1.5 text-[13px] font-semibold text-teal transition hover:bg-teal/15"><LocateFixed size={14} aria-hidden /> Autour de moi</Link>
+            <Link href="/etablissements?autour=1" className="inline-flex items-center gap-1.5 rounded-full bg-teal/10 px-3.5 py-1.5 text-[13px] font-semibold text-teal transition hover:bg-teal/15"><LocateFixed size={14} aria-hidden /> Autour de moi</Link>
           </div>
           <div className="mt-4 rounded-2xl bg-bg px-2 py-3">
             <div className="mx-auto w-full max-w-[190px] sm:max-w-[210px]">
@@ -286,7 +286,7 @@ const ETAPES = [
 
 export function SectionInscription() {
   return (
-    <Section id="inscription" inverse fond surtitre="Démarche" titre="Inscrire son enfant"
+    <Section id="inscription" surtitre="Démarche" titre="Inscrire son enfant"
       texte="Quatre étapes, et un dossier qui suit l'enfant d'une école à l'autre, sans ressaisie."
       lien={{ href: "/inscription-scolaire", libelle: "Voir les étapes et les pièces" }}
       apercu={
@@ -315,39 +315,57 @@ export function SectionInscription() {
 
 /* ------------------------------------------------------------------ 4. Résultats d'examens (e-résultat) */
 
-const ANNEE_COURANTE = new Date().getUTCFullYear();
-const SESSION_DEFAUT = `Juin ${ANNEE_COURANTE}`;
-const EXAMENS_CHIPS: { examen: string; libelle: string }[] = [
+const EXAMENS_CHIPS = [
   { examen: "CEP", libelle: "CEP" },
   { examen: "BEPC", libelle: "BEPC" },
   { examen: "BAC", libelle: "Bac" },
-];
+] as const;
 
-/** Entrée directe vers le service e-résultat : le candidat saisit son numéro de table, le verdict répond. */
+/**
+ * Entrée directe vers le service des résultats : l'examen se choisit ici, la session est la dernière
+ * publiée par l'autorité (jamais une date supposée) ; le numéro de table ouvre le verdict.
+ */
 export function SectionResultats() {
   const router = useRouter();
   const [table, setTable] = useState("");
+  const [choix, setChoix] = useState<string | null>(null);
+  const { data: sessions, isPending } = useSessionsPubliees();
+  const derniere = (examen: string) => (sessions ?? []).filter((x) => x.examen === examen).sort((a, b) => (b.publieeLe ?? "").localeCompare(a.publieeLe ?? ""))[0];
+  const examen = choix ?? EXAMENS_CHIPS.find((x) => derniere(x.examen))?.examen ?? null;
+  const session = examen ? derniere(examen) : undefined;
   return (
     <Section id="resultats" inverse fond surtitre="Examens nationaux" titre="Consulter les résultats"
-      texte="CEP, BEPC, Baccalauréat : saisissez votre numéro de table pour connaître le verdict officiel de la session, dès sa publication."
+      texte="CEP, BEPC, Baccalauréat : le verdict officiel publié par l'autorité de l'examen, avec votre seul numéro de table."
       lien={{ href: "/resultats", libelle: "Ouvrir le service des résultats" }}
       apercu={
         <Carte>
-          <form onSubmit={(e) => { e.preventDefault(); const t = table.trim(); if (t) router.push(`/resultats?examen=BEPC&session=${encodeURIComponent(SESSION_DEFAUT)}&table=${encodeURIComponent(t)}`); }} className="flex gap-2">
-            <label className="relative flex-1">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Examen">
+            {EXAMENS_CHIPS.map((x) => {
+              const ouvert = !!derniere(x.examen), actif = examen === x.examen;
+              return (
+                <button key={x.examen} type="button" role="radio" aria-checked={actif} disabled={!ouvert} onClick={() => setChoix(x.examen)}
+                  title={ouvert ? undefined : "Aucune session publiée"}
+                  className={cn("rounded-full px-4 py-1.5 text-[13px] font-semibold ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-45",
+                    actif ? "bg-navy text-white ring-navy" : "text-ink-2 ring-line hover:bg-blue-soft hover:text-accent-ink")}>
+                  {x.libelle}
+                </button>
+              );
+            })}
+          </div>
+          <form onSubmit={(e) => { e.preventDefault(); const t = table.trim(); if (t && session) router.push(`/resultats?examen=${session.examen}&session=${encodeURIComponent(session.session)}&table=${encodeURIComponent(t)}`); }} className="mt-3 flex gap-2">
+            <label className="relative min-w-0 flex-1">
               <span className="sr-only">Numéro de table</span>
               <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" aria-hidden />
-              <input value={table} onChange={(e) => setTable(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} placeholder="Numéro de table" inputMode="numeric"
+              <input value={table} onChange={(e) => setTable(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} placeholder="N° de table" inputMode="numeric"
                 className="h-12 w-full rounded-xl border border-line bg-bg pl-11 pr-3 font-mono text-[15px] text-ink outline-none transition focus:border-blue focus:ring-4 focus:ring-blue/15" />
             </label>
-            <button type="submit" disabled={!table.trim()} className="h-12 shrink-0 rounded-xl bg-navy px-5 text-[14px] font-semibold text-white transition hover:bg-navy-deep disabled:opacity-50">Consulter</button>
+            <button type="submit" disabled={!table.trim() || !session} className="h-12 shrink-0 rounded-xl bg-navy px-5 text-[14px] font-semibold text-white transition hover:bg-navy-deep disabled:opacity-50">Consulter</button>
           </form>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {EXAMENS_CHIPS.map((x) => (
-              <Link key={x.examen} href={`/resultats?examen=${x.examen}&session=${encodeURIComponent(SESSION_DEFAUT)}`} className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-ink-2 ring-1 ring-inset ring-line transition hover:bg-blue-soft hover:text-accent-ink">{x.libelle}</Link>
-            ))}
-          </div>
-          <p className="mt-4 flex items-start gap-2 rounded-2xl bg-bg px-3.5 py-3 text-[13px] text-ink-2"><CalendarClock size={16} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden /> Gratuit, sans compte. Ni le nom, ni l&apos;établissement n&apos;est nécessaire : seul le numéro de table ouvre le verdict, et seulement après la publication officielle.</p>
+          <p className="mt-3 min-h-[20px] text-[12.5px] text-ink-muted">
+            {session ? <>Session <strong className="font-semibold text-ink-2">{session.session}</strong>{session.publieeLe ? `, publiée le ${dateLongue(session.publieeLe)}` : ""}</>
+              : isPending ? " " : "Aucune session publiée pour le moment."}
+          </p>
+          <p className="mt-3 flex items-start gap-2 rounded-2xl bg-bg px-3.5 py-3 text-[13px] text-ink-2"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden /> Gratuit, sans compte. Seul le verdict s&apos;affiche : ni nom, ni établissement, ni note détaillée.</p>
         </Carte>
       }
     />
@@ -362,7 +380,7 @@ export function SectionChiffres() {
   const top = [...(eleves?.departements ?? [])].sort((a, b) => (b.valeur ?? 0) - (a.valeur ?? 0)).slice(0, 6);
   const max = Math.max(1, ...top.map((d) => d.valeur ?? 0));
   return (
-    <Section id="chiffres" surtitre="Données ouvertes" titre="L'éducation en chiffres"
+    <Section id="chiffres" inverse surtitre="Données ouvertes" titre="L'éducation en chiffres"
       texte="Les indicateurs clés par département, avec leur définition, leur source et leur indice de confiance."
       lien={{ href: "/donnees", libelle: "Explorer les données" }}
       apercu={
@@ -383,5 +401,164 @@ export function SectionChiffres() {
         </Carte>
       }
     />
+  );
+}
+
+/* ------------------------------------------------------------------ Héros : trois chiffres du registre */
+
+const compact = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} M` : Math.round(v).toLocaleString("fr-FR"));
+
+/** Trois chiffres lus en direct (registre et annuaire) ; la place est réservée pour qu'aucun contenu ne saute. */
+export function ChiffresHeros() {
+  const { data } = useChiffres();
+  const { data: annuaire } = useAnnuaire({});
+  const eleves = data?.indicateurs.find((i) => i.cle === "effectif");
+  const ratio = data?.indicateurs.find((i) => i.cle === "ratio");
+  const items = [
+    { valeur: eleves?.valeur ?? null, format: compact, libelle: "élèves suivis" },
+    { valeur: annuaire?.total ?? null, format: compact, libelle: "établissements" },
+    { valeur: ratio?.valeur ?? null, format: (v: number) => v.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), libelle: "élèves par enseignant" },
+  ];
+  return (
+    <motion.dl initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55, duration: 0.6, ease: EASE }}
+      className="mt-10 grid max-w-lg grid-cols-3 divide-x divide-line/80 border-t border-line/70 pt-5">
+      {items.map((x, i) => (
+        <div key={x.libelle} className={cn("flex min-w-0 flex-col-reverse", i > 0 && "pl-4 sm:pl-6", i < 2 && "pr-3")}>
+          <dt className="mt-1.5 text-[12px] leading-snug text-ink-muted sm:text-[13px]">{x.libelle}</dt>
+          <dd className="font-display text-[22px] font-extrabold leading-none tracking-tight text-ink sm:text-[28px]">
+            {x.valeur != null ? <Compteur valeur={x.valeur} format={x.format} /> : <span className="inline-block h-[22px] w-16 animate-pulse rounded-md bg-surface-2 align-top sm:h-7" />}
+          </dd>
+        </div>
+      ))}
+    </motion.dl>
+  );
+}
+
+/* ------------------------------------------------------------------ Services directs */
+
+const SERVICES = [
+  { href: "/resultats", icone: Award, titre: "Résultats d'examens", texte: "CEP, BEPC, Bac : le verdict officiel", teinte: "bg-blue-soft text-accent-ink" },
+  { href: "/verifier", icone: ShieldCheck, titre: "Vérifier un diplôme", texte: "Authentique ou non, en un scan", teinte: "bg-success-bg text-success" },
+  { href: "/etablissements", icone: MapPin, titre: "Trouver un établissement", texte: "Par nom, par lieu, autour de vous", teinte: "bg-teal/10 text-teal" },
+  { href: "/calendrier", icone: CalendarDays, titre: "Calendrier scolaire", texte: "Rentrée, congés et examens", teinte: "bg-warning-bg text-warning" },
+  { href: "/inscription-scolaire", icone: UserPlus, titre: "Inscrire son enfant", texte: "Les étapes et les pièces", teinte: "bg-info-bg text-info" },
+];
+
+/** Les cinq services publics, un geste chacun : liste compacte sur téléphone, cartes sur grand écran. */
+export function ServicesDirects() {
+  return (
+    <section aria-labelledby="services-titre" className="relative">
+      <div className="mx-auto w-full max-w-6xl px-5 pb-14 sm:px-8 lg:pb-16">
+        <h2 id="services-titre" className="text-[12px] font-semibold uppercase tracking-[0.16em] text-ink-muted">Services publics · sans compte</h2>
+        <ul className="mt-4 grid gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-5">
+          {SERVICES.map((x, i) => (
+            <motion.li key={x.href} initial={{ y: 16 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-30px" }} transition={{ delay: i * 0.06, duration: 0.5, ease: EASE }}
+              className={cn(i === 4 && "sm:col-span-2 lg:col-span-1")}>
+              <Link href={x.href}
+                className="group flex h-full items-center gap-3.5 rounded-2xl border border-line/70 bg-surface p-3.5 shadow-sm outline-none transition duration-200 hover:-translate-y-0.5 hover:border-blue/30 hover:shadow-float focus-visible:ring-4 focus-visible:ring-blue/20 lg:flex-col lg:items-start lg:gap-0 lg:p-5">
+                <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105", x.teinte)}><x.icone size={21} aria-hidden /></span>
+                <span className="min-w-0 flex-1 lg:mt-4">
+                  <span className="block text-[14.5px] font-semibold leading-tight text-ink">{x.titre}</span>
+                  <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-muted lg:mt-1">{x.texte}</span>
+                </span>
+                <ArrowRight size={17} className="shrink-0 text-ink-muted transition-all duration-200 group-hover:translate-x-1 group-hover:text-accent-ink lg:mt-4" aria-hidden />
+              </Link>
+            </motion.li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ Couche nationale */
+
+type Maillon = { icone: typeof Award; nom: string; fait: string };
+const SOURCES: Maillon[] = [
+  { icone: UserRoundCheck, nom: "EducMaster", fait: "Présences et vie scolaire" },
+  { icone: Award, nom: "eRESULTATS", fait: "PV officiels des examens" },
+  { icone: GraduationCap, nom: "SI des universités", fait: "Délibérations et diplômes" },
+  { icone: HandCoins, nom: "DBAU", fait: "Bourses et allocations" },
+];
+const USAGES: Maillon[] = [
+  { icone: Users, nom: "Familles et élèves", fait: "Le parcours complet, en direct" },
+  { icone: School, nom: "Établissements", fait: "Un dossier sans ressaisie" },
+  { icone: Landmark, nom: "Pilotage", fait: "Des indicateurs fiables" },
+  { icone: ShieldCheck, nom: "Tout public", fait: "Des diplômes vérifiables" },
+];
+
+/** Flux animé entre deux colonnes : vertical sur téléphone, horizontal sur grand écran. */
+function Flux() {
+  return (
+    <div className="flex items-center justify-center py-1 lg:px-2 lg:py-0" aria-hidden>
+      <span className="relative block h-10 w-px overflow-hidden bg-line lg:h-px lg:w-full">
+        {[0, 1, 2].map((i) => (
+          <motion.span key={`v${i}`} className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-blue lg:hidden"
+            animate={{ top: ["-15%", "105%"] }} transition={{ duration: 1.8, delay: i * 0.6, repeat: Infinity, ease: "linear" }} />
+        ))}
+        {[0, 1, 2].map((i) => (
+          <motion.span key={`h${i}`} className="absolute top-1/2 hidden h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-blue lg:block"
+            animate={{ left: ["-10%", "102%"] }} transition={{ duration: 1.8, delay: i * 0.6, repeat: Infinity, ease: "linear" }} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function Pile({ titre, items, delai }: { titre: string; items: Maillon[]; delai: number }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-3 text-center text-[11.5px] font-semibold uppercase tracking-[0.14em] text-ink-muted lg:text-left">{titre}</p>
+      <ul className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+        {items.map((x, i) => (
+          <motion.li key={x.nom} initial={{ y: 10 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-40px" }} transition={{ delay: delai + i * 0.07, duration: 0.45, ease: EASE }}
+            className="flex min-w-0 items-center gap-2.5 rounded-xl border border-line/70 bg-bg p-2.5 sm:p-3">
+            <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-soft text-accent-ink sm:flex"><x.icone size={16} aria-hidden /></span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold leading-tight text-ink">{x.nom}</span>
+              <span className="block text-[11.5px] leading-snug text-ink-muted">{x.fait}</span>
+            </span>
+          </motion.li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Le positionnement : BEILE ne remplace pas les systèmes nationaux en place ; il reçoit leurs faits
+ * par connecteur signé, les rattache au NPI et les rend utiles à chacun.
+ */
+export function SectionCoucheNationale() {
+  return (
+    <section id="couche-nationale" className="relative scroll-mt-20 overflow-hidden bg-surface">
+      <div className="pointer-events-none absolute -right-40 top-0 h-96 w-96 rounded-full bg-blue-soft/60 blur-3xl" aria-hidden />
+      <div className="relative mx-auto w-full max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
+        <motion.div initial={{ y: 16 }} whileInView={{ y: 0 }} viewport={{ once: true, margin: "-60px" }} transition={{ duration: 0.6, ease: EASE }} className="max-w-2xl">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-accent-ink">Couche nationale</p>
+          <h2 className="mt-2 font-display text-[28px] font-extrabold leading-tight tracking-tight text-ink sm:text-[34px]">Relier l&apos;existant, pas le remplacer</h2>
+          <p className="mt-3 text-[16px] leading-relaxed text-ink-2">Les systèmes déjà en service transmettent leurs faits par connecteur signé. BEILE les rattache à l&apos;identité de chaque apprenant (NPI), les scelle au registre et les rend utiles à chacun.</p>
+        </motion.div>
+
+        <div className="mt-10 grid items-center gap-2 lg:grid-cols-[minmax(0,1fr)_64px_minmax(0,0.95fr)_64px_minmax(0,1fr)] lg:gap-0">
+          <Pile titre="Systèmes en place" items={SOURCES} delai={0} />
+          <Flux />
+          <motion.div initial={{ scale: 0.96 }} whileInView={{ scale: 1 }} viewport={{ once: true, margin: "-40px" }} transition={{ delay: 0.2, duration: 0.6, ease: EASE }}
+            className="relative overflow-hidden rounded-3xl bg-navy p-6 text-white shadow-float">
+            <span className="absolute inset-x-0 top-0 flex h-1" aria-hidden><span className="flex-1 bg-flag-green" /><span className="flex-1 bg-flag-yellow" /><span className="flex-1 bg-flag-red" /></span>
+            <p className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/60"><Fingerprint size={15} aria-hidden /> Registre BEILE</p>
+            <p className="mt-2 font-display text-[21px] font-bold leading-tight">Un fait reçu, contrôlé, scellé</p>
+            <ul className="mt-4 space-y-2.5 text-[13.5px] text-white/85">
+              {["Signature et horodatage vérifiés à chaque lot", "Rattachement à l'apprenant par son NPI", "Rejeu sans doublon, provenance tracée", "Diplômes scellés, vérifiables par tous"].map((t) => (
+                <li key={t} className="flex items-start gap-2"><CircleCheck size={16} className="mt-0.5 shrink-0 text-flag-yellow" aria-hidden /> {t}</li>
+              ))}
+            </ul>
+          </motion.div>
+          <Flux />
+          <Pile titre="Au service de" items={USAGES} delai={0.35} />
+        </div>
+        <p className="mt-6 text-[12px] text-ink-muted">Connecteurs démontrés sur données de recette ; le raccordement effectif de chaque système suit la convention signée avec son opérateur.</p>
+      </div>
+    </section>
   );
 }

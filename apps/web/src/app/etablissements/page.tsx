@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, LocateFixed, MapPin, Search, School, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PagePublique } from "@/components/public/CadrePublic";
 import { AnimatePresence, EASE, motion } from "@/components/motion";
 import { CarteBenin } from "@/components/map/CarteBenin";
@@ -33,7 +33,7 @@ function Annuaire() {
   const pathname = usePathname();
   const filtres = useMemo(() => lireFiltres(new URLSearchParams(params.toString())), [params]);
   const [saisie, setSaisie] = useState(filtres.q ?? "");
-  const [geo, setGeo] = useState<"attente" | "refus" | null>(null);
+  const [geo, setGeo] = useState<"attente" | "refus" | "indisponible" | "hors" | null>(null);
   const [vue, setVue] = useState<"liste" | "carte">("liste");
   const { data, isPending, isError, refetch, isFetching } = useAnnuaire(filtres);
 
@@ -52,14 +52,29 @@ function Annuaire() {
   }, [saisie]);
 
   const autourDeMoi = () => {
-    if (!("geolocation" in navigator)) { setGeo("refus"); return; }
+    if (!("geolocation" in navigator)) { setGeo("indisponible"); return; }
     setGeo("attente");
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setGeo(null); changer({ lat: Number(pos.coords.latitude.toFixed(4)), lng: Number(pos.coords.longitude.toFixed(4)), departement: undefined }); },
-      () => setGeo("refus"),
-      { timeout: 10_000, maximumAge: 300_000 },
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(4)), lng = Number(pos.coords.longitude.toFixed(4));
+        // Mêmes bornes que l'API : une position hors du territoire (VPN, localisation par IP) est expliquée, pas envoyée.
+        if (lat < 5.5 || lat > 13 || lng < 0.5 || lng > 4.2) { setGeo("hors"); return; }
+        setGeo(null);
+        changer({ lat, lng, departement: undefined, commune: undefined });
+      },
+      (err) => setGeo(err.code === err.PERMISSION_DENIED ? "refus" : "indisponible"),
+      { timeout: 12_000, maximumAge: 300_000 },
     );
   };
+
+  // Lien « Autour de moi » de l'accueil (?autour=1) : la localisation est demandée dès l'arrivée, une seule fois.
+  const autourDemande = useRef(false);
+  useEffect(() => {
+    if (autourDemande.current || params.get("autour") !== "1" || (filtres.lat !== undefined && filtres.lng !== undefined)) return;
+    autourDemande.current = true;
+    autourDeMoi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   const pres = filtres.lat !== undefined && filtres.lng !== undefined;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.parPage)) : 1;
@@ -105,7 +120,13 @@ function Annuaire() {
             );
           })}
         </div>
-        {geo === "refus" && <p className="mt-2 text-[13px] text-warning">Position indisponible : autorisez la localisation dans votre navigateur, ou choisissez un département.</p>}
+        {geo && geo !== "attente" && (
+          <p role="status" className="mt-2 text-[13px] text-warning">
+            {geo === "refus" ? "Localisation refusée : autorisez-la pour ce site dans votre navigateur, ou choisissez un département."
+              : geo === "hors" ? "Votre position semble hors du Bénin (VPN ou localisation approximative) : choisissez plutôt un département."
+              : "Position introuvable pour le moment : réessayez, ou choisissez un département."}
+          </p>
+        )}
       </div>
 
       {/* Résultats */}
