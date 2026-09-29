@@ -352,7 +352,7 @@ etablissement.post("/etablissements/:id/justificatifs/:justificationId/decision"
 
 /**
  * Examens nationaux, côté établissement : LECTURE SEULE. Un établissement ne délibère jamais un examen
- * national (DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC, Office du Baccalauréat pour le BAC) et
+ * national (DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC et pour le BAC) et
  * ne délivre aucun diplôme national. Il voit ses candidats (numéro de table, centre) et, une fois la
  * session publiée par l'autorité, le verdict officiel et le diplôme délivré en son nom.
  */

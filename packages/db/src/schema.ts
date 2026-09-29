@@ -993,9 +993,11 @@ export const homologationsFiliere = core.table("homologations_filiere", {
 ]);
 
 /**
- * Jury : national pour un examen, d'établissement pour un diplôme par capitalisation. Les deux
- * autorités coexistent au Bénin (Office du Baccalauréat, DEC pour les examens nationaux supérieurs,
- * université pour la capitalisation) : `autorite` est un choix, pas une déduction.
+ * Jury : national pour un examen, d'établissement pour un diplôme par capitalisation. Les autorités
+ * coexistent au Bénin (DEC du MEMP, DEC du MESTFP, DEC du supérieur pour les examens nationaux,
+ * université pour la capitalisation) : `autorite` est un choix, pas une déduction. La colonne est un
+ * texte sans contrainte — `office_du_bac` y reste LISIBLE pour relire une écriture ancienne, alors
+ * qu'aucune nouvelle délibération ne l'emploie (référentiel §9).
  */
 export const jurys = core.table("jurys", {
   id: text("id").primaryKey(),

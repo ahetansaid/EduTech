@@ -327,7 +327,7 @@ export const GUIDES: Guide[] = [
         cible: "examens-sessions",
         titre: "Examens nationaux",
         texte: "Vos candidats au CEP, au BEPC ou au BAC : numéro de table, centre, puis le verdict officiel et le diplôme dès que l'autorité a publié la session.",
-        pourquoi: "Un diplôme national n'est délivré que par l'autorité d'examen (DEC, Office du Baccalauréat) : ce que vous voyez ici vient de son procès-verbal, jamais d'un calcul de l'établissement.",
+        pourquoi: "Un diplôme national n'est délivré que par l'autorité d'examen (DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC et le BAC) : ce que vous voyez ici vient de son procès-verbal, jamais d'un calcul de l'établissement.",
       },
       BOUTON_GUIDE,
     ],

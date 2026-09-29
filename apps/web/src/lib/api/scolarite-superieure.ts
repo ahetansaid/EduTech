@@ -115,9 +115,14 @@ export const LIBELLE_MODE_DELIBERATION: Record<ModeDeliberation, string> = {
   examen_national: "Examen national (autorité de l'État)", jury_capitalisation: "Jury de l'établissement (capitalisation)",
 };
 
+/**
+ * Bureau qui a délibéré. `office_du_bac` ne s'écrit plus depuis que la table des autorités d'examen
+ * rattache le BAC à la DEC-MESTFP ; la ligne reste pour rendre lisible une écriture ancienne, avec son
+ * incertitude affichée — le dire vaut mieux que rendre un sigle non confirmé comme une autorité certaine.
+ */
 export const LIBELLE_OFFICE: Record<OfficeDeliberant, string> = {
   dec_memp: "DEC du MEMP", dec_mestfp: "DEC du MESTFP",
-  office_du_bac: "Office du Baccalauréat", dec_sup: "DEC (examens et concours supérieurs)", etablissement: "Établissement",
+  office_du_bac: "Office du Baccalauréat (dénomination non confirmée)", dec_sup: "DEC (examens et concours supérieurs)", etablissement: "Établissement",
 };
 
 export const LIBELLE_DECISION_DIPLOME: Record<DecisionDiplome, string> = {

@@ -155,7 +155,7 @@ const resDateFausse = await anonyme.appel("GET", "/public/resultats?examen=CEP&s
 verifier("Public : date de naissance fausse → aucune identité, signalée", (resDateFausse.json as { identite?: unknown; dateNonConcordante?: boolean }).identite === null && (resDateFausse.json as { dateNonConcordante?: boolean }).dateNonConcordante === true, true);
 const sessionsPub = await anonyme.appel("GET", "/public/resultats/sessions");
 verifier("Public : sessions publiées proposées au choix", liste(sessionsPub.json).some((x) => x.examen === "CEP" && x.session === "Juin 2024"), true);
-verifier("Public : chaque session nomme son autorité (pas d'« ONEC »)", liste(sessionsPub.json).every((x) => typeof x.autorite === "string" && !/ONEC|Office national des examens/i.test(String(x.autorite))), true);
+verifier("Public : chaque session nomme son autorité (pas d'« ONEC », pas d'« Office du Bac »)", liste(sessionsPub.json).every((x) => typeof x.autorite === "string" && !/ONEC|Office national des examens|Office du Bac/i.test(String(x.autorite))), true);
 verifier("Public : session inconnue → « introuvable » (jamais un 500)", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Janvier%201900&table=1900000001")).statut, 200);
 verifier("Public : table absente d'une session publiée → « introuvable »", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024099999")).statut, 200);
 verifier("Paramètre d'examen invalide → 422", (await anonyme.appel("GET", "/public/resultats?examen=BREVET&session=Juin%202024&table=1")).statut, 422);
@@ -164,6 +164,10 @@ verifier("Requête incomplète (sans numéro de table) → 422", (await anonyme.
 verifier("Administration centrale → sessions d'examen", (await central!.appel("GET", "/examens/sessions")).statut, 200);
 verifier("Sans session → bureau des examens", (await anonyme.appel("GET", "/examens/sessions")).statut, 401);
 verifier("Enseignant → ouverture d'une session (écriture interdite)", (await enseignant!.appel("POST", "/examens/sessions", { examen: "CEP", session: "Test Recette" })).statut, 403);
+// Le sigle reste dans l'énumération (relire une écriture ancienne) mais aucune autorité béninoise ne le
+// publie : refuser à l'ouverture est la seule manière honnête de ne pas créer un examen national fictif.
+verifier("Bureau des examens : ouvrir une session « BT » → refus (aucune autorité ne délibère ce sigle)", (await central!.appel("POST", "/examens/sessions", { examen: "BT", session: "Test Recette BT" })).statut, 422);
+verifier("Bureau des examens : ouvrir une session « BEP » → refus", (await central!.appel("POST", "/examens/sessions", { examen: "BEP", session: "Test Recette BEP" })).statut, 422);
 verifier("Inspecteur → constitution du candidaturé (hors bureau)", (await inspecteur!.appel("POST", "/examens/sessions/SES-INEXISTANT/candidatures", { etablissementId: PILOTE, centreId: "CEN-INEXISTANT" })).statut, 403);
 
 titre("Cycle annuel, classes et autorité de certification (refus : aucune écriture)");
@@ -288,7 +292,10 @@ if (ECRITURES) {
   const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] });
   verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
   // Révocation d'un diplôme par l'autorité de certification, puis vérification publique qui rend « révoqué ».
-  const revo = await central!.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Fraude établie par l'ONEC (recette)" });
+  // Le motif est un FAIT du registre (REVOCATION_CERTIFICAT), consultable par un agent habilité : il nomme
+  // l'autorité qui a rendu le verdict — la DEC du MEMP pour un CEP. « ONEC » est ivoirien et n'organise
+  // rien au Bénin ; le rendre ici, ce serait installer un sigle faux dans la trace elle-même.
+  const revo = await central!.appel("POST", "/certificats/CERT-CEP-2024-000001/revocation", { motif: "Fraude établie par la DEC-MEMP (recette)" });
   verifier("Administration centrale : révocation d'un diplôme", [200, 409].includes(revo.statut), true, `statut ${revo.statut}`);
   const apresRevocation = await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification");
   verifier("Public : diplôme révoqué → statut « revoque »", (apresRevocation.json as { statut?: string }).statut === "revoque", true);

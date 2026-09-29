@@ -17,7 +17,8 @@ import { LigneVerdict, mentionDe, publierSession, recevoirPv, sessionParLibelle 
  * Interopérabilité : BEILE est la couche NATIONALE, pas un logiciel de gestion de plus. Les systèmes qui
  * produisent les faits les lui transmettent, dans l'esprit de la plateforme nationale X-Road :
  *   - EducMaster (MEMP · MESTFP)  → la vie scolaire (absences) ;
- *   - eRESULTATS (DEC, Office du Bac) → le procès-verbal des examens, puis la publication ;
+ *   - eRESULTATS (DEC-MEMP pour le CEP, DEC-MESTFP pour le BEPC et le BAC) → le procès-verbal des
+ *     examens, puis la publication ;
  *   - l'université (SI de scolarité) → le PV de délibération d'un diplôme national ;
  *   - la DBAU → les décisions d'allocation.
  * BEILE contrôle (mêmes règles que la saisie : homologation, crédits, scolarité réelle), rattache la
@@ -34,7 +35,7 @@ export const interop = new Hono<{ Variables: Variables }>();
 type IdPartenaire = "educmaster" | "eresultats" | "uac" | "dbau";
 export const PARTENAIRES: Readonly<Record<IdPartenaire, { nom: string; source: SourceDonnee; messages: string[]; racine?: string }>> = {
   educmaster: { nom: "EducMaster (MEMP · MESTFP)", source: "educmaster", messages: ["absences"] },
-  eresultats: { nom: "eRESULTATS (DEC · Office du Baccalauréat)", source: "examens", messages: ["pv-examen", "publication"] },
+  eresultats: { nom: "eRESULTATS (DEC-MEMP · DEC-MESTFP)", source: "examens", messages: ["pv-examen", "publication"] },
   uac: { nom: "Université d'Abomey-Calavi (SI de scolarité)", source: "universite", messages: ["pv-diplome"], racine: "ETB-SUP-UAC" },
   dbau: { nom: "DBAU (MESRS)", source: "dbau", messages: ["allocations"] },
 };
