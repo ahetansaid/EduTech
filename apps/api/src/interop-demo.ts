@@ -1,4 +1,6 @@
+import { fileURLToPath } from "node:url";
 import { connecter } from "@beile/db";
+import { config } from "dotenv";
 import { sql } from "drizzle-orm";
 import { envoyer } from "./client-interop";
 import { Session } from "./client-recette";
@@ -16,6 +18,9 @@ import { Session } from "./client-recette";
  * Prérequis : BEILE_PARTENAIRES (mêmes secrets que l'API), API démarrée, référentiel du supérieur et
  * scénario joués. `npm run interop:demo -w @beile/api`
  */
+// Même configuration que les scripts de la base : le `.env` du dépôt (connexion, secrets des partenaires).
+config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
+
 const exiger = (libelle: string, r: { statut: number; json: unknown }, attendus = [200, 201]) => {
   if (!attendus.includes(r.statut)) { console.error(`✘ ${libelle} — HTTP ${r.statut} : ${JSON.stringify(r.json).slice(0, 300)}`); process.exit(1); }
   return r.json as Record<string, unknown>;
