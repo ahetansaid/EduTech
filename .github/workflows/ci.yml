@@ -95,6 +95,7 @@ jobs:
       - name: Comptes (mots de passe générés, jamais affichés) et projections
         run: |
           npm run comptes --workspace=@beile/db
+          npm run organisations --workspace=@beile/db
           npm run projections --workspace=@beile/db
           npm run calendrier --workspace=@beile/db
       - name: Vérification de la base (ajout seul, droits, RLS, témoins)

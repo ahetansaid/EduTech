@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { empreinteJeton, genererMotDePasse, hacherMotDePasse, motDePasseConforme, nouveauJeton, verifierMotDePasse } from "@beile/db/securite";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
@@ -74,11 +74,14 @@ async function contexteDe(profil: Profil) {
   const etabIds = [...new Set(profil.habilitations.flatMap((h) => (h.perimetre.niveau === "etablissement" ? [h.perimetre.etablissementId] : [])))];
   const apprenant = profil.habilitations.find((h) => h.role === "apprenant" && h.perimetre.niveau === "personnel");
   const apprenantId = apprenant?.perimetre.niveau === "personnel" ? apprenant.perimetre.apprenantId : null;
-  const [etabs, sup] = await Promise.all([
+  const [etabs, sup, dlg] = await Promise.all([
     etabIds.length ? base().select({ id: schema.etablissements.id, cycle: schema.etablissements.cycle }).from(schema.etablissements).where(inArray(schema.etablissements.id, etabIds)) : [],
     apprenantId ? base().select({ id: schema.inscriptionsSuperieures.id }).from(schema.inscriptionsSuperieures).where(eq(schema.inscriptionsSuperieures.apprenantId, apprenantId)).limit(1) : [],
+    // Une délégation d'administration active ouvre la console d'administration déléguée (quel que soit le rôle métier).
+    base().select({ id: schema.delegations.id }).from(schema.delegations)
+      .where(and(eq(schema.delegations.profilId, profil.id), eq(schema.delegations.statut, "active"), gt(schema.delegations.au, new Date()))).limit(1),
   ]);
-  return { cycles: Object.fromEntries(etabs.map((e) => [e.id, e.cycle])) as Record<string, "primaire" | "secondaire" | "superieur">, etudiantSuperieur: sup.length > 0 };
+  return { cycles: Object.fromEntries(etabs.map((e) => [e.id, e.cycle])) as Record<string, "primaire" | "secondaire" | "superieur">, etudiantSuperieur: sup.length > 0, delegue: dlg.length > 0 };
 }
 
 auth.get("/auth/etat", async (c) => {

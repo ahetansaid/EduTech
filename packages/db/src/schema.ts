@@ -144,6 +144,66 @@ export const etablissements = core.table("etablissements", {
 }, (t) => [index("etablissements_commune_idx").on(t.communeId), index("etablissements_position_idx").using("gist", t.position)]);
 
 /**
+ * Arbre des organisations de l'État, support de l'administration déléguée en cascade :
+ * autorité de la plateforme → ministères et organismes → directions départementales et universités →
+ * circonscriptions → établissements. Chaque administrateur n'agit que dans son sous-arbre.
+ */
+export const organisations = core.table("organisations", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["autorite", "ministere", "organisme", "departement", "universite", "circonscription", "etablissement"] }).notNull(),
+  nom: text("nom").notNull(),
+  parentId: text("parent_id").references((): AnyPgColumn => organisations.id),
+  /** Ministère de tutelle (MEMP, MESTFP, MESRS) pour les nœuds qui en relèvent. */
+  ministere: text("ministere"),
+  departementId: text("departement_id").references(() => departements.id),
+  circonscription: text("circonscription"),
+  etablissementId: text("etablissement_id").references((): AnyPgColumn => etablissements.id),
+  actif: boolean("actif").notNull().default(true),
+}, (t) => [index("organisations_parent_idx").on(t.parentId), uniqueIndex("organisations_etablissement_uq").on(t.etablissementId)]);
+
+/**
+ * Délégation d'administration (un « chapeau » d'administrateur) : niveau 0 (autorité) à 4 (référent de
+ * proximité), sur une organisation, avec les rôles métier qu'elle permet d'attribuer. Toujours datée,
+ * garantie par celui qui l'accorde, révocable ; les nominations sensibles attendent une seconde validation.
+ */
+export const delegations = core.table("delegations", {
+  id: text("id").primaryKey(),
+  profilId: text("profil_id").notNull().references(() => profils.id),
+  organisationId: text("organisation_id").notNull().references(() => organisations.id),
+  niveau: integer("niveau").notNull(),
+  rolesDelegables: text("roles_delegables").array().notNull(),
+  peutNommer: boolean("peut_nommer").notNull().default(false),
+  statut: text("statut", { enum: ["en_attente", "active", "revoquee", "refusee"] }).notNull(),
+  accordeePar: text("accordee_par").references(() => profils.id),
+  valideePar: text("validee_par").references(() => profils.id),
+  motif: text("motif"),
+  du: timestamp("du", { withTimezone: true }).notNull().defaultNow(),
+  au: timestamp("au", { withTimezone: true }).notNull(),
+  revoqueeLe: timestamp("revoquee_le", { withTimezone: true }),
+  revoqueePar: text("revoquee_par").references(() => profils.id),
+}, (t) => [index("delegations_profil_idx").on(t.profilId), index("delegations_organisation_idx").on(t.organisationId)]);
+
+/**
+ * Attribution d'un rôle métier (un autre « chapeau ») : rôle et périmètre, garant, date de fin.
+ * Le registre des droits ; `profils.habilitations` en porte l'ensemble effectif (ajout à l'attribution,
+ * retrait à la révocation ou à l'échéance).
+ */
+export const attributions = core.table("attributions", {
+  id: text("id").primaryKey(),
+  profilId: text("profil_id").notNull().references(() => profils.id),
+  role: text("role").notNull(),
+  perimetre: jsonb("perimetre").notNull(),
+  organisationId: text("organisation_id").notNull().references(() => organisations.id),
+  accordeePar: text("accordee_par").references(() => profils.id),
+  motif: text("motif"),
+  du: timestamp("du", { withTimezone: true }).notNull().defaultNow(),
+  au: timestamp("au", { withTimezone: true }).notNull(),
+  revoqueeLe: timestamp("revoquee_le", { withTimezone: true }),
+  revoqueePar: text("revoquee_par").references(() => profils.id),
+  motifRevocation: text("motif_revocation"),
+}, (t) => [index("attributions_profil_idx").on(t.profilId), index("attributions_organisation_idx").on(t.organisationId)]);
+
+/**
  * Référentiel réel des établissements du Bénin (annuaire public) : listes officielles des ministères
  * (universités publiques et leurs composantes, établissements privés du supérieur, EFTP) et cartographie
  * collaborative OpenStreetMap (© contributeurs OSM, ODbL). Chaque ligne porte sa source et son niveau de

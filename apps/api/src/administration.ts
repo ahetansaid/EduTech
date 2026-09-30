@@ -66,7 +66,7 @@ const ROLES_AVEC_NPI: Role[] = ["apprenant", "parent", "enseignant"];
  * NPI présent et connu du registre national lorsqu'il est requis, identité liée (enseignant affecté, apprenant
  * titulaire du NPI). Lève 422 avec la liste des incohérences ; 409 si le NPI appartient déjà à un autre profil.
  */
-async function verifierCoherence(habilitations: Habilitation[], npi: string | null, profilIdExclu: string | null) {
+export async function verifierCoherence(habilitations: Habilitation[], npi: string | null, profilIdExclu: string | null) {
   const problemes: string[] = [];
   const cles = new Set<string>();
   for (const [i, h] of habilitations.entries()) {
@@ -138,7 +138,7 @@ const sansAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").to
 const TITRES = new Set(["dr", "pr", "m", "mme", "mlle", "me"]);
 
 /** prenom.nom à partir du nom affiché (« Aïcha ZANNOU » → aicha.zannou), suffixe numérique en cas de collision. */
-async function proposerIdentifiant(nomAffiche: string) {
+export async function proposerIdentifiant(nomAffiche: string) {
   const mots = sansAccents(nomAffiche).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((m) => m && !TITRES.has(m));
   if (!mots.length) return null;
   const tronque = (s: string) => s.replace(/^-+|-+$/g, "").slice(0, 38) || "x";
@@ -149,7 +149,7 @@ async function proposerIdentifiant(nomAffiche: string) {
   return null;
 }
 
-const suffixeAleatoire = (n = 12) => Array.from(randomBytes(n), (b) => "abcdefghijklmnopqrstuvwxyz"[b % 26]).join("");
+export const suffixeAleatoire = (n = 12) => Array.from(randomBytes(n), (b) => "abcdefghijklmnopqrstuvwxyz"[b % 26]).join("");
 
 /* ================================================================== Référentiels des formulaires */
 
