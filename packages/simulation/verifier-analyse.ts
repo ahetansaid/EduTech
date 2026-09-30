@@ -1,4 +1,5 @@
 import type { FamilleQuestion, FigureAnalyse, Perimetre, ReponseAnalyse } from "@beile/contracts";
+import { detecterAlertes } from "./src/alertes";
 import { analyser } from "./src/analyse";
 import { genererCoucheNationale } from "./src/macro";
 import { calculer } from "./src/semantique";
@@ -87,6 +88,21 @@ const refus: [string, Perimetre, string][] = [
 for (const [question, perimetre, motif] of refus) {
   const r = analyser(c, question, perimetre);
   verifier(`Refus attendu (${motif}) : « ${question} »`, r.statut === "refuse" && (r.motif === motif || (motif === "indicateur_inconnu" && r.motif === "question_ambigue")), r.statut === "refuse" ? r.motif : `répondu (${r.famille})`);
+}
+
+// Alertes territoriales : périmètre respecté, sens défavorable seulement, déterminisme.
+const CS_PARAKOU: Perimetre = { niveau: "circonscription", circonscription: "CS Parakou" };
+const HAUSSE_FAVORABLE = new Set(["taux_reussite_examen", "taux_presence_examen", "moyenne_generale", "taux_seuil_moyenne", "part_enseignants_qualifies", "taux_scolarisation_brut", "taux_depot_donnees"]);
+const defavorable = (a: { code: string; valeur: number; reference: number }) => (HAUSSE_FAVORABLE.has(a.code) ? a.valeur < a.reference : a.valeur > a.reference);
+for (const [nom, p] of [["national", NATIONAL], ["Borgou", BORGOU], ["CS Parakou", CS_PARAKOU]] as const) {
+  const r = detecterAlertes(c, p);
+  verifier(`Alertes ${nom} : au moins une alerte`, r.alertes.length > 0, String(r.alertes.length));
+  if (p.niveau === "departement") verifier(`Alertes ${nom} : aucune hors du département`, r.alertes.every((a) => a.departementId === p.departementId));
+  if (p.niveau === "circonscription") verifier(`Alertes ${nom} : aucune hors de la commune`, r.alertes.every((a) => a.communeId === "parakou"));
+  verifier(`Alertes ${nom} : textes sans NaN`, r.alertes.every((a) => !/NaN|undefined|Infinity/.test(a.texte)));
+  verifier(`Alertes ${nom} : déterministe`, JSON.stringify(detecterAlertes(c, p)) === JSON.stringify(r));
+  // Une « dégradation » ou un « écart » en est un : jamais une commune meilleure que sa référence.
+  verifier(`Alertes ${nom} : toutes dans le sens défavorable`, r.alertes.every(defavorable), r.alertes.filter((a) => !defavorable(a)).map((a) => a.texte).slice(0, 2).join(" / "));
 }
 
 console.log(`\n${controles - echecs}/${controles} contrôles réussis`);

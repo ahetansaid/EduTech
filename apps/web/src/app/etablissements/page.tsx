@@ -9,7 +9,7 @@ import { AnimatePresence, EASE, motion } from "@/components/motion";
 import { CarteBenin } from "@/components/map/CarteBenin";
 import { EtatVide, Squelette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { NIVEAUX_PUBLICS, STATUTS, useAnnuaire, type Filtres, type NiveauPublic, type StatutEtablissement } from "@/lib/api/public";
+import { LIBELLE_PREUVE, libelleStatut, NIVEAUX_PUBLICS, STATUTS, useAnnuaire, type Filtres, type NiveauPublic, type StatutEtablissement } from "@/lib/api/public";
 import { DEPARTEMENTS } from "@beile/simulation/territoire";
 
 export default function PageEtablissements() {
@@ -163,8 +163,11 @@ function Annuaire() {
                         <p className="font-display text-[15.5px] font-bold leading-snug text-ink group-hover:text-accent-ink">{e.nom}</p>
                         {e.distanceKm != null && <span className="shrink-0 rounded-full bg-teal/10 px-2.5 py-1 text-[12px] font-semibold text-teal">{e.distanceKm.toLocaleString("fr-FR")} km</span>}
                       </div>
-                      <p className="mt-1 text-[13px] text-ink-2">{e.typeLibelle} · {STATUTS[e.statut]}</p>
-                      <p className="mt-auto flex items-center gap-1.5 pt-3 text-[12.5px] text-ink-muted"><MapPin size={14} aria-hidden /> {e.commune}{e.departement ? `, ${e.departement}` : ""}</p>
+                      <p className="mt-1 text-[13px] text-ink-2">{[e.sigle, e.typeLibelle, libelleStatut(e.statut)].filter(Boolean).join(" · ")}</p>
+                      <div className="mt-auto flex items-center justify-between gap-2 pt-3 text-[12.5px] text-ink-muted">
+                        <span className="flex min-w-0 items-center gap-1.5"><MapPin size={14} className="shrink-0" aria-hidden /> <span className="truncate">{e.commune ? `${e.commune}${e.departement ? `, ${e.departement}` : ""}` : "Commune non renseignée"}</span></span>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", e.preuve === "cartographie_collaborative" ? "bg-surface-2 text-ink-2" : "bg-success-bg text-success")}>{LIBELLE_PREUVE[e.preuve]}</span>
+                      </div>
                     </Link>
                   </motion.li>
                 ))}
@@ -185,6 +188,11 @@ function Annuaire() {
               onSelect={(id) => changer({ commune: id, lat: undefined, lng: undefined })} hauteur={filtres.departement ? 420 : 560} className="w-full" />
             <p className="px-1 pb-1 pt-2 text-[12px] text-ink-muted">Les points situent les établissements de la page affichée.</p>
           </div>
+          <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-ink-muted">
+            Sources : listes officielles des ministères (enseignement supérieur, enseignement technique) et{" "}
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">© contributeurs OpenStreetMap</a> (licence ODbL).
+            Un établissement manquant ou erroné ? Signalez-le depuis l&apos;assistance.
+          </p>
         </aside>
       </div>
     </PagePublique>

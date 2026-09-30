@@ -314,6 +314,7 @@ function ChargementCommune() {
 
 function PanneauCommune({ fiche }: { fiche: FicheCommune }) {
   const { commune: c, indicateurs: ind, priorite } = fiche;
+  if (!ind) return <Card className="min-w-0"><EtatVide icone={IconeCarte} titre={c.nom} texte="Pas encore de données statistiques pour cette commune." /></Card>;
   return (
     <>
       <Card className="min-w-0">

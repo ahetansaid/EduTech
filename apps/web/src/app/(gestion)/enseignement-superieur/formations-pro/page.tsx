@@ -5,15 +5,12 @@ import { useMemo, type ReactNode } from "react";
 import { TableauDonnees } from "@/components/charts/Graphiques";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader } from "@/components/ui/primitives";
 import { useFilieresSup, type FiliereSup } from "@/lib/api/superieur-public";
-import { LIBELLE_DIPLOME, LIBELLE_TYPE_PARCOURS, estFiliereEFTP, libelleCycle } from "@/lib/enseignement-superieur";
+import { ECHELLE_EFTP, LIBELLE_DIPLOME, LIBELLE_TYPE_PARCOURS, estFiliereEFTP, libelleCycle } from "@/lib/enseignement-superieur";
 import { exporterCsv, type Colonne } from "@/lib/export";
-import type { Diplome } from "@beile/contracts";
+import { diplomeCertifie } from "@beile/contracts";
 import { EtatErreur } from "../../etablissement/_composants";
 import { OngletsESup } from "../_Onglets";
 import { BadgeHabilitation, ChargementRegistre } from "../_Registre";
-
-/** Échelle des qualifications EFTP (MESTFP + Emploi/PME), puis la passerelle vers la licence professionnelle. */
-const ECHELLE: Diplome[] = ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP"];
 
 /** Formations professionnelles : la voie EFTP et ses passerelles vers le supérieur LMD. */
 export default function FormationsProPage() {
@@ -25,6 +22,7 @@ export default function FormationsProPage() {
     total: eftp.length,
     horsLmd: eftp.filter((f) => f.cycle == null).length,
     avecStage: eftp.filter((f) => f.stageObligatoireMois > 0).length,
+    nonCertifies: eftp.filter((f) => !diplomeCertifie(f.diplomeVise)).length,
   }), [eftp]);
 
   const COLONNES: Colonne<FiliereSup>[] = [
@@ -33,6 +31,7 @@ export default function FormationsProPage() {
     { entete: "Habilitation", valeur: (f) => (f.habilitee ? "habilitée" : "non habilitée") },
     { entete: "Voie", valeur: (f) => LIBELLE_TYPE_PARCOURS[f.voie] },
     { entete: "Diplôme visé", valeur: (f) => LIBELLE_DIPLOME[f.diplomeVise] },
+    { entete: "Certification par l'État", valeur: (f) => (diplomeCertifie(f.diplomeVise) ? "publiée" : "aucune autorité publiée") },
     { entete: "Cursus", valeur: (f) => libelleCycle(f) },
     { entete: "Stage (mois)", valeur: (f) => f.stageObligatoireMois },
   ];
@@ -43,7 +42,7 @@ export default function FormationsProPage() {
     f.etablissement.sigle ?? f.etablissement.nom,
     <BadgeHabilitation key={`${f.id}-h`} habilitee={f.habilitee} />,
     LIBELLE_TYPE_PARCOURS[f.voie],
-    <span key={f.id} className="flex items-center gap-2">{LIBELLE_DIPLOME[f.diplomeVise]}{f.cycle == null && <Badge ton="neutre">Hors LMD</Badge>}</span>,
+    <span key={f.id} className="flex items-center gap-2">{LIBELLE_DIPLOME[f.diplomeVise]}{f.cycle == null && <Badge ton="neutre">Hors LMD</Badge>}{!diplomeCertifie(f.diplomeVise) && <Badge ton="avertissement">Non certifié</Badge>}</span>,
     <span key={`${f.id}-s`} className="text-xs text-ink-muted">{f.stageObligatoireMois > 0 ? `${f.stageObligatoireMois} mois` : "aucun"}</span>,
   ]);
 
@@ -56,12 +55,12 @@ export default function FormationsProPage() {
 
       <div className="flex items-start gap-3 rounded-lg bg-info-bg px-4 py-3 text-[13px] text-info">
         <Info size={17} className="mt-0.5 shrink-0" aria-hidden />
-        <p><strong>Une seule échelle.</strong> Le Bénin suit le LMD pour l&apos;université (Licence-Master-Doctorat) ; les diplômes professionnels (CAP, BEP, BT, BTS, CQP) vivent sur l&apos;échelle EFTP en amont. Le <em>BTS n&apos;est pas dans le LMD</em> — c&apos;est une voie parallèle qui ouvre, par passerelle, une <strong>licence professionnelle</strong>.</p>
+        <p><strong>Une seule échelle.</strong> Le Bénin suit le LMD pour l&apos;université (Licence-Master-Doctorat) ; les diplômes professionnels vivent sur l&apos;échelle EFTP en amont. Seuls ceux qu&apos;une autorité publique publie sont montrés comme une étape : <em>CAP → bac technique → BTS / CQP</em>. Le <em>BTS n&apos;est pas dans le LMD</em> — c&apos;est une voie parallèle qui ouvre, par passerelle, une <strong>licence professionnelle</strong>. Une filière qui vise un sigle sans autorité publiée reste au catalogue, marquée « Non certifié » : le cacher priverait le lecteur d&apos;une information, le montrer sans avertissement en ferait une promesse.</p>
       </div>
 
-      {q.isPending ? <ChargementRegistre tuiles={3} /> : q.isError ? <Card><EtatErreur erreur={q.error} reessayer={() => q.refetch()} /></Card> : (<>
-      <div className="grid grid-cols-3 gap-3">
-        {[[stats.total, "filières EFTP"], [stats.horsLmd, "hors LMD (diplômes pro)"], [stats.avecStage, "avec stage obligatoire"]].map(([v, l]) => (
+      {q.isPending ? <ChargementRegistre tuiles={4} /> : q.isError ? <Card><EtatErreur erreur={q.error} reessayer={() => q.refetch()} /></Card> : (<>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[[stats.total, "filières EFTP"], [stats.horsLmd, "hors LMD (diplômes pro)"], [stats.avecStage, "avec stage obligatoire"], [stats.nonCertifies, "visant un sigle non certifié"]].map(([v, l]) => (
           <Card key={String(l)} className="p-3.5">
             <p className="text-2xl font-semibold tabular-nums text-ink">{v}</p>
             <p className="text-xs text-ink-muted">{l}</p>
@@ -70,12 +69,12 @@ export default function FormationsProPage() {
       </div>
 
       <Card>
-        <CardHeader icon={Layers} title="Échelle des qualifications" subtitle="Les maillons du professionnel, puis la passerelle (carrefour 2) vers un cycle LMD court." />
+        <CardHeader icon={Layers} title="Échelle des qualifications" subtitle="Les maillons certifiés par une autorité publique, puis la passerelle (carrefour 2) vers un cycle LMD court." />
         <div className="flex flex-wrap items-center gap-2">
-          {ECHELLE.map((d, i) => (
+          {ECHELLE_EFTP.map((d, i) => (
             <span key={d} className="flex items-center gap-2">
               <span className={`rounded-md px-2.5 py-1 text-[13px] font-medium ${represente.has(d) ? "bg-blue-soft text-accent-ink" : "bg-surface-2 text-ink-2"}`}>{LIBELLE_DIPLOME[d]}</span>
-              {i < ECHELLE.length - 1 && <ArrowRight size={14} className="text-ink-muted" aria-hidden />}
+              {i < ECHELLE_EFTP.length - 1 && <ArrowRight size={14} className="text-ink-muted" aria-hidden />}
             </span>
           ))}
           <ArrowRight size={14} className="text-ink-muted" aria-hidden />

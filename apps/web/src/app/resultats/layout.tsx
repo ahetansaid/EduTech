@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-8">{children}</main>
-      <footer className="border-t border-line/60 px-5 py-5 text-center text-[12px] text-ink-muted">Consultation gratuite, sans compte · Verdicts reçus des autorités d&apos;examen : DEC du MEMP (CEP), DEC du MESTFP (BEPC), Office du Baccalauréat (BAC)</footer>
+      <footer className="border-t border-line/60 px-5 py-5 text-center text-[12px] text-ink-muted">Consultation gratuite, sans compte · Verdicts reçus des autorités d&apos;examen : DEC du MEMP (CEP), DEC du MESTFP (BEPC et BAC)</footer>
     </div>
   );
 }

@@ -231,7 +231,7 @@ function DialoguePeriode({ id, filieres, ouvert, onFermer }: { id: string; filie
         </Champ>
         <div className="grid gap-4 sm:grid-cols-2">
           <Champ label="Nature de la période"><SelectVocabulaire vocabulaire={LIBELLE_TYPE_PERIODE} valeur={type} onChange={setType} label="Nature de la période" /></Champ>
-          <Champ label="Composante" aide="Vide pour une filière EFTP hors LMD (CAP, BT, BTS)."><SelectVocabulaire vocabulaire={LIBELLE_COMPOSANTE} valeur={composante} onChange={setComposante} label="Composante de la période" vide="— hors LMD —" /></Champ>
+          <Champ label="Composante" aide="Vide pour une filière EFTP hors LMD (CAP, BTS, CQP)."><SelectVocabulaire vocabulaire={LIBELLE_COMPOSANTE} valeur={composante} onChange={setComposante} label="Composante de la période" vide="— hors LMD —" /></Champ>
           <Champ label="Rang dans l'année" aide="De 1 à 12."><input type="number" min={1} max={12} value={numero} onChange={(e) => setNumero(e.target.value)} className={classeChamp} aria-label="Rang de la période" /></Champ>
           <Champ label="Année universitaire" aide="Format 2025-2026." obligatoire><input value={annee} onChange={(e) => setAnnee(e.target.value.slice(0, 9))} placeholder="2025-2026" className={classeChamp} aria-invalid={!anneeValide && !!annee} aria-label="Année universitaire" /></Champ>
           <Champ label="Intitulé affiché" aide="Tel que l'étudiant le lira sur son contrat." obligatoire><input value={intitule} onChange={(e) => setIntitule(e.target.value.slice(0, 80))} placeholder="Semestre 1 — L1" className={classeChamp} aria-label="Intitulé de la période" /></Champ>

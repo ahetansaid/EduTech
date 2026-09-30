@@ -1,6 +1,6 @@
 "use client";
 
-import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAnalyse, ReponseAsk, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
+import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAlertes, ReponseAnalyse, ReponseAsk, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
 
@@ -70,10 +70,11 @@ export interface Infrastructures { eau: boolean; electricite: boolean; internet:
 /** GET /pilotage/communes/:id */
 export interface FicheCommune {
   commune: { id: string; nom: string; departementId: string; departement?: string; milieu: "urbain" | "rural" };
+  /** Nul quand la commune n'a pas encore de statistiques (base réelle en cours d'alimentation). */
   indicateurs: {
     effectif: number; capacite: number; occupation: number; enseignants: number; ratio: number; enseignantsQualifies: number;
     absenteisme: number; abandon: number; populationScolarisable: number; couverture: number;
-  };
+  } | null;
   effectifs: { annee: string; effectif: number; capacite: number }[];
   priorite: Priorite | null;
   etablissements: {
@@ -137,6 +138,11 @@ export function useFlux(limite = 12) {
     staleTime: 10_000,
     placeholderData: keepPreviousData,
   });
+}
+
+/** Alertes territoriales détectées automatiquement sous le périmètre (GET /pilotage/alertes). */
+export function useAlertesPilotage(actif = true) {
+  return useQuery({ queryKey: ["pilotage", "alertes"], queryFn: ({ signal }) => lire<ReponseAlertes>("/pilotage/alertes", signal), staleTime: CINQ_MINUTES, enabled: actif });
 }
 
 export function usePrioritesPilotage() {

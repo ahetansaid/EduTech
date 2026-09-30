@@ -8,6 +8,7 @@ import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePa
 import { useFilieresSup } from "@/lib/api/superieur-public";
 import { cn } from "@/lib/cn";
 import { adequationFilieres, estFiliereValidee, type PisteSuperieure, type SerieBac } from "@/lib/enseignement-superieur";
+import { diplomeCertifie } from "@beile/contracts";
 import { nombre } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
 
@@ -116,6 +117,7 @@ function Pistes({ d }: { d: Dossier }) {
   );
 }
 
+/** Libellés des diplômes visés par une piste. `BT`/`BEP` n'y sont plus jamais lus : les pistes les filtrent. */
 const LIBELLE_DIPLOME: Record<string, string> = {
   LICENCE: "Licence", LICENCE_PRO: "Licence professionnelle", MASTER: "Master", MASTER_PRO: "Master professionnel", DOCTORAT: "Doctorat",
   DES: "DES (études approfondies)", BTS: "BTS", BT: "Brevet de Technicien", CQP: "CQP", CAP: "CAP", BEP: "BEP", BAC_TECHNIQUE: "Bac technique",
@@ -124,12 +126,14 @@ const LIBELLE_DIPLOME: Record<string, string> = {
 /**
  * Prolongement post-bac, indicatif : mêmes données du passeport, autres horizons. Les filières
  * viennent du registre ; seules les filières HABILITÉES sont proposées — orienter un élève vers
- * un diplôme non reconnu serait l'exposer à la fraude.
+ * un diplôme non reconnu serait l'exposer à la fraude. La double condition est la même : un sigle
+ * qu'AUCUNE autorité ne publie (`BT`, `BEP` — référentiel §9) ne peut pas être proposé comme un
+ * horizon, habilitation locale ou non, puisqu'au bout il n'y a pas de diplôme de l'État à obtenir.
  */
 function ApresLeBac({ notes, annee, serie }: { notes: NoteEffective[]; annee: string | null; serie: SerieBac | null }) {
   const q = useFilieresSup();
   const pistes: PisteSuperieure[] = useMemo(
-    () => (q.data ? adequationFilieres(q.data.filter((f) => f.habilitee), notes, annee, serie) : []),
+    () => (q.data ? adequationFilieres(q.data.filter((f) => f.habilitee && diplomeCertifie(f.diplomeVise)), notes, annee, serie) : []),
     [q.data, notes, annee, serie],
   );
   if (q.isPending) return <div className="grid gap-3 sm:grid-cols-2" aria-busy>{[0, 1].map((i) => <Squelette key={i} className="h-32 rounded-xl" />)}</div>;

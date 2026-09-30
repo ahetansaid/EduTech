@@ -1,4 +1,4 @@
-import type { CycleLMD, Diplome, Domaine, TypeParcours } from "@beile/contracts";
+import { diplomeCertifie, type CycleLMD, type Diplome, type Domaine, type TypeParcours } from "@beile/contracts";
 import { moyennesParMatiere, type NoteEffective } from "@/lib/api/parcours";
 import type { FiliereSup } from "@/lib/api/superieur-public";
 
@@ -96,12 +96,31 @@ const EFTP_DIPLOMES = new Set<Diplome>(["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BT
 export const estFiliereEFTP = (f: { voie: TypeParcours; diplomeVise: Diplome }): boolean =>
   f.voie === "technique" || f.voie === "professionnel" || f.voie === "apprentissage" || EFTP_DIPLOMES.has(f.diplomeVise);
 
+/**
+ * Échelle des qualifications, telle qu'elle s'affiche. Elle se DÉRITE de `MODES_CERTIFICATION` : un sigle
+ * qu'aucune autorité publique ne publie (`BT`, `BEP` — voir docs/referentiels/benin-etablissements.md §9)
+ * sort de l'échelle sans cesser d'être classé EFTP juste au-dessus. Les deux questions sont distinctes :
+ * « de quelle voie relève cette filière » se lit dans le registre, « que peut certifier l'État » se lit
+ * dans la source — et une liste recopiée à la main promet encore longtemps après qu'elle a été infirmée.
+ */
+const MAILLONS_EFTP: Diplome[] = ["CAP", "BEP", "BAC_TECHNIQUE", "BT", "BTS", "CQP"];
+export const ECHELLE_EFTP: readonly Diplome[] = MAILLONS_EFTP.filter((d) => diplomeCertifie(d));
+
 /* ================================================================== Libellés partagés */
 
+/**
+ * Type d'établissement du supérieur. Les deux instituts de formation professionnelle sont rendus par le
+ * DÉVELOPPEMENT DU TYPE, non par un sigle : `INFP` est haïtien et `IRFP` n'apparaît dans aucune source
+ * béninoise lue (docs/referentiels/benin-etablissements.md §9, point 3). Les sigles réellement rencontrés
+ * — CFPA, LTP, LTA, CMTH, CFTH, CFME, INIFRCF, ADET — relèvent du catalogue, donc du réseau à recalrer
+ * (tâche #62), pas de ce dictionnaire de types.
+ */
 export const LIBELLE_TYPE_ETAB: Record<string, string> = {
   universite: "Université", ecole_nationale: "École nationale", ecole_superieure: "École supérieure", institut: "Institut",
   lycee_technique: "Lycée technique", centre_formation_professionnelle: "Centre de formation professionnelle",
-  institut_regional_formation_professionnelle: "IRFP", institut_national_formation_professionnelle: "INFP", ecole_d_application: "École d'application",
+  institut_regional_formation_professionnelle: "Institut régional de formation professionnelle",
+  institut_national_formation_professionnelle: "Institut national de formation professionnelle",
+  ecole_d_application: "École d'application",
 };
 
 /** Domaine de formation, lisible (miroir de `Domaine`). */

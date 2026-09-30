@@ -10,11 +10,19 @@ import { Mention } from "./referentiels";
  * parcours de l'apprenant. Aucune décision n'est calculée ici : le PV fait foi.
  */
 
-/** L'autorité qui organise, délibère et publie chaque examen national du K-12. */
+/**
+ * L'autorité qui organise, délibère et publie chaque examen national du K-12.
+ *
+ * Le BAC est rattaché à la DEC-MESTFP, comme le BEPC : c'est ce que dit la source lue
+ * (docs/referentiels/benin-etablissements.md §3, ligne 99 — « BEPC et BAC relèvent de la DEC-MESTFP »,
+ * service CatIS PS00170 pour les diplômes BEPC/CAP/DT). La dénomination « Office du Baccalauréat » que
+ * portait cette table n'est attestée par AUCUNE des sources consultées ; le valeur d'énumération
+ * `office_du_bac` reste en base pour relire une écriture ancienne, elle n'est plus produite ici.
+ */
 export const AUTORITE_EXAMEN: Readonly<Record<Examen, { office: OfficeDeliberant; sigle: string; libelle: string }>> = {
   CEP: { office: "dec_memp", sigle: "DEC-MEMP", libelle: "Direction des Examens et Concours du ministère des Enseignements maternel et primaire" },
   BEPC: { office: "dec_mestfp", sigle: "DEC-MESTFP", libelle: "Direction des Examens et Concours du ministère des Enseignements secondaire, technique et de la Formation professionnelle" },
-  BAC: { office: "office_du_bac", sigle: "Office du Bac", libelle: "Office du Baccalauréat" },
+  BAC: { office: "dec_mestfp", sigle: "DEC-MESTFP", libelle: "Direction des Examens et Concours du ministère des Enseignements secondaire, technique et de la Formation professionnelle" },
 };
 
 export const StatutSession = z.enum(["ouverte", "composition", "deliberation", "publiee"]);

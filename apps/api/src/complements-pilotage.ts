@@ -3,6 +3,7 @@ import type { CouchesNationales } from "@beile/simulation/macro";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { calculer, communesDuPerimetre, priorites } from "@beile/simulation/semantique";
+import { detecterAlertes } from "@beile/simulation/alertes";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -20,6 +21,17 @@ export const complementsPilotage = new Hono<{ Variables: Variables }>();
 const clePerimetre = (p: Perimetre) => JSON.stringify(p);
 /** Même clé de mémo que pilotage.ts : le calcul des priorités est partagé. */
 const prioritesDe = (couches: CouchesNationales) => memo(couches, "priorites", () => priorites(couches));
+
+/**
+ * Alertes territoriales détectées automatiquement (écarts nets aux pairs, décrochages d'une année sur
+ * l'autre), dans le sens défavorable de chaque indicateur, restreintes au périmètre de l'habilitation.
+ * Fonction pure du cube : mémoïsée par version du cube et périmètre.
+ */
+complementsPilotage.get("/pilotage/alertes", authentifie, async (c) => {
+  const perimetre = perimetrePilotage(c.get("profil"));
+  const couches = await chargerCouches(base());
+  return c.json(memo(couches, `alertes:${clePerimetre(perimetre)}`, () => detecterAlertes(couches, perimetre)));
+});
 
 /** Niveaux d'alerte et facteurs, restreints aux communes du périmètre (la carte « Où agir ? » n'affiche que ce qu'on peut ouvrir). */
 complementsPilotage.get("/pilotage/priorites", authentifie, async (c) => {
