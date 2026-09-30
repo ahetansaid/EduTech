@@ -6,7 +6,7 @@ import { Modale } from "@/components/ui/Modale";
 import { notifier } from "@/components/ui/Notifications";
 import { Button, Squelette } from "@/components/ui/primitives";
 import { useDecisionDemandeMutation, useDemandeDetail } from "@/lib/api/etablissement";
-import { CIRCUIT_LIBELLE, LIBELLE_ROLE_CIRCUIT, libelleEtape } from "@/lib/circuits";
+import { CIRCUIT_LIBELLE, LIBELLE_DROIT, LIBELLE_ROLE_CIRCUIT, libelleEtape } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
 import { ErreurApi } from "@/lib/http";
 
@@ -22,8 +22,11 @@ export function DialogueStatuer({ demandeId, onFermer }: { demandeId: string | n
   const [motif, setMotif] = useState("");
   const d = detail.data;
   const erreur = decision.error instanceof ErreurApi ? decision.error : null;
-  const motifRequis = sens === "refuse" || sens === "renvoye";
-  const motifValide = !motifRequis || motif.trim().length >= 5;
+  // Exercice des droits : la réponse à la personne est toujours écrite, et il n'y a pas de renvoi.
+  const droits = d?.modele.code === "DROITS";
+  const motifRequis = droits ? !!sens : sens === "refuse" || sens === "renvoye";
+  const minimum = droits ? 10 : 5;
+  const motifValide = !motifRequis || motif.trim().length >= minimum;
   const role = d?.etapeCourante ? (LIBELLE_ROLE_CIRCUIT[d.etapeCourante.role] ?? d.etapeCourante.role) : null;
 
   const fermer = () => { setSens(null); setMotif(""); onFermer(); };
@@ -61,6 +64,14 @@ export function DialogueStatuer({ demandeId, onFermer }: { demandeId: string | n
           <div className="rounded-md bg-surface-2/70 px-3 py-2 text-[13px] text-ink-2">
             <p className="font-medium text-ink">{d.demande.objet}</p>
             <p className="mt-0.5 text-xs text-ink-muted">Demandeur : {d.demande.demandeur ?? "—"}{d.demande.etablissement ? ` · ${d.demande.etablissement}` : ""}</p>
+            {droits && d.demande.donnees && (
+              <div className="mt-2 space-y-1 border-t border-line/60 pt-2 text-[13px]">
+                <p><span className="text-ink-muted">Droit : </span>{LIBELLE_DROIT[String(d.demande.donnees.droit)] ?? String(d.demande.donnees.droit)}</p>
+                <p><span className="text-ink-muted">Sujet : </span>{d.demande.donnees.sujet === "compte" ? "le compte du demandeur" : `dossier ${String(d.demande.donnees.sujet)}`}</p>
+                <p className="whitespace-pre-line text-ink">« {String(d.demande.donnees.precision ?? "")} »</p>
+                {d.demande.echeance && <p className="text-xs text-warning">Réponse attendue avant le {new Date(d.demande.echeance).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>}
+              </div>
+            )}
           </div>
           <ol className="space-y-1">
             {d.modele.etapes.map((e) => (
@@ -81,11 +92,18 @@ export function DialogueStatuer({ demandeId, onFermer }: { demandeId: string | n
           {!d.peutStatuer ? (
             <p className="rounded-md bg-info-bg px-3 py-2 text-[13px] text-info">Cette étape relève {role ? `du rôle « ${role} »` : "d'un autre rôle"} : vous pouvez la consulter, mais pas statuer dessus.</p>
           ) : !sens ? (
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Button variante="valider" icone={Check} onClick={() => setSens("valide")}>Valider</Button>
-              <Button variante="secondaire" icone={RotateCcw} onClick={() => setSens("renvoye")}>Renvoyer</Button>
-              <Button variante="danger" icone={X} onClick={() => setSens("refuse")}>Refuser</Button>
-            </div>
+            droits ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button variante="valider" icone={Check} onClick={() => setSens("valide")}>Répondre</Button>
+                <Button variante="danger" icone={X} onClick={() => setSens("refuse")}>Refuser</Button>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Button variante="valider" icone={Check} onClick={() => setSens("valide")}>Valider</Button>
+                <Button variante="secondaire" icone={RotateCcw} onClick={() => setSens("renvoye")}>Renvoyer</Button>
+                <Button variante="danger" icone={X} onClick={() => setSens("refuse")}>Refuser</Button>
+              </div>
+            )
           ) : (
             <div className="space-y-3">
               {d.modele.code === "RELANCE_TRANSMISSION" && sens === "valide" && (
@@ -93,9 +111,9 @@ export function DialogueStatuer({ demandeId, onFermer }: { demandeId: string | n
               )}
               {motifRequis && (
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Motif <span className="text-critical">*</span></span>
-                  <textarea value={motif} onChange={(ev) => setMotif(ev.target.value.slice(0, 200))} rows={3} placeholder={sens === "refuse" ? "Expliquez le refus (transmis au demandeur)." : "Précisez ce qui doit être corrigé (transmis au demandeur)."} className="h-auto w-full rounded-md border border-line bg-surface px-3.5 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-blue focus:outline-none focus:ring-4 focus:ring-blue/15" aria-invalid={!!motif && !motifValide} />
-                  <span className="mt-1 block text-xs text-ink-muted">{motif.trim().length}/200 · 5 caractères minimum</span>
+                  <span className="mb-1.5 block text-sm font-medium text-ink">{droits ? "Réponse adressée à la personne" : "Motif"} <span className="text-critical">*</span></span>
+                  <textarea value={motif} onChange={(ev) => setMotif(ev.target.value.slice(0, droits ? 500 : 200))} rows={droits ? 5 : 3} placeholder={droits ? (sens === "refuse" ? "Expliquez pourquoi la demande ne peut être satisfaite, et les voies de recours (APDP)." : "Ce qui a été fait, et comment la personne y accède.") : sens === "refuse" ? "Expliquez le refus (transmis au demandeur)." : "Précisez ce qui doit être corrigé (transmis au demandeur)."} className="h-auto w-full rounded-md border border-line bg-surface px-3.5 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-blue focus:outline-none focus:ring-4 focus:ring-blue/15" aria-invalid={!!motif && !motifValide} />
+                  <span className="mt-1 block text-xs text-ink-muted">{motif.trim().length}/{droits ? 500 : 200} · {minimum} caractères minimum</span>
                 </label>
               )}
             </div>

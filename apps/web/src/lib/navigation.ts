@@ -31,7 +31,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/alertes", libelle: "Alertes", icone: Siren, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/territoire", libelle: "Console territoriale", icone: Landmark, roles: ["direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/ask", libelle: "Ask Education", icone: Sparkles, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"], groupe: "Pilotage", processus: "P3" },
-  { href: "/demandes", libelle: "Demandes à traiter", icone: Inbox, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
+  { href: "/demandes", libelle: "Demandes à traiter", icone: Inbox, roles: ["inspecteur", "direction_departementale", "administration_centrale", "dpo"], groupe: "Pilotage", processus: "P9" },
   { href: "/enseignement-superieur", libelle: "Enseignement supérieur", icone: School, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chef_etablissement", "enseignant"], groupe: "Pilotage", cycles: ["superieur"] },
 
   { href: "/etablissement", libelle: "Mon établissement", icone: Building2, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5" , cycles: K12 },

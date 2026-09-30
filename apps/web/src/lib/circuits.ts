@@ -16,7 +16,21 @@ export const ETAPES_RELANCE = [
   { code: "TRANSMISSION", libelle: "Transmission" },
 ] as const;
 
+export const ETAPES_DROITS = [
+  { code: "DEPOT", libelle: "Dépôt par la personne" },
+  { code: "INSTRUCTION", libelle: "Instruction et réponse" },
+] as const;
+
+/** Droits exerçables et leur libellé (circuit DROITS). */
+export const LIBELLE_DROIT: Record<string, string> = {
+  acces: "Accès à mes données",
+  rectification: "Rectification d'une donnée",
+  limitation: "Limitation d'un traitement",
+  opposition: "Opposition à un traitement",
+};
+
 export const CIRCUIT_LIBELLE: Record<string, string> = {
+  DROITS: "Exercice des droits sur les données",
   ACCOMPAGNEMENT: "Accompagnement pédagogique",
   RELANCE_TRANSMISSION: "Relance de transmission",
   TRANSFERT: "Transfert d'établissement",
@@ -31,12 +45,16 @@ export const LIBELLE_ROLE_CIRCUIT: Record<string, string> = {
   administration_centrale: "administration centrale",
   parent: "responsable légal",
   apprenant: "apprenant",
+  enseignant: "enseignant",
+  dpo: "délégué à la protection des données",
+  demandeur: "personne concernée",
 };
 
 /** Étapes libellées d'un circuit connu (liste vide sinon : l'affichage se replie sur le code brut). */
 export function etapesDuCircuit(code: string): { code: string; libelle: string }[] {
   if (code === "ACCOMPAGNEMENT") return [...ETAPES_ACCOMPAGNEMENT];
   if (code === "RELANCE_TRANSMISSION") return [...ETAPES_RELANCE];
+  if (code === "DROITS") return [...ETAPES_DROITS];
   return [];
 }
 

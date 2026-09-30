@@ -582,11 +582,26 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
   return { demande, modele, etapes, etape, etab: etab ?? null, peutStatuer: !!hab && ["ouverte", "en_cours"].includes(demande.statut) };
 }
 
+/**
+ * Lecture d'une demande : son auteur, ou un porteur du rôle de l'une de ses étapes dans le périmètre
+ * concerné (l'établissement ressource, ou le périmètre national si la demande n'en a pas). Personne
+ * d'autre — une demande peut contenir des données personnelles (exercice des droits, affectation).
+ */
+function peutLireDemande(profil: import("@beile/contracts").Profil, ctx: Awaited<ReturnType<typeof contexteDemande>>) {
+  if (ctx.demande.demandeurId === profil.id) return true;
+  return ctx.etapes.some((e) => profil.habilitations.some((h) => h.role === e.role && (ctx.etab ? couvreEtab(h, ctx.etab) : h.perimetre.niveau === "national")));
+}
+
 /** Détail d'une demande : circuit, décisions déjà rendues (ajout seul), et droit d'agir de l'utilisateur. */
 etablissement.get("/demandes/:id", authentifie, async (c) => {
   const profil = c.get("profil");
   const demandeId = z.string().regex(/^DEM-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const ctx = await contexteDemande(profil, demandeId);
+  if (!peutLireDemande(profil, ctx)) {
+    await journaliser(profil, "Consultation d'une demande", demandeId, "gestion", false, "relation");
+    refuser("Cette demande ne vous concerne pas : consultation refusée et journalisée");
+  }
+  await journaliser(profil, "Consultation d'une demande", demandeId, "gestion", true, null);
   const decisions = await base().select().from(schema.decisions).where(eq(schema.decisions.demandeId, demandeId));
   const [demandeur] = await base().select({ id: schema.profils.id, nomAffiche: schema.profils.nomAffiche }).from(schema.profils).where(eq(schema.profils.id, ctx.demande.demandeurId));
   return c.json({
@@ -608,10 +623,16 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
   const demandeId = z.string().regex(/^DEM-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const saisie = await corps(c, z.object({
     decision: z.enum(["valide", "refuse", "renvoye"]),
-    motif: z.string().trim().max(200).optional(),
+    motif: z.string().trim().max(500).optional(),
   }).strict().refine((s) => s.decision === "valide" || (s.motif ?? "").length >= 5, "Un motif d'au moins 5 caractères est requis pour refuser ou renvoyer"));
 
   const ctx = await contexteDemande(profil, demandeId);
+  // Exercice des droits : la réponse à la personne est toujours motivée, et un renvoi n'a pas de sens
+  // (la première étape est le dépôt par la personne elle-même, qu'aucune file ne présente).
+  if (ctx.modele.code === "DROITS") {
+    if (saisie.decision === "renvoye") throw new HTTPException(422, { message: "Une demande d'exercice des droits ne se renvoie pas : répondez, ou refusez en motivant." });
+    if ((saisie.motif ?? "").length < 10) throw new HTTPException(422, { message: "La réponse adressée à la personne est obligatoire (10 caractères au moins)." });
+  }
   if (!ctx.etape) throw new HTTPException(409, { message: "Étape courante incohérente avec le modèle de circuit" });
   if (!["ouverte", "en_cours"].includes(ctx.demande.statut)) throw new HTTPException(409, { message: "Cette demande est déjà close" });
   if (!ctx.peutStatuer) {
@@ -649,7 +670,8 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
     const verbe = saisie.decision === "valide" ? (statut === "acceptee" ? "acceptée" : `validée — étape suivante : ${etape}`) : saisie.decision === "refuse" ? "refusée" : `renvoyée — étape : ${etape}`;
     await base().insert(schema.notifications).values({
       id: `NOT-${randomUUID()}`, destinataireNpi: demandeur.npi, evenementId: null,
-      titre: `Demande ${verbe.startsWith("acceptée") || verbe.startsWith("validée") ? "validée" : saisie.decision === "refuse" ? "refusée" : "renvoyée"}`,
+      titre: ctx.modele.code === "DROITS" ? (saisie.decision === "refuse" ? "Votre demande sur vos données : refus motivé" : "Réponse à votre demande sur vos données")
+        : `Demande ${verbe.startsWith("acceptée") || verbe.startsWith("validée") ? "validée" : saisie.decision === "refuse" ? "refusée" : "renvoyée"}`,
       texte: `« ${ctx.demande.objet} » : ${verbe}.${saisie.motif ? ` Motif : ${saisie.motif}.` : ""}`,
     }).catch((e) => console.error("Notification demande :", e));
   }

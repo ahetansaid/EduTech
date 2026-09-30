@@ -1,6 +1,6 @@
 "use client";
 
-import { BookUser, CalendarCheck, GraduationCap } from "lucide-react";
+import { BookUser, CalendarCheck, GraduationCap, ShieldCheck } from "lucide-react";
 import { EspacePersonnel } from "@/components/shell/EspacePersonnel";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -13,6 +13,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { href: "/enseignant", libelle: "Mes classes", icone: CalendarCheck },
         { href: "/enseignant/carriere", libelle: "Parcours pro", icone: GraduationCap },
         { href: "/famille", libelle: "Mon enfant", icone: BookUser, roles: ["parent"] },
+        { href: "/enseignant/droits", libelle: "Mes données", icone: ShieldCheck },
       ]}
     >
       {children}

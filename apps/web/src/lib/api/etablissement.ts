@@ -44,6 +44,8 @@ export type Absence = Extract<Evenement, { type: "ABSENCE" }>;
 export interface Demande {
   id: string; modele: string; objet: string; demandeurId: string; ressource: string | null; etapeCourante: string;
   statut: "ouverte" | "en_cours" | "acceptee" | "refusee" | "close"; creeeLe: string; echeance: string | null;
+  /** Charge utile propre au circuit (exercice des droits : droit, sujet, précision de la personne). */
+  donnees?: Record<string, unknown> | null;
 }
 
 export interface EtapeCircuit { ordre: number; code: string; role: string; delaiJours: number }
