@@ -44,6 +44,8 @@ export type Absence = Extract<Evenement, { type: "ABSENCE" }>;
 export interface Demande {
   id: string; modele: string; objet: string; demandeurId: string; ressource: string | null; etapeCourante: string;
   statut: "ouverte" | "en_cours" | "acceptee" | "refusee" | "close"; creeeLe: string; echeance: string | null;
+  /** Charge utile propre au circuit (exercice des droits : droit, sujet, précision de la personne). */
+  donnees?: Record<string, unknown> | null;
 }
 
 export interface EtapeCircuit { ordre: number; code: string; role: string; delaiJours: number }
@@ -133,6 +135,7 @@ export const cles = {
   tableau: (id: string) => ["etablissement", id, "tableau"] as const,
   eleves: (id: string) => ["etablissement", id, "eleves"] as const,
   enseignants: (id: string) => ["etablissement", id, "enseignants"] as const,
+  personnel: (id: string) => ["etablissement", id, "personnel"] as const,
   absences: (id: string, date: string) => ["etablissement", id, "absences", date] as const,
   demandes: (id: string) => ["etablissement", id, "demandes"] as const,
   demande: (demandeId: string) => ["etablissement", "demande", demandeId] as const,
@@ -173,6 +176,24 @@ export function useEleves(id: string | null) {
     queryFn: ({ signal }) => lire<EleveLigne[]>(`/etablissements/${e(id!)}/eleves`, signal),
     enabled: !!id,
     staleTime: 60_000,
+  });
+}
+
+/** GET /etablissements/:id/personnel */
+export interface ClasseTenue { classeId: string; classe: string; niveau: string; matiere: string; principal: boolean; effectif: number; notesTrimestre: number; derniereNote: string | null }
+export interface MembrePersonnel {
+  id: string; nom: string; prenoms: string; sexe: "M" | "F"; grade: string | null; matieres: string[]; anciennete: number | null;
+  classes: ClasseTenue[]; eleves: number; formations: { intitule: string; le: string }[]; formationObligatoire: boolean;
+}
+export interface Personnel { trimestre: number; formationObligatoire: string; personnel: MembrePersonnel[] }
+
+/** Personnel enseignant de l'établissement : charge, formations, suivi des notes par classe et matière. */
+export function usePersonnel(id: string | null) {
+  return useQuery({
+    queryKey: cles.personnel(id ?? "-"),
+    queryFn: ({ signal }) => lire<Personnel>(`/etablissements/${e(id!)}/personnel`, signal),
+    enabled: !!id,
+    staleTime: 120_000,
   });
 }
 

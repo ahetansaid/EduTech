@@ -1,7 +1,7 @@
 import type { Profil, Role } from "@beile/contracts";
 import {
-  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Database, FileSearch, GraduationCap,
-  Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Sparkles, Stamp, UserPlus, Users, type LucideIcon,
+  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Database, Download, FileSearch, GraduationCap,
+  Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Siren, Sparkles, UsersRound, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
 export interface EntreeNav {
@@ -25,17 +25,19 @@ const K12: Cycle[] = ["primaire", "secondaire"];
 
 /** Navigation déterminée par les habilitations. Masquer une entrée est cosmétique : l'accès aux données reste décidé par le moteur ABAC. */
 export const NAVIGATION: EntreeNav[] = [
-  { href: "/aujourd-hui", libelle: "Poste de pilotage", icone: ListChecks, roles: ["chef_etablissement", "inspecteur", "direction_departementale", "administration_centrale"], groupe: "Aujourd'hui", processus: "P9", cycles: K12 },
+  { href: "/aujourd-hui", libelle: "Poste de pilotage", icone: ListChecks, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Aujourd'hui", processus: "P9" },
   { href: "/cockpit", libelle: "Cockpit national", icone: ChartNoAxesCombined, roles: ["administration_centrale"], groupe: "Pilotage", processus: "P3" },
   { href: "/cockpit/carte", libelle: "Où agir ?", icone: Map, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
+  { href: "/alertes", libelle: "Alertes", icone: Siren, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/territoire", libelle: "Console territoriale", icone: Landmark, roles: ["direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/ask", libelle: "Ask Education", icone: Sparkles, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"], groupe: "Pilotage", processus: "P3" },
-  { href: "/demandes", libelle: "Demandes à traiter", icone: Inbox, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
+  { href: "/demandes", libelle: "Demandes à traiter", icone: Inbox, roles: ["inspecteur", "direction_departementale", "administration_centrale", "dpo"], groupe: "Pilotage", processus: "P9" },
   { href: "/enseignement-superieur", libelle: "Enseignement supérieur", icone: School, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chef_etablissement", "enseignant"], groupe: "Pilotage", cycles: ["superieur"] },
 
   { href: "/etablissement", libelle: "Mon établissement", icone: Building2, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5" , cycles: K12 },
   { href: "/etablissement/inscription", libelle: "Inscrire un apprenant", icone: UserPlus, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6" , cycles: K12 },
   { href: "/etablissement/eleves", libelle: "Apprenants", icone: Users, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7 · P9" , cycles: K12 },
+  { href: "/etablissement/personnel", libelle: "Personnel enseignant", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
   { href: "/etablissement/justificatifs", libelle: "Justificatifs d'absence", icone: ClipboardCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7" , cycles: K12 },
   { href: "/etablissement/examens", libelle: "Examens et certification", icone: BookOpenCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P8" , cycles: K12 },
   { href: "/etablissement/guichet", libelle: "Guichet de l'étudiant", icone: Stamp, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6", cycles: ["superieur"] },
@@ -46,6 +48,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/famille", libelle: "Espace famille", icone: Users, roles: ["parent"], groupe: "Famille", processus: "P7" },
   { href: "/apprenant", libelle: "Mon passeport éducatif", icone: GraduationCap, roles: ["apprenant"], groupe: "Apprenant", processus: "P9" },
 
+  { href: "/jeux-de-donnees", libelle: "Jeux de données", icone: Download, roles: ["chercheur", "administration_centrale", "direction_departementale"], groupe: "Données", processus: "P3" },
   { href: "/plateforme/dictionnaire", libelle: "Dictionnaire national", icone: Database, roles: ["administration_centrale", "chercheur", "direction_departementale"], groupe: "Données", processus: "P1 · P13" },
   { href: "/plateforme/qualite", libelle: "Qualité des données", icone: Activity, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Données", processus: "P13" },
   { href: "/plateforme/interoperabilite", libelle: "Interopérabilité", icone: Network, roles: ["administration_centrale", "administrateur", "dpo"], groupe: "Données", processus: "P12" },

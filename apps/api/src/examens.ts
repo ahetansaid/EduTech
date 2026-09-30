@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Mention, ResultatExamenPublic, SessionPubliee } from "@beile/contracts";
-import { AUTORITE_EXAMEN, Decision, ExamenNational } from "@beile/contracts";
+import { AUTORITE_EXAMEN, Decision, ExamenNational, examenNationalCertifie } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
@@ -14,10 +14,10 @@ import { scolarisesEtablissement } from "./lectures";
 
 /**
  * Examens nationaux, vus depuis le registre national. BEILE n'organise ni ne délibère un examen : la
- * DEC du MEMP (CEP), la DEC du MESTFP (BEPC) et l'Office du Baccalauréat (BAC) le font, et publient sur
- * eRESULTATS. BEILE tient ce qui lui revient : le candidaturé rattaché au parcours, la RÉCEPTION des
- * verdicts du procès-verbal officiel (jamais recalculés), puis, à la publication, la délivrance — au
- * nom de l'autorité compétente — de diplômes vérifiables qui entrent dans le parcours de l'apprenant.
+ * DEC du MEMP (CEP) et la DEC du MESTFP (BEPC, BAC) le font, et publient sur eRESULTATS. BEILE tient ce
+ * qui lui revient : le candidaturé rattaché au parcours, la RÉCEPTION des verdicts du procès-verbal
+ * officiel (jamais recalculés), puis, à la publication, la délivrance — au nom de l'autorité compétente
+ * — de diplômes vérifiables qui entrent dans le parcours de l'apprenant.
  * Une école ne délivre jamais un diplôme national.
  */
 export const examens = new Hono<{ Variables: Variables }>();
@@ -64,6 +64,10 @@ const sessionOuverte = async (id: string) => {
  * Ouvrir une session officielle (examen + session). Idempotente : (examen, session) unique.
  * Tout examen national du domaine s'y déclare — y compris ceux de l'EFTP et du supérieur, dont la
  * licence certifiée par la DEC — mais le candidaturé par niveau de classe reste K-12 (voir plus bas).
+ *
+ * Le filtre `examenNationalCertifie` n'est pas cosmétique : `ExamenNational` garde les sigles `BEP` et
+ * `BT` pour relire une écriture déjà enregistrée, et aucune autorité béninoise ne les publie. Ouvrir une
+ * session sous l'un d'eux, ce serait créer de toutes pièces un examen national que personne ne délibère.
  */
 examens.post("/examens/sessions", authentifie, async (c) => {
   const profil = await bureau(c, "Ouverture d'une session d'examen");
@@ -71,7 +75,10 @@ examens.post("/examens/sessions", authentifie, async (c) => {
     examen: ExamenNational,
     session: z.string().trim().min(3).max(40),
     arretCandidatures: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  }).strict());
+  }).strict().refine((b) => examenNationalCertifie(b.examen), {
+    message: "n'est publié par aucune autorité de délibération : aucune session ne peut être ouverte sous ce sigle",
+    path: ["examen"],
+  }));
   const id = `SES-${randomUUID()}`;
   await base().insert(schema.examensSessions).values({ id, examen, session, arretCandidatures: arretCandidatures ?? null });
   await journaliser(profil, "Ouverture d'une session d'examen", `${examen} ${session}`, "gestion", true, null);

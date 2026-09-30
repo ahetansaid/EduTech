@@ -273,7 +273,8 @@ l'ouverture, équipements (25 ha exigés pour l'agronomie), **efficacité intern
 
 ## 9. Ce que cette recherche contredit dans le code BEILE actuel
 
-À trancher avant toute mise en base (rien n'est modifié ici) :
+**Statut (2026-09-29)** : points 1 à 3 tranchés en code par l'arbitrage « garder les énumérations, vider
+les surfaces » — aucune migration, aucune écriture en base. Les points 4 à 6 restent ouverts (tâche #62).
 
 1. **`BT` et `BEP`** figurent partout : `packages/contracts/src/certification.ts:11,27,28`
    (`DiplomeAtteste`, `NOM_DIPLOME_ATTESTE`), `enseignement-superieur.ts:36` (`Diplome`),
@@ -285,15 +286,28 @@ l'ouverture, équipements (25 ha exigés pour l'agronomie), **efficacité intern
    est une invention ; (b) les **retirer d'un `z.enum` casse le rejeu** de tout `CERTIFICATION` ou
    `DIPLÔME` déjà enregistré avec cette valeur — la colonne `text` n'a pas de CHECK, donc la base ne dit
    rien, seul le contrat refuse. Retirer = décision à prendre en connaissance de ce point, pas un nettoyage.
+   → **Tranché (A)** : les valeurs restent dans toutes les énumérations de bas niveau pour le rejeu, et
+   `MODES_CERTIFICATION[BEP] = MODES_CERTIFICATION[BT] = []`. Tout ce qui se dérive de cette table a
+   vidé la promesse : échelle EFTP (`ECHELLE_EFTP`), pistes d'orientation, jury et ouverture de session
+   (`examenNationalCertifie` → 422). La règle de dérivation est unique : `diplomeCertifie`.
 2. **`ONEC`** : l'assertion `apps/api/src/recette.ts:158` interdit déjà ce sigle dans l'autorité d'une
    session — bien joué. Mais `recette.ts:291` écrit comme motif de révocation « Fraude établie par
-   l'ONEC », et ce motif est ensuite **affiché au public** sur `/verifier/[id]`. Au Bénin l'autorité
-   d'examen est la **DEC** (DEC-MESTFP pour CEP/BEPC/CAP/DT/BAC, DEC-MESRS pour licence/master/BTS) ;
-   `ONEC` est ivoirien. Une ligne à changer dans la recette.
+   l'ONEC ». (Précision après relecture : ce motif n'est **pas** affiché sur `/verifier/[id]` — la
+   vérification publique rend une phrase générale ; c'est un fait `REVOCATION_CERTIFICAT` du registre,
+   lu par un agent habilité. Ce qui est faux dans la trace l'est donc pour l'agent, pas pour le public.)
+   Au Bénin l'autorité d'examen est la **DEC** (DEC-MESTFP pour CEP/BEPC/CAP/DT/BAC, DEC-MESRS pour
+   licence/master/BTS) ; `ONEC` est ivoirien. Une ligne à changer dans la recette.
+   → **Tranché** : motif « Fraude établie par la DEC-MEMP » (un CEP est révocable par l'autorité du CEP),
+   assertion étendue à « Office du Bac ». Même nettoyage fait pour `AUTORITE_EXAMEN.BAC`, que rien ne
+   sourçait : le BAC est délibéré par la **DEC-MESTFP** (§3, ligne 99), et `office_du_bac` ne s'écrit plus
+   — il reste seulement lisible, libellé « dénomination non confirmée ».
 3. **`INFP` / `IRFP`** : `apps/web/src/lib/enseignement-superieur.ts:104` libelle
    `institut_national_formation_professionnelle: "INFP"` et `institut_regional_formation_professionnelle:
    "IRFP"`. **`INFP` est haïtien** ; `IRFDE` et `CFP` comme sigle officiel n'ont été rencontrés nulle part.
    Les termes lus sont **CFPA, LTP, LTA, CMTH, CFTH, CFME, INIFRCF, ADET**.
+   → **Tranché pour l'affichage** : ces deux types sont rendus par le développement du type, plus par un
+   sigle. Le réseau réel (CFPA, LTP, LTA, CMTH, CFTH, INIFRCF, ADET) est une question de catalogue, donc
+   du point 4 ci-dessous.
 4. **`packages/db/src/superieur.ts`** (seed non commité) : id `ETB-SUP-UAC-FDSP` avec le sigle `FADESP`
    (incohérence interne), et « Centre de formation professionnelle de Porto-Novo » alors que le réseau lu
    s'appelle **CFPA**. Ses 20 lignes d'établissements et 18 filières sont des **hypothèses invérifiables**

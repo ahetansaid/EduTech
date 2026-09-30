@@ -71,7 +71,7 @@ const SENS_REPLI: Record<string, 1 | -1 | 0> = {
   taux_surage: -1, dispersion_moyennes: -1, places_disponibles: 1, ratio_apprenants_salle: -1, taux_acces_infrastructure: 1,
   taux_scolarisation_brut: 1, taux_depot_donnees: 1, fraicheur_donnees: -1, croissance_effectifs: 0, indice_parite: 0,
 };
-function sensDe(def: DefinitionIndicateur): 1 | -1 | 0 {
+export function sensDe(def: DefinitionIndicateur): 1 | -1 | 0 {
   const s = (def as { illustration?: { sens?: string } }).illustration?.sens;
   if (s === "hausse_favorable") return 1;
   if (s === "baisse_favorable") return -1;

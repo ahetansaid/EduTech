@@ -84,6 +84,8 @@ jobs:
         run: npm run peupler --workspace=@beile/db
       - name: Référentiel du supérieur (établissements, filières, homologations, étudiants)
         run: npm run superieur --workspace=@beile/db
+      - name: Référentiel réel des établissements (annuaire public, sources officielles et OpenStreetMap)
+        run: npm run referentiel --workspace=@beile/db
       - name: Rôle de connexion de l'API (beile_api ⊂ beile_app, sans BYPASSRLS)
         run: |
           MDP=$(openssl rand -hex 24)

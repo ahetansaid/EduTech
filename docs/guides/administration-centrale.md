@@ -104,7 +104,7 @@
 - « Concours » : les sessions avec leur statut, les places offertes et les coefficients des épreuves ; filtre par statut et export CSV.
 - « Écoles et établissements » : le réseau (universités, écoles nationales, instituts), ses tutelles MESRS / MESTFP / Emploi-PME et ses rattachements.
 - « Stages » : le cycle de vie d'une convention et les durées obligatoires par filière — aucun suivi nominatif d'apprenant.
-- « Formations pro » : l'échelle des diplômes EFTP (CAP → BEP → Bac technique → BT → BTS/CQP) et la passerelle vers la licence professionnelle.
+- « Formations pro » : l'échelle des diplômes EFTP certifiés par une autorité publique (CAP → Bac technique → BTS / CQP) et la passerelle vers la licence professionnelle ; un sigle qu'aucun arrêté ne publie (BT, BEP) y est signalé « non certifié » au lieu d'être présenté comme une étape du parcours.
 - Le bandeau « indicatif » rappelle que ces listes ne remplacent pas les arrêtés publiés.
 
 ### Guichet & délais

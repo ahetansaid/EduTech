@@ -29,7 +29,7 @@ import { Bandeau, Champ, ErreurEnvoi, PucePortee, Rien, SelectAnnee, SelectVocab
 import { OngletsScolarite } from "../_OngletsScolarite";
 import { OngletsESup } from "../../_Onglets";
 
-/** Libellé d'une composante LMD ; une filière EFTP hors LMD (CAP, BT, BTS, CQP) n'en porte pas. */
+/** Libellé d'une composante LMD ; une filière EFTP hors LMD (CAP, BTS, CQP) n'en porte pas. */
 const LIBELLE_COMPOSANTE: Record<Composante, string> = { L1: "L1", L2: "L2", L3: "L3", M1: "M1", M2: "M2", Dr: "Doctorat" };
 
 /** Les voies qui n'attendent aucune note de session : ce que l'étudiant a déjà fait ailleurs. */

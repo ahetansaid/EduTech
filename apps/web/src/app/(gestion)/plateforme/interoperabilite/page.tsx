@@ -48,7 +48,7 @@ const RACCORDEMENTS: Raccordement[] = [
     icone: Server, partenaire: "educmaster",
   },
   {
-    id: "eresultats", nom: "eRESULTATS", via: "DEC du MEMP, DEC du MESTFP, Office du Baccalauréat — connecteur signé", sens: "bidirectionnel",
+    id: "eresultats", nom: "eRESULTATS", via: "DEC du MEMP (CEP), DEC du MESTFP (BEPC et BAC) — connecteur signé", sens: "bidirectionnel",
     donnees: "Candidaturé (sortant) ; procès-verbal des verdicts puis publication (entrant) — BEILE délivre alors les diplômes au nom de l'autorité",
     producteurDe: "Verdicts des examens nationaux", contrat: "interop/eresultats/pv-examen v1", frequence: "Par session",
     icone: ScrollText, partenaire: "eresultats",

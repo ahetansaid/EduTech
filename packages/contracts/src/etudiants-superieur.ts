@@ -460,16 +460,23 @@ export const ModeDeliberation = z.enum(["examen_national", "jury_capitalisation"
 export type ModeDeliberation = z.infer<typeof ModeDeliberation>;
 
 /**
- * Modes ouverts à un diplôme. Seuls `CAP`, `BTS`, `CQP`, `BT`, `BEP`, `BAC` et la `LICENCE`/`MASTER`
- * (via la préinscription aux examens nationaux) sont attestés par une source béninoise ; les autres
+ * Modes ouverts à un diplôme. `CAP`, `BTS`, `CQP`, `BAC_TECHNIQUE`, `BAC` et la `LICENCE`/`MASTER`
+ * (via la préinscription aux examens nationaux) sont attestés par une source béninoise lue ; les autres
  * extensions sont par analogie avec la filière dont elles relèvent, et restent à confirmer par arrêté.
+ *
+ * `BT` et `BEP` n'ont AUCUN mode. Ces deux sigles ne figurent dans aucun texte béninois consulté
+ * (voir docs/referentiels/benin-etablissements.md §9) : le Bénin certifie le CAP, le DT/DTM, le bac
+ * technique, le CQP, le CQM, le BTS et le DTSBM. Les valeurs restent dans les énumérations de bas
+ * niveau — une colonne texte sans contrainte, et un fait déjà écrit avec `BT` doit pouvoir être relu —
+ * mais le système ne propose plus de les certifier : ouvrir un mode, ce serait promettre une décision
+ * de jury qu'aucune autorité publique ne rend.
  */
 export const MODES_CERTIFICATION: Readonly<Record<Diplome, readonly ModeDeliberation[]>> = {
   CAP: ["examen_national"],
-  BEP: ["examen_national"],
+  BEP: [],
   BAC: ["examen_national"],
   BAC_TECHNIQUE: ["examen_national"],
-  BT: ["examen_national"],
+  BT: [],
   BTS: ["examen_national"],
   CQP: ["examen_national"],
   LICENCE: ["jury_capitalisation", "examen_national"],
@@ -482,6 +489,14 @@ export const MODES_CERTIFICATION: Readonly<Record<Diplome, readonly ModeDelibera
 
 export const modesCertificationDe = (diplome: Diplome): readonly ModeDeliberation[] => MODES_CERTIFICATION[diplome];
 export const modeCertifiable = (diplome: Diplome, mode: ModeDeliberation) => MODES_CERTIFICATION[diplome].includes(mode);
+
+/**
+ * Un diplôme qu'UNE autorité publiquement nommée certifie. C'est LA question à poser avant d'afficher
+ * un sigle comme une fin de cursus : toute surface (échelle EFTP, pistes d'orientation, catalogue)
+ * doit la dériver de `MODES_CERTIFICATION` au lieu de recopier une liste — une liste recopiée promet
+ * longtemps après que la source a manqué.
+ */
+export const diplomeCertifie = (diplome: Diplome): boolean => MODES_CERTIFICATION[diplome].length > 0;
 
 /**
  * Étages de diplômes tels que la DPP/MESRS les compte dans ses effectifs étudiants (annuaire
@@ -540,7 +555,9 @@ export type ExamenNational = z.infer<typeof ExamenNational>;
 
 /**
  * Examen national ouvert à un diplôme. Total sauf pour les diplômes que `MODES_CERTIFICATION` ne
- * laisse qu'au jury d'établissement (doctorat) : les deux tables doivent se lire ensemble.
+ * laisse qu'au jury d'établissement (doctorat) : les deux tables doivent se lire ensemble, et une
+ * ligne ici sans mode publié ne rend personne candidat — `BT` et `BEP` nomment seulement l'épreuve
+ * sous laquelle une écriture déjà enregistrée s'est déclarée.
  */
 export const EXAMEN_NATIONAL_PAR_DIPLOME: Readonly<Record<Exclude<Diplome, "DOCTORAT">, ExamenNational>> = {
   CAP: "CAP",
@@ -556,6 +573,18 @@ export const EXAMEN_NATIONAL_PAR_DIPLOME: Readonly<Record<Exclude<Diplome, "DOCT
   MASTER_PRO: "MASTER_PRO",
   DES: "DES",
 };
+
+/**
+ * Un examen national qu'une autorité publie effectivement. `CEP` et `BEPC` sont les deux épreuves que le
+ * K-12 tient hors du tableau des diplômes ; pour tout le reste la liste des modes publiés fait foi, donc
+ * `BEP` et `BT` répondent non : leur sigle reste dans l'énumération — une colonne texte sans contrainte,
+ * et une session déjà ouverte sous ce nom doit pouvoir être relue — mais AUCUNE session nouvelle ne peut
+ * s'ouvrir sous un diplôme qu'aucun arrêté ne certifie.
+ */
+const DIPLOMES_PUBLIES = new Set<string>(Object.keys(MODES_CERTIFICATION));
+export const examenNationalCertifie = (examen: ExamenNational): boolean =>
+  examen === "CEP" || examen === "BEPC"
+  || (DIPLOMES_PUBLIES.has(examen) && diplomeCertifie(examen as Diplome));
 
 /**
  * Code court du diplôme, pour l'identifiant de certificat. Nécessaire parce que le format en
@@ -590,13 +619,14 @@ export const StatutJury = z.enum(["constitue", "reuni", "delibere", "publie"]);
 export type StatutJury = z.infer<typeof StatutJury>;
 
 /**
- * Office qui tient la session. Au Bénin ce ne sont pas les mêmes services : l'Office du Baccalauréat
- * (officedubacbenin.bj) pour le BAC, la Direction des Examens et Concours Supérieurs pour les
- * examens nationaux de l'supérieur, l'établissement pour une délibération sur crédits.
- */
-/**
  * Office qui délibère et au nom duquel le diplôme est délivré : les deux DEC du K-12 (MEMP pour le CEP,
- * MESTFP pour le BEPC), l'Office du Baccalauréat, la DEC du supérieur, ou l'établissement (capitalisation).
+ * MESTFP pour le BEPC et le BAC), la DEC du supérieur, ou l'établissement (capitalisation).
+ *
+ * `office_du_bac` est CONSERVÉ sans être employé : aucune source lue ne nomme d'« Office du
+ * Baccalauréat » béninois (docs/referentiels/benin-etablissements.md §4 et §9, qui rattache BEPC et BAC
+ * à la DEC-MESTFP), et le domaine qu'un commentaire ancien citait n'a jamais été vérifié. Retirer la
+ * valeur casserait le rejeu d'une écriture déjà scellée sous ce nom — la colonne est un texte sans
+ * contrainte, seul le contrat refuse. Elle reste donc lisible, et rien ne l'écrit désormais.
  */
 export const OfficeDeliberant = z.enum(["dec_memp", "dec_mestfp", "office_du_bac", "dec_sup", "etablissement"]);
 export type OfficeDeliberant = z.infer<typeof OfficeDeliberant>;

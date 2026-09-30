@@ -15,6 +15,9 @@ import { tls } from "./index";
  *
  * Les rôles (beile_app, beile_api) sont conservés : DATABASE_URL_API reste valable.
  * Les comptes sont recréés avec de NOUVEAUX mots de passe, écrits dans COMPTES.local.md.
+ *
+ * Option --reel (production) : aucune donnée simulée — socle, référentiel réel des établissements,
+ * comptes de test et calendrier officiel.   npm run reinitialiser -w @beile/db <hôte> -- --reel
  */
 config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
 
@@ -34,24 +37,32 @@ if (confirmation !== hote) {
   process.exit(1);
 }
 
+// --reel : production — socle, référentiel réel des établissements et comptes de test, aucune donnée simulée.
+const reel = process.argv.includes("--reel");
 const SCHEMAS = ["core", "ledger", "audit", "analytics", "workflow", "sensible", "gouvernance", "registre_simule", "drizzle"];
 const s = postgres(url, { ssl: tls(url), max: 1, onnotice: () => {} });
 try {
   const debut = Date.now();
   await s.unsafe(`DROP SCHEMA IF EXISTS ${SCHEMAS.join(", ")} CASCADE`);
-  console.log(`1/8 Schémas supprimés (${SCHEMAS.length}) en ${Date.now() - debut} ms.`);
+  console.log(`1/${reel ? 5 : 9} Schémas supprimés (${SCHEMAS.length}) en ${Date.now() - debut} ms.`);
 } finally {
   await s.end();
 }
 
-const etapes: [string, string][] = [
-  ["2/8 Migrations et durcissement", "src/migrer.ts"],
-  ["3/8 Peuplement", "src/peupler.ts"],
-  ["4/8 Référentiel du supérieur (établissements, filières, étudiants)", "src/superieur.ts"],
-  ["5/8 Comptes (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
-  ["6/8 Projections de lecture", "src/projections.ts"],
-  ["7/8 Calendrier scolaire officiel", "src/calendrier.ts"],
-  ["8/8 Vérification (ajout seul, droits, RLS)", "src/verifier.ts"],
+const etapes: [string, string][] = reel ? [
+  ["2/5 Migrations et durcissement", "src/migrer.ts"],
+  ["3/5 Socle réel et référentiel des établissements", "src/reel.ts"],
+  ["4/5 Comptes de test (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
+  ["5/5 Calendrier scolaire officiel", "src/calendrier.ts"],
+] : [
+  ["2/9 Migrations et durcissement", "src/migrer.ts"],
+  ["3/9 Peuplement de démonstration", "src/peupler.ts"],
+  ["4/9 Référentiel du supérieur (établissements, filières, étudiants)", "src/superieur.ts"],
+  ["5/9 Référentiel réel des établissements (annuaire public)", "src/referentiel.ts"],
+  ["6/9 Comptes (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
+  ["7/9 Projections de lecture", "src/projections.ts"],
+  ["8/9 Calendrier scolaire officiel", "src/calendrier.ts"],
+  ["9/9 Vérification (ajout seul, droits, RLS)", "src/verifier.ts"],
 ];
 for (const [libelle, script] of etapes) {
   console.log(`\n${libelle}…`);

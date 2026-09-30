@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowRight, CalendarCheck, ClipboardCheck, PenLine, Star, TrendingUp, UserX, Users } from "lucide-react";
+import { ArrowRight, CalendarCheck, ClipboardCheck, Gauge, PenLine, Star, TrendingUp, UserX, Users } from "lucide-react";
 import Link from "next/link";
 import { Cascade, Compteur, Element, EntreePage, motion } from "@/components/motion";
-import { Badge, Card, EtatVide, Etiquette, PageHeader, Squelette } from "@/components/ui/primitives";
+import { BandeauAccueil, GrilleWidgets, Widget, WidgetEcheances, type ATraiter } from "@/components/tableau/Tableau";
+import { Badge, Card, EtatVide, Etiquette, Squelette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { dateLongue, nombre } from "@/lib/format";
+import { nombre } from "@/lib/format";
 import { useMesClasses, useSynchronisationEnseignant, type ClasseEnseignant } from "@/lib/api/enseignant";
 import { BandeauFile, DonneesAnciennes, Erreur } from "./communs";
 
@@ -16,45 +17,58 @@ export default function EspaceEnseignant() {
   if (isPending) return <Chargement />;
   if (!data) return <Erreur erreur={error!} relancer={() => refetch()} enCours={isRefetching} />;
 
-  const { enseignant, classes, date, trimestre } = data;
+  const { enseignant, classes, trimestre } = data;
   const effectif = classes.reduce((s, c) => s + c.effectif, 0);
   const absents = classes.reduce((s, c) => s + c.absentsDuJour, 0);
 
   const notees = classes.filter((c) => c.moyenne != null);
   const moyenne = notees.length ? notees.reduce((t, c) => t + c.moyenne! * c.effectif, 0) / Math.max(1, notees.reduce((t, c) => t + c.effectif, 0)) : null;
 
+  // À traiter : uniquement des signaux vrais (un appel sans absent ne laisse pas de trace, il n'est donc pas compté).
+  const aTraiter: ATraiter[] = [
+    ...classes.filter((c) => c.absentsDuJour > 0).map((c) => ({ cle: `abs-${c.id}`, libelle: `${c.libelle} : ${c.absentsDuJour} absent${c.absentsDuJour > 1 ? "s" : ""}`, href: `/enseignant/classe/${c.id}?onglet=appel`, ton: "alerte" as const })),
+    ...classes.filter((c) => c.moyenne == null && c.effectif > 0).map((c) => ({ cle: `notes-${c.id}`, libelle: `${c.libelle} : notes du trimestre à saisir`, href: `/enseignant/classe/${c.id}?onglet=notes` })),
+  ];
+
   return (
     <EntreePage>
-      <div className="space-y-6">
-        <PageHeader
-          surtitre={[date ? dateLongue(date) : null, classes[0]?.etablissement].filter(Boolean).join(" · ")}
-          titre={`Bonjour ${enseignant.prenoms}`}
-          sousTitre="L'appel et les notes que vous saisissez alimentent directement les bulletins et informent les familles : aucune ressaisie."
-        />
-
+      <div className="space-y-5">
+        <BandeauAccueil prenom={enseignant.prenoms} contexte={classes[0]?.etablissement} aTraiter={aTraiter} />
         <BandeauFile />
         {error && <DonneesAnciennes relancer={() => refetch()} enCours={isRefetching} />}
 
-        <Cascade data-guide="ens-indicateurs" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Element><Tuile libelle="Classes" valeur={classes.length} icone={CalendarCheck} indication={`${enseignant.matieres.join(", ")}`} /></Element>
-          <Element><Tuile libelle="Élèves" valeur={effectif} icone={Users} indication="effectif scolarisé" /></Element>
-          <Element><Tuile libelle="Absents" valeur={absents} icone={UserX} alerte={absents > 0} indication={effectif ? `aujourd'hui · ${nombre((absents / effectif) * 100, 1)} %` : "aujourd'hui"} /></Element>
-          <Element><Tuile libelle="Moyenne" valeur={moyenne ?? 0} decimales={2} vide={moyenne == null} icone={TrendingUp} indication={trimestre ? `trimestre ${trimestre}, vos matières` : "vos matières"} /></Element>
-        </Cascade>
-
-        {classes.length === 0 ? (
-          <Card><EtatVide icone={CalendarCheck} titre="Aucune classe attribuée" texte="Aucune relation pédagogique n'est enregistrée à votre nom pour cette année. Rapprochez-vous de votre chef d'établissement." /></Card>
-        ) : (
-          <section data-guide="ens-classes" aria-labelledby="titre-classes">
-            <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h2 id="titre-classes" className="text-[17px] font-semibold text-ink">Mes classes</h2>
-              {trimestre && <Etiquette>Trimestre {trimestre}</Etiquette>}
-            </div>
-            <Cascade className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {classes.map((c) => <Element key={c.id}><CarteClasse classe={c} /></Element>)}
-            </Cascade>
-          </section>
-        )}
+        <GrilleWidgets espace="enseignant" widgets={[
+          {
+            id: "jour", libelle: "Aujourd'hui", colonne: "etroite",
+            noeud: (
+              <Widget titre="Aujourd'hui" icone={Gauge}>
+                <Cascade data-guide="ens-indicateurs" className="grid grid-cols-2 gap-2.5">
+                  <Element><Tuile libelle="Classes" valeur={classes.length} icone={CalendarCheck} indication={enseignant.matieres.join(", ")} /></Element>
+                  <Element><Tuile libelle="Élèves" valeur={effectif} icone={Users} /></Element>
+                  <Element><Tuile libelle="Absents" valeur={absents} icone={UserX} alerte={absents > 0} indication={effectif ? `${nombre((absents / effectif) * 100, 1)} %` : undefined} /></Element>
+                  <Element><Tuile libelle="Moyenne" valeur={moyenne ?? 0} decimales={2} vide={moyenne == null} icone={TrendingUp} indication={trimestre ? `trimestre ${trimestre}` : undefined} /></Element>
+                </Cascade>
+              </Widget>
+            ),
+          },
+          { id: "echeances", libelle: "Prochaines échéances", colonne: "etroite", noeud: <WidgetEcheances nombre={3} /> },
+          {
+            id: "classes", libelle: "Mes classes", colonne: "large", fixe: true,
+            noeud: classes.length === 0 ? (
+              <Card><EtatVide icone={CalendarCheck} titre="Aucune classe attribuée" texte="Aucune relation pédagogique à votre nom cette année. Voyez votre chef d'établissement." /></Card>
+            ) : (
+              <section data-guide="ens-classes" aria-labelledby="titre-classes">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <h2 id="titre-classes" className="text-[17px] font-semibold text-ink">Mes classes</h2>
+                  {trimestre && <Etiquette>Trimestre {trimestre}</Etiquette>}
+                </div>
+                <Cascade className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {classes.map((c) => <Element key={c.id}><CarteClasse classe={c} /></Element>)}
+                </Cascade>
+              </section>
+            ),
+          },
+        ]} />
       </div>
     </EntreePage>
   );
@@ -62,12 +76,12 @@ export default function EspaceEnseignant() {
 
 function Tuile({ libelle, valeur, icone: Icone, alerte, indication, decimales = 0, vide }: { libelle: string; valeur: number; icone: typeof Users; alerte?: boolean; indication?: string; decimales?: number; vide?: boolean }) {
   return (
-    <div className="min-w-0 rounded-xl border border-line/70 bg-surface p-4 shadow-float">
+    <div className="min-w-0 rounded-xl bg-surface-2/60 p-3">
       <div className="flex items-start justify-between gap-2">
         <Etiquette className="truncate">{libelle}</Etiquette>
         <Icone size={16} aria-hidden className={alerte ? "text-critical" : "text-ink-muted"} />
       </div>
-      <p className={cn("mt-2 text-2xl font-semibold tabular-nums", alerte ? "text-critical" : "text-ink")}>
+      <p className={cn("mt-1.5 text-xl font-semibold tabular-nums", alerte ? "text-critical" : "text-ink")}>
         {vide ? "—" : <Compteur valeur={valeur} format={(n) => nombre(n, decimales)} />}
       </p>
       {indication && <p className="mt-0.5 truncate text-xs text-ink-muted">{indication}</p>}
@@ -164,9 +178,8 @@ function AnneauPresence({ taux }: { taux: number }) {
 function Chargement() {
   return (
     <div className="space-y-6" aria-busy="true" aria-label="Chargement de vos classes">
-      <div className="space-y-2"><Squelette className="h-4 w-48" /><Squelette className="h-8 w-64" /><Squelette className="h-4 w-full max-w-xl" /></div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Squelette key={i} className="h-20 rounded-xl" />)}</div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1].map((i) => <Squelette key={i} className="h-80 rounded-xl" />)}</div>
+      <Squelette className="h-36 rounded-2xl" />
+      <div className="grid gap-5 lg:grid-cols-3"><Squelette className="h-64 rounded-2xl" /><div className="grid gap-4 md:grid-cols-2 lg:col-span-2">{[0, 1].map((i) => <Squelette key={i} className="h-80 rounded-2xl" />)}</div></div>
     </div>
   );
 }

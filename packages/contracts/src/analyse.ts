@@ -45,6 +45,39 @@ export type FigureAnalyse =
 
 export interface SuggestionAnalyse { libelle: string; question: string }
 
+/**
+ * Alerte territoriale détectée sans qu'on la demande : une commune s'écarte nettement de ses pairs
+ * (« ecart », score robuste médiane/MAD) ou décroche d'une année sur l'autre (« rupture »), toujours dans
+ * le sens défavorable de l'indicateur.
+ */
+export type GraviteAlerte = "critique" | "attention";
+export interface AlerteTerritoriale {
+  id: string;
+  code: string;
+  indicateur: string;
+  unite: string;
+  type: "ecart" | "rupture";
+  communeId: string;
+  commune: string;
+  departementId: string;
+  departement: string;
+  valeur: number;
+  reference: number;
+  /** « médiane des communes » (écart) ou l'année précédente (rupture). */
+  libelleReference: string;
+  score: number;
+  gravite: GraviteAlerte;
+  texte: string;
+  /** Question prête à poser au moteur d'analyse pour creuser l'alerte. */
+  question: string;
+}
+export interface ReponseAlertes {
+  perimetre: string;
+  indicateursExamines: number;
+  communesExaminees: number;
+  alertes: AlerteTerritoriale[];
+}
+
 export type ReponseAnalyse =
   | {
       statut: "repondu";

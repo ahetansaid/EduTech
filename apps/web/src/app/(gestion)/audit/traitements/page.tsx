@@ -69,7 +69,7 @@ const TRAITEMENTS: Traitement[] = [
   },
   {
     id: "T03", nom: "Examens et certification", icone: GraduationCap,
-    finalite: "Rattacher les candidats à leur parcours, recevoir les verdicts du procès-verbal de l'autorité d'examen (DEC, Office du Baccalauréat), puis délivrer en son nom des diplômes vérifiables.",
+    finalite: "Rattacher les candidats à leur parcours, recevoir les verdicts du procès-verbal de l'autorité d'examen (DEC du MEMP, DEC du MESTFP), puis délivrer en son nom des diplômes vérifiables.",
     baseLegale: "Mission de service public ; textes régissant les examens nationaux (CEP, BEPC, baccalauréat)",
     categories: ["Identité du candidat", "Résultats et mentions", "Empreinte cryptographique du diplôme"],
     personnes: "Candidats",

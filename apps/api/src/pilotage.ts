@@ -118,7 +118,13 @@ pilotage.get("/pilotage/communes/:id", authentifie, async (c) => {
     refuser("Commune hors de votre périmètre : refus journalisé");
   }
   const couches = await chargerCouches(base());
-  const stats = couches.communes.get(id)!;
+  const stats = couches.communes.get(id);
+  const infos = { id, nom: commune.nom, departementId: commune.departementId, departement: departementById.get(commune.departementId)?.nom, milieu: commune.milieu };
+  // Base réelle sans statistique pour cette commune : on le dit (indicateurs nuls), on n'affiche pas de zéros.
+  if (!stats?.annees[ANNEE_COURANTE]) {
+    await journaliser(profil, "Consultation d'une commune", commune.nom, "statistique", true, null);
+    return c.json({ commune: infos, indicateurs: null, effectifs: [], priorite: null, etablissements: [] });
+  }
   const a = stats.annees[ANNEE_COURANTE];
   const effectif = NIVEAUX.reduce((s, n) => s + a.niveaux[n].effectifF + a.niveaux[n].effectifM, 0);
   const effectifs = ANNEES.map((an) => ({ annee: an, effectif: NIVEAUX.reduce((s, n) => s + stats.annees[an].niveaux[n].effectifF + stats.annees[an].niveaux[n].effectifM, 0), capacite: stats.annees[an].capacite }));

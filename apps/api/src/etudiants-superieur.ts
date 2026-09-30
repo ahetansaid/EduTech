@@ -5,7 +5,7 @@ import {
   DeliberationDiplome, Diplome, homologationOperante, ModeDeliberation, OfficeDeliberant,
   PhaseEpes, PorteeRegle, RegleCompensation, ReglePonderation, RegleSessionRetenue, RegimePedagogique,
   SessionEvaluation, StatutAccreditation, StatutAgrement, StatutCompte, StatutEquivalence,
-  StatutInscriptionUE, StatutJury, modeCertifiable, Tutelle, TypeGroupe, TypePeriode, TypeUE,
+  StatutInscriptionUE, StatutJury, modeCertifiable, modesCertificationDe, Tutelle, TypeGroupe, TypePeriode, TypeUE,
   VoieAcquisition, VOIES_SANS_NOTE,
 } from "@beile/contracts";
 import { schema } from "@beile/db";
@@ -173,6 +173,9 @@ function acquisToujoursValide(acquiseLe: string, dureeAns: number) {
  *  l'établissement dont la filière est jugée. Le mode doit être ouvert au diplôme — deux autorités
  *  coexistent au Bénin, mais pas pour n'importe quel diplôme. */
 async function accesJury(c: Context<{ Variables: Variables }>, etablissementId: string, jury: { autorite: "examen_national" | "jury_capitalisation"; diplome: Diplome; filiereId: string | null }, action: string) {
+  // Deux refus distincts, deux vérités distinctes : « cette autorité ne délibère pas ce diplôme » n'est
+  // pas la même chose que « personne ne délibère ce diplôme », et le second est une absence de source.
+  if (modesCertificationDe(jury.diplome).length === 0) throw new HTTPException(422, { message: `Aucune autorité de délibération n'est publiée pour le diplôme ${jury.diplome} : ce sigle ne correspond à aucun diplôme certifié par l'État béninois` });
   if (!modeCertifiable(jury.diplome, jury.autorite)) throw new HTTPException(422, { message: `Le diplôme ${jury.diplome} n'est pas délibéré par cette autorité` });
   if (jury.autorite === "examen_national") return { profil: await bureauSup(c, action) };
   if (!jury.filiereId) throw new HTTPException(422, { message: "Un jury de capitalisation doit désigner la filière qu'il juge" });

@@ -31,9 +31,9 @@ export default function PageConfidentialite() {
       <section className="mt-8 rounded-2xl bg-navy p-6 text-white shadow-float sm:p-8">
         <h2 className="font-display text-[20px] font-bold">Vos droits</h2>
         <p className="mt-2 max-w-2xl text-[14.5px] leading-relaxed text-white/85">
-          Vous pouvez demander l'accès aux données qui vous concernent ou qui concernent votre enfant, leur rectification si elles sont inexactes,
-          et savoir qui les a consultées. Adressez votre demande au délégué à la protection des données, depuis votre espace (menu à votre nom, puis « Assistance »)
-          ou auprès de l'établissement. En cas de désaccord, vous pouvez saisir l'Autorité de protection des données personnelles (APDP).
+          Accès, rectification, limitation ou opposition : sur vos données ou celles de votre enfant. Déposez votre demande depuis votre espace,
+          onglet « Mes données » ; le délégué à la protection des données vous répond par écrit sous 30 jours. En cas de désaccord, vous pouvez
+          saisir l'Autorité de protection des données personnelles (APDP).
         </p>
         <Link href="/aide" className="mt-5 inline-flex h-11 items-center rounded-full bg-white px-5 text-[14px] font-semibold text-navy transition hover:bg-white/90">Centre d'aide</Link>
       </section>

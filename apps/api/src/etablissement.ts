@@ -111,6 +111,50 @@ etablissement.get("/etablissements/:id/enseignants", authentifie, async (c) => {
 });
 
 /**
+ * Personnel enseignant : grade, ancienneté, classes et matières tenues, charge (élèves), formations
+ * suivies, et suivi des notes du trimestre par classe et matière. Le registre ne rattache pas une note à
+ * la personne qui l'a saisie : l'activité se lit donc sur la relation pédagogique (telle classe, telle
+ * matière), jamais attribuée à un individu.
+ */
+etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const { profil, finalite } = await acces(c, id);
+  const [enseignants, enseignements, effectifs, notes, formations] = await Promise.all([
+    base().select().from(schema.enseignants).where(eq(schema.enseignants.etablissementId, id)),
+    base().select({ enseignantId: schema.enseignements.enseignantId, classeId: schema.enseignements.classeId, matiere: schema.enseignements.matiere, libelle: schema.classes.libelle, niveau: schema.classes.niveau, principal: schema.classes.enseignantPrincipalId })
+      .from(schema.enseignements).innerJoin(schema.classes, eq(schema.classes.id, schema.enseignements.classeId))
+      .where(eq(schema.classes.etablissementId, id)),
+    base().execute<{ classe_id: string; n: number }>(sql`select classe_id, count(*)::int as n from core.scolarites where statut = 'scolarise' and classe_id in (select id from core.classes where etablissement_id = ${id}) group by classe_id`),
+    base().execute<{ classe_id: string; matiere: string; n: number; derniere: string | null }>(sql`
+      select n.classe_id, n.matiere, count(*)::int as n, max(n.survenu_le)::text as derniere from core.notes n
+      where n.trimestre = ${TRIMESTRE_COURANT} and n.classe_id in (select id from core.classes where etablissement_id = ${id})
+      group by n.classe_id, n.matiere`),
+    base().select({ enseignantId: schema.evenements.enseignantId, formation: sql<string>`${schema.evenements.donnees}->>'formation'`, le: schema.evenements.survenuLe })
+      .from(schema.evenements).where(and(eq(schema.evenements.type, "FORMATION_ENSEIGNANT"), eq(schema.evenements.etablissementId, id))),
+  ]);
+  const effectif = new Map(effectifs.map((x) => [x.classe_id, x.n]));
+  const suivi = new Map(notes.map((x) => [`${x.classe_id}|${x.matiere}`, x]));
+  const annee = Number(aujourdhui().slice(0, 4));
+  await journaliser(profil, "Consultation du personnel enseignant", id, finalite, true, null);
+  const personnel = enseignants.map((e) => {
+    const tenues = enseignements.filter((x) => x.enseignantId === e.id).map((x) => {
+      const s = suivi.get(`${x.classeId}|${x.matiere}`);
+      return { classeId: x.classeId, classe: x.libelle, niveau: x.niveau, matiere: x.matiere, principal: x.principal === e.id, effectif: effectif.get(x.classeId) ?? 0, notesTrimestre: s?.n ?? 0, derniereNote: s?.derniere ?? null };
+    }).sort((a, b) => comparerFr(a.classe, b.classe));
+    const suivies = formations.filter((f) => f.enseignantId === e.id).sort((a, b) => b.le.toISOString().localeCompare(a.le.toISOString()));
+    return {
+      id: e.id, nom: e.nom, prenoms: e.prenoms, sexe: e.sexe, grade: e.grade, matieres: e.matieres,
+      anciennete: e.dateRecrutement ? Math.max(0, annee - Number(String(e.dateRecrutement).slice(0, 4))) : null,
+      classes: tenues,
+      eleves: [...new Set(tenues.map((t) => t.classeId))].reduce((s, cid) => s + (effectif.get(cid) ?? 0), 0),
+      formations: suivies.map((f) => ({ intitule: f.formation, le: f.le.toISOString().slice(0, 10) })),
+      formationObligatoire: suivies.some((f) => f.formation?.startsWith(FORMATION_OBLIGATOIRE)),
+    };
+  }).sort((a, b) => comparerFr(a.nom, b.nom));
+  return c.json({ trimestre: TRIMESTRE_COURANT, formationObligatoire: FORMATION_OBLIGATOIRE, personnel });
+});
+
+/**
  * Édition d'une classe par le chef de l'établissement : capacité et professeur principal.
  * La capacité peut être abaissée sous l'effectif courant : la surcharge est une alerte de pilotage,
  * pas une interdiction (on ne supprime aucun élève pour faire rentrer le chiffre). Le professeur
@@ -352,7 +396,7 @@ etablissement.post("/etablissements/:id/justificatifs/:justificationId/decision"
 
 /**
  * Examens nationaux, côté établissement : LECTURE SEULE. Un établissement ne délibère jamais un examen
- * national (DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC, Office du Baccalauréat pour le BAC) et
+ * national (DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC et pour le BAC) et
  * ne délivre aucun diplôme national. Il voit ses candidats (numéro de table, centre) et, une fois la
  * session publiée par l'autorité, le verdict officiel et le diplôme délivré en son nom.
  */
@@ -538,11 +582,26 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
   return { demande, modele, etapes, etape, etab: etab ?? null, peutStatuer: !!hab && ["ouverte", "en_cours"].includes(demande.statut) };
 }
 
+/**
+ * Lecture d'une demande : son auteur, ou un porteur du rôle de l'une de ses étapes dans le périmètre
+ * concerné (l'établissement ressource, ou le périmètre national si la demande n'en a pas). Personne
+ * d'autre — une demande peut contenir des données personnelles (exercice des droits, affectation).
+ */
+function peutLireDemande(profil: import("@beile/contracts").Profil, ctx: Awaited<ReturnType<typeof contexteDemande>>) {
+  if (ctx.demande.demandeurId === profil.id) return true;
+  return ctx.etapes.some((e) => profil.habilitations.some((h) => h.role === e.role && (ctx.etab ? couvreEtab(h, ctx.etab) : h.perimetre.niveau === "national")));
+}
+
 /** Détail d'une demande : circuit, décisions déjà rendues (ajout seul), et droit d'agir de l'utilisateur. */
 etablissement.get("/demandes/:id", authentifie, async (c) => {
   const profil = c.get("profil");
   const demandeId = z.string().regex(/^DEM-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const ctx = await contexteDemande(profil, demandeId);
+  if (!peutLireDemande(profil, ctx)) {
+    await journaliser(profil, "Consultation d'une demande", demandeId, "gestion", false, "relation");
+    refuser("Cette demande ne vous concerne pas : consultation refusée et journalisée");
+  }
+  await journaliser(profil, "Consultation d'une demande", demandeId, "gestion", true, null);
   const decisions = await base().select().from(schema.decisions).where(eq(schema.decisions.demandeId, demandeId));
   const [demandeur] = await base().select({ id: schema.profils.id, nomAffiche: schema.profils.nomAffiche }).from(schema.profils).where(eq(schema.profils.id, ctx.demande.demandeurId));
   return c.json({
@@ -564,10 +623,16 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
   const demandeId = z.string().regex(/^DEM-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const saisie = await corps(c, z.object({
     decision: z.enum(["valide", "refuse", "renvoye"]),
-    motif: z.string().trim().max(200).optional(),
+    motif: z.string().trim().max(500).optional(),
   }).strict().refine((s) => s.decision === "valide" || (s.motif ?? "").length >= 5, "Un motif d'au moins 5 caractères est requis pour refuser ou renvoyer"));
 
   const ctx = await contexteDemande(profil, demandeId);
+  // Exercice des droits : la réponse à la personne est toujours motivée, et un renvoi n'a pas de sens
+  // (la première étape est le dépôt par la personne elle-même, qu'aucune file ne présente).
+  if (ctx.modele.code === "DROITS") {
+    if (saisie.decision === "renvoye") throw new HTTPException(422, { message: "Une demande d'exercice des droits ne se renvoie pas : répondez, ou refusez en motivant." });
+    if ((saisie.motif ?? "").length < 10) throw new HTTPException(422, { message: "La réponse adressée à la personne est obligatoire (10 caractères au moins)." });
+  }
   if (!ctx.etape) throw new HTTPException(409, { message: "Étape courante incohérente avec le modèle de circuit" });
   if (!["ouverte", "en_cours"].includes(ctx.demande.statut)) throw new HTTPException(409, { message: "Cette demande est déjà close" });
   if (!ctx.peutStatuer) {
@@ -605,7 +670,8 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
     const verbe = saisie.decision === "valide" ? (statut === "acceptee" ? "acceptée" : `validée — étape suivante : ${etape}`) : saisie.decision === "refuse" ? "refusée" : `renvoyée — étape : ${etape}`;
     await base().insert(schema.notifications).values({
       id: `NOT-${randomUUID()}`, destinataireNpi: demandeur.npi, evenementId: null,
-      titre: `Demande ${verbe.startsWith("acceptée") || verbe.startsWith("validée") ? "validée" : saisie.decision === "refuse" ? "refusée" : "renvoyée"}`,
+      titre: ctx.modele.code === "DROITS" ? (saisie.decision === "refuse" ? "Votre demande sur vos données : refus motivé" : "Réponse à votre demande sur vos données")
+        : `Demande ${verbe.startsWith("acceptée") || verbe.startsWith("validée") ? "validée" : saisie.decision === "refuse" ? "refusée" : "renvoyée"}`,
       texte: `« ${ctx.demande.objet} » : ${verbe}.${saisie.motif ? ` Motif : ${saisie.motif}.` : ""}`,
     }).catch((e) => console.error("Notification demande :", e));
   }

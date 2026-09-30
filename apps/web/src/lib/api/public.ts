@@ -9,15 +9,17 @@ import { lire, requete } from "@/lib/http";
 export type NiveauPublic = "maternelle" | "primaire" | "secondaire" | "technique" | "superieur" | "alphabetisation";
 export type StatutEtablissement = "public" | "prive" | "confessionnel" | "communautaire";
 
+/** Niveau de preuve d'une ligne du référentiel réel. */
+export type PreuveReferentiel = "officielle" | "recoupee" | "cartographie_collaborative";
 export interface EtablissementPublic {
-  id: string; nom: string; type: string; typeLibelle: string; statut: StatutEtablissement; cycle: string;
-  communeId: string; commune: string; departementId: string | null; departement: string | null;
+  id: string; nom: string; sigle: string | null; type: string; typeLibelle: string; niveaux: string[];
+  statut: StatutEtablissement | "non_indique"; cycle: string | null; preuve: PreuveReferentiel;
+  communeId: string | null; commune: string | null; departementId: string | null; departement: string | null;
   lat: number | null; lng: number | null; distanceKm: number | null;
 }
 export interface Annuaire { total: number; page: number; parPage: number; etablissements: EtablissementPublic[] }
 export interface FicheEtablissement extends Omit<EtablissementPublic, "distanceKm"> {
-  gestionnaire: string | null; circonscription: string; capacite: number; salles: number;
-  infrastructures: { eau: boolean; electricite: boolean; internet: boolean; latrines: boolean; bibliotheque: boolean };
+  rattachement: string | null; source: string; remarque: string | null;
 }
 export interface Filtres { q?: string; departement?: string; commune?: string; niveau?: NiveauPublic; statut?: StatutEtablissement; lat?: number; lng?: number; page?: number }
 
@@ -56,9 +58,11 @@ export const NIVEAUX_PUBLICS: { valeur: NiveauPublic; libelle: string }[] = [
   { valeur: "secondaire", libelle: "Secondaire" },
   { valeur: "technique", libelle: "Technique et professionnel" },
   { valeur: "superieur", libelle: "Supérieur" },
-  { valeur: "alphabetisation", libelle: "Alphabétisation" },
 ];
 export const STATUTS: Record<StatutEtablissement, string> = { public: "Public", prive: "Privé", confessionnel: "Confessionnel", communautaire: "Communautaire" };
+/** Statut lisible ; « non indiqué » n'est pas un statut, il n'est donc pas affiché comme tel. */
+export const libelleStatut = (s: StatutEtablissement | "non_indique") => (s === "non_indique" ? null : STATUTS[s]);
+export const LIBELLE_PREUVE: Record<PreuveReferentiel, string> = { officielle: "Source officielle", recoupee: "Sources recoupées", cartographie_collaborative: "OpenStreetMap" };
 
 export type CategorieEcheance = "rentree" | "trimestre" | "conges" | "ferie" | "examen" | "evaluation" | "fin" | "autre";
 export interface Echeance { id: string; annee: string; titre: string; categorie: CategorieEcheance; debut: string; fin: string; statut: "officiel" | "provisoire"; note: string | null; majLe: string }

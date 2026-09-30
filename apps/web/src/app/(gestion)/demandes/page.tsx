@@ -14,7 +14,7 @@ import { dateCourte, EtatErreur, LIBELLE_STATUT_DEMANDE, normaliser, Statut, TON
 import { DialogueStatuer } from "@/components/demandes/DialogueStatuer";
 
 /** Rôles susceptibles d'avoir une étape de circuit à traiter (le droit réel est décidé par l'API : rôle de l'étape + périmètre). */
-const ROLES_FILE = ["inspecteur", "direction_departementale", "administration_centrale"] as const;
+const ROLES_FILE = ["inspecteur", "direction_departementale", "administration_centrale", "dpo"] as const;
 
 /** Colonnes exportées : la file telle qu'affichée (circuit, étape courante, échéance), rien de plus. */
 const COLONNES: Colonne<DemandeATraiter>[] = [
