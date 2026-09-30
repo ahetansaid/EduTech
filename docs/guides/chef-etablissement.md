@@ -56,18 +56,11 @@
 
 ## Vos écrans
 
-### Poste de pilotage
-
-`/aujourd-hui` — Vos tâches du jour, triées par urgence réelle.
-
-- Rassemble ce qui attend votre main : classes surchargées, justificatifs à statuer, élèves en baisse, identités à régulariser, absents du jour, demandes en circuit.
-- Trois niveaux : « À traiter aujourd'hui » (échéance atteinte ou bloquante), « Cette semaine », « À surveiller ».
-- Chaque ligne renvoie vers l'écran où agir ; rien n'est affiché d'un périmètre qui ne vous appartient.
-
 ### Tableau de bord
 
-`/etablissement` — Votre établissement d'un coup d'œil.
+`/etablissement` — Votre établissement d'un coup d'œil, et ce qui attend votre main.
 
+- Bandeau « À traiter » : classes surchargées, justificatifs à statuer, demandes en circuit, élèves en baisse — triés par urgence réelle.
 - Apprenants, occupation, enseignants, moyenne du trimestre, absents aujourd'hui.
 - « Ce que le système vous signale » : alertes et actions proposées.
 - « Élèves en baisse en mathématiques » et proposition d'accompagnement.
@@ -99,7 +92,7 @@
 `/etablissement/examens` — Vos candidats au CEP, au BEPC et au BAC, et leurs verdicts officiels.
 
 - Chaque session montre vos élèves inscrits, leur numéro de table et leur centre.
-- Le verdict (admis, non admis, absent, exclu) et la mention apparaissent à la publication officielle par l'autorité d'examen : DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC, Office du Baccalauréat pour le BAC.
+- Le verdict (admis, non admis, absent, exclu) et la mention apparaissent à la publication officielle par l'autorité d'examen : DEC du MEMP pour le CEP, DEC du MESTFP pour le BEPC et pour le BAC.
 - L'établissement ne délibère pas et ne délivre aucun diplôme national : les diplômes de vos élèves, délivrés par l'autorité, se retrouvent ici avec leur attestation à QR code.
 
 ### Guichet de l'étudiant

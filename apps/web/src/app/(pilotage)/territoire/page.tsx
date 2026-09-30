@@ -20,6 +20,7 @@ import { useProfil } from "@/lib/session";
 import { cn } from "@/lib/cn";
 import { compact, entier, heure, nombre, pourcent } from "@/lib/format";
 import {
+  useAlertesPilotage,
   useAbsencesTerritoire, useComplementsTerritoire, useFicheCommune, useIndicateurPilotage, usePrioritesPilotage, useRelanceMutation, useTerritoire,
   type ConsoleTerritoriale, type EtablissementTerritoire, type Infrastructures,
 } from "@/lib/api/pilotage";
@@ -92,10 +93,13 @@ function Console({ t }: { t: ConsoleTerritoriale }) {
   const ayantTransmis = r.effectif.couverture.etablissementsAyantTransmis;
   const profil = useProfil();
   const file = useDemandesATraiter(true);
+  const alertes = useAlertesPilotage();
+  const critiquesAlertes = alertes.data?.alertes.filter((a) => a.gravite === "critique").length ?? 0;
   const critiques = t.communes.filter((c) => c.priorite === "critique").length;
   const nonTransmis = attendus - ayantTransmis;
   const aTraiter: ATraiter[] = [
     ...(file.data?.length ? [{ cle: "file", libelle: `${file.data.length} demande${file.data.length > 1 ? "s" : ""} à statuer`, href: "/demandes", ton: "alerte" as const }] : []),
+    ...(critiquesAlertes ? [{ cle: "alertes", libelle: `${critiquesAlertes} alerte${critiquesAlertes > 1 ? "s" : ""} critique${critiquesAlertes > 1 ? "s" : ""}`, href: "/alertes", ton: "alerte" as const }] : []),
     ...(critiques ? [{ cle: "critiques", libelle: `${critiques} commune${critiques > 1 ? "s" : ""} en situation critique`, href: communeCirco ? `/cockpit/carte?commune=${communeCirco}` : "/cockpit/carte", ton: "alerte" as const }] : []),
     ...(nonTransmis > 0 ? [{ cle: "transmission", libelle: `${entier(nonTransmis)} établissement${nonTransmis > 1 ? "s" : ""} sans transmission`, href: "#retardataires" }] : []),
   ];
