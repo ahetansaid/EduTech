@@ -50,6 +50,8 @@ END $$;
 
 GRANT USAGE ON SCHEMA core, ledger, audit, analytics, workflow, sensible, gouvernance, registre_simule TO beile_app;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA core TO beile_app;
+-- Référentiel réel des établissements : chargé par le propriétaire (npm run referentiel), lecture seule pour l'application.
+REVOKE INSERT, UPDATE ON core.referentiel_etablissements FROM beile_app;
 GRANT SELECT, INSERT, UPDATE ON workflow.modeles, workflow.demandes TO beile_app;
 -- Tables en ajout seul : lecture et insertion uniquement (seconde barrière, en plus des déclencheurs).
 GRANT SELECT, INSERT ON ledger.evenements, audit.journal, workflow.decisions TO beile_app;

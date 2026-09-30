@@ -132,8 +132,13 @@ verifier("Annuaire : recherche par niveau et département", annuaire.statut, 200
 const proches = await anonyme.appel("GET", "/public/etablissements?lat=9.35&lng=2.61");
 const distances = liste(proches.json.etablissements).map((e) => Number(e.distanceKm));
 verifier("Annuaire : autour de moi, du plus proche au plus éloigné", distances.length > 1 && distances.every((d, i) => i === 0 || d >= distances[i - 1]!), true);
-verifier("Annuaire : fiche d'un établissement", (await anonyme.appel("GET", `/public/etablissements/${PILOTE}`)).statut, 200);
-verifier("Annuaire : établissement inconnu", (await anonyme.appel("GET", "/public/etablissements/ETB-INCONNU")).statut, 404);
+// L'annuaire public lit le référentiel réel (identifiants REF-…), jamais le jeu de démonstration du pilotage.
+const premier = liste(proches.json.etablissements)[0]?.id as string | undefined;
+verifier("Annuaire : établissements réels (référentiel sourcé)", !!premier && premier.startsWith("REF-"), true, premier ?? "aucun");
+const fiche = await anonyme.appel("GET", `/public/etablissements/${premier}`);
+verifier("Annuaire : fiche d'un établissement, avec sa source", fiche.statut === 200 && typeof fiche.json.source === "string" && !!fiche.json.preuve, true);
+verifier("Annuaire : établissement inconnu", (await anonyme.appel("GET", "/public/etablissements/REF-INCONNU")).statut, 404);
+verifier("Annuaire : un établissement de démonstration n'y figure pas", [404, 422].includes((await anonyme.appel("GET", `/public/etablissements/${PILOTE}`)).statut), true);
 verifier("Annuaire : niveau invalide", (await anonyme.appel("GET", "/public/etablissements?niveau=nimporte")).statut, 422);
 verifier("Annuaire : coordonnées hors du Bénin", (await anonyme.appel("GET", "/public/etablissements?lat=48.85&lng=2.35")).statut, 422);
 const chiffres = await anonyme.appel("GET", "/public/chiffres");

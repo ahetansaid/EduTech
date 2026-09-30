@@ -39,13 +39,25 @@ const libelleLieu = (communeId: string) => {
   return { commune: c?.nom ?? communeId, departementId: c?.departementId ?? null, departement: c ? departementById.get(c.departementId)?.nom ?? null : null };
 };
 
-/** Annuaire : recherche par nom, lieu, niveau, statut ; ou « autour de moi » (distance PostGIS, index GiST). */
+/**
+ * Annuaire public : le référentiel RÉEL des établissements (sources officielles des ministères et
+ * cartographie OpenStreetMap), jamais le jeu de démonstration du pilotage. Recherche par nom ou sigle,
+ * lieu, niveau, statut ; ou « autour de moi » (distance PostGIS, index GiST) — seuls les établissements
+ * dont la position est connue ont une distance.
+ */
+const R = schema.referentielEtablissements;
+const latR = sql<number | null>`ST_Y(${R.position})`;
+const lngR = sql<number | null>`ST_X(${R.position})`;
+const NIVEAUX_REF = ["maternelle", "primaire", "secondaire", "technique", "superieur"] as const;
+const cycleDe = (niveaux: string[]) => (niveaux.includes("superieur") ? "superieur" : niveaux.includes("secondaire") || niveaux.includes("technique") ? "secondaire" : niveaux.length ? "primaire" : null);
+const lieu = (communeId: string | null) => (communeId ? libelleLieu(communeId) : { commune: null, departementId: null, departement: null });
+
 publique.get("/public/etablissements", async (c) => {
   const f = z.object({
     q: z.string().trim().max(60).optional(),
     departement: z.string().regex(/^[a-z-]+$/).optional(),
     commune: z.string().regex(/^[a-z0-9-]+$/).optional(),
-    niveau: z.enum(Object.keys(NIVEAUX) as [keyof typeof NIVEAUX, ...(keyof typeof NIVEAUX)[]]).optional(),
+    niveau: z.enum([...NIVEAUX_REF, "alphabetisation"]).optional(),
     statut: z.enum(["public", "prive", "confessionnel", "communautaire"]).optional(),
     lat: z.coerce.number().min(5.5).max(13).optional(),
     lng: z.coerce.number().min(0.5).max(4.2).optional(),
@@ -53,12 +65,14 @@ publique.get("/public/etablissements", async (c) => {
   }).parse(c.req.query());
   const pres = f.lat !== undefined && f.lng !== undefined;
   const communesDep = f.departement ? [...communeById.values()].filter((x) => x.departementId === f.departement).map((x) => x.id) : null;
+  const motif = f.q ? `%${f.q.replace(/[%_\\]/g, "")}%` : null;
   const conditions: (SQL | undefined)[] = [
-    inArray(schema.etablissements.typeInstitution, (f.niveau ? [...NIVEAUX[f.niveau]] : typesPublics) as (typeof schema.etablissements.typeInstitution.enumValues)[number][]),
-    f.q ? ilike(schema.etablissements.nom, `%${f.q.replace(/[%_\\]/g, "")}%`) : undefined,
-    f.commune ? eq(schema.etablissements.communeId, f.commune) : undefined,
-    communesDep ? inArray(schema.etablissements.communeId, communesDep.length ? communesDep : ["-"]) : undefined,
-    f.statut ? eq(schema.etablissements.statut, f.statut) : undefined,
+    f.niveau ? sql`${f.niveau} = any(${R.niveaux})` : undefined,
+    motif ? sql`(${R.nom} ilike ${motif} or coalesce(${R.sigle}, '') ilike ${motif})` : undefined,
+    f.commune ? eq(R.communeId, f.commune) : undefined,
+    communesDep ? inArray(R.communeId, communesDep.length ? communesDep : ["-"]) : undefined,
+    f.statut ? eq(R.statut, f.statut) : undefined,
+    pres ? sql`${R.position} is not null` : undefined,
   ];
   const where = and(...conditions);
   const PAR_PAGE = 24;
@@ -66,39 +80,36 @@ publique.get("/public/etablissements", async (c) => {
   const [lignes, [{ n: total } = { n: 0 }]] = await Promise.all([
     base()
       .select({
-        id: schema.etablissements.id, nom: schema.etablissements.nom, type: schema.etablissements.typeInstitution, statut: schema.etablissements.statut,
-        cycle: schema.etablissements.cycle, communeId: schema.etablissements.communeId, lat, lng,
-        distanceKm: ici ? sql<number>`round((ST_Distance(${schema.etablissements.position}::geography, ${ici}::geography) / 1000)::numeric, 1)::float8` : sql<null>`null`,
+        id: R.id, nom: R.nom, sigle: R.sigle, type: R.type, typeLibelle: R.typeLibelle, niveaux: R.niveaux, statut: R.statut,
+        communeId: R.communeId, preuve: R.preuve, lat: latR, lng: lngR,
+        distanceKm: ici ? sql<number>`round((ST_Distance(${R.position}::geography, ${ici}::geography) / 1000)::numeric, 1)::float8` : sql<null>`null`,
       })
-      .from(schema.etablissements)
+      .from(R)
       .where(where)
-      .orderBy(ici ? sql`${schema.etablissements.position} <-> ${ici}` : schema.etablissements.nom)
+      .orderBy(ici ? sql`${R.position} <-> ${ici}` : R.nom)
       .limit(PAR_PAGE)
       .offset((f.page - 1) * PAR_PAGE),
-    base().select({ n: count() }).from(schema.etablissements).where(where),
+    base().select({ n: count() }).from(R).where(where),
   ]);
   c.header("Cache-Control", "public, max-age=60, s-maxage=300");
   return c.json({
     total, page: f.page, parPage: PAR_PAGE,
-    etablissements: lignes.map((e) => ({ ...e, typeLibelle: LIBELLE_TYPE[e.type] ?? e.type, ...libelleLieu(e.communeId) })),
+    etablissements: lignes.map((e) => ({ ...e, cycle: cycleDe(e.niveaux), ...lieu(e.communeId) })),
   });
 });
 
-/** Fiche publique d'un établissement : identité, lieu, capacité d'accueil, équipements. */
+/** Fiche publique : identité, lieu, rattachement, et d'où vient l'information (source, niveau de preuve). */
 publique.get("/public/etablissements/:id", async (c) => {
-  const id = z.string().regex(/^ETB-[A-Z0-9-]+$/).parse(c.req.param("id"));
+  const id = z.string().regex(/^REF-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const [e] = await base()
     .select({
-      id: schema.etablissements.id, nom: schema.etablissements.nom, type: schema.etablissements.typeInstitution, statut: schema.etablissements.statut,
-      cycle: schema.etablissements.cycle, gestionnaire: schema.etablissements.gestionnaire, communeId: schema.etablissements.communeId,
-      circonscription: schema.etablissements.circonscription, capacite: schema.etablissements.capacite, salles: schema.etablissements.sallesDeClasse,
-      infrastructures: schema.etablissements.infrastructures, lat, lng,
+      id: R.id, nom: R.nom, sigle: R.sigle, type: R.type, typeLibelle: R.typeLibelle, niveaux: R.niveaux, statut: R.statut,
+      communeId: R.communeId, rattachement: R.rattachement, source: R.source, preuve: R.preuve, remarque: R.remarque, lat: latR, lng: lngR,
     })
-    .from(schema.etablissements)
-    .where(and(eq(schema.etablissements.id, id), inArray(schema.etablissements.typeInstitution, typesPublics as (typeof schema.etablissements.typeInstitution.enumValues)[number][])));
+    .from(R).where(eq(R.id, id));
   if (!e) throw new HTTPException(404, { message: "Établissement introuvable" });
   c.header("Cache-Control", "public, max-age=300, s-maxage=900");
-  return c.json({ ...e, typeLibelle: LIBELLE_TYPE[e.type] ?? e.type, ...libelleLieu(e.communeId) });
+  return c.json({ ...e, cycle: cycleDe(e.niveaux), ...lieu(e.communeId) });
 });
 
 /** L'éducation en chiffres : quelques indicateurs par département, avec définition, source et indice de confiance. */

@@ -143,6 +143,33 @@ export const etablissements = core.table("etablissements", {
   ...validite(),
 }, (t) => [index("etablissements_commune_idx").on(t.communeId), index("etablissements_position_idx").using("gist", t.position)]);
 
+/**
+ * Référentiel réel des établissements du Bénin (annuaire public) : listes officielles des ministères
+ * (universités publiques et leurs composantes, établissements privés du supérieur, EFTP) et cartographie
+ * collaborative OpenStreetMap (© contributeurs OSM, ODbL). Chaque ligne porte sa source et son niveau de
+ * preuve ; aucune valeur n'est inventée (pas de position sans coordonnées, pas de type deviné).
+ * Distinct de core.etablissements, qui porte le jeu de démonstration du pilotage : les deux ne se mêlent pas.
+ * Lecture seule pour l'application ; chargé par `npm run referentiel -w @beile/db`.
+ */
+export const referentielEtablissements = core.table("referentiel_etablissements", {
+  id: text("id").primaryKey(),
+  nom: text("nom").notNull(),
+  sigle: text("sigle"),
+  type: text("type").notNull(),
+  typeLibelle: text("type_libelle").notNull(),
+  /** Niveaux d'enseignement couverts : maternelle, primaire, secondaire, technique, superieur (vide si inconnu). */
+  niveaux: text("niveaux").array().notNull(),
+  statut: text("statut", { enum: ["public", "prive", "confessionnel", "communautaire", "non_indique"] }).notNull(),
+  communeId: text("commune_id").references(() => communes.id),
+  /** Université ou tutelle de rattachement (sigle), pour les composantes. */
+  rattachement: text("rattachement"),
+  position: point("position"),
+  source: text("source").notNull(),
+  preuve: text("preuve", { enum: ["officielle", "recoupee", "cartographie_collaborative"] }).notNull(),
+  remarque: text("remarque"),
+  importeLe: timestamp("importe_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("referentiel_etab_commune_idx").on(t.communeId), index("referentiel_etab_position_idx").using("gist", t.position)]);
+
 export const classes = core.table("classes", {
   id: text("id").primaryKey(),
   etablissementId: text("etablissement_id").notNull().references(() => etablissements.id),

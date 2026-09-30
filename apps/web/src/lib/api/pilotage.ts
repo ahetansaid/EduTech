@@ -70,10 +70,11 @@ export interface Infrastructures { eau: boolean; electricite: boolean; internet:
 /** GET /pilotage/communes/:id */
 export interface FicheCommune {
   commune: { id: string; nom: string; departementId: string; departement?: string; milieu: "urbain" | "rural" };
+  /** Nul quand la commune n'a pas encore de statistiques (base réelle en cours d'alimentation). */
   indicateurs: {
     effectif: number; capacite: number; occupation: number; enseignants: number; ratio: number; enseignantsQualifies: number;
     absenteisme: number; abandon: number; populationScolarisable: number; couverture: number;
-  };
+  } | null;
   effectifs: { annee: string; effectif: number; capacite: number }[];
   priorite: Priorite | null;
   etablissements: {
