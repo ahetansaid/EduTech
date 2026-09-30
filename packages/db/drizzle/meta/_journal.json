@@ -71,6 +71,13 @@
       "when": 1790760964850,
       "tag": "0009_referentiel_etablissements",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790777208439,
+      "tag": "0010_administration_deleguee",
+      "breakpoints": true
     }
   ]
 }

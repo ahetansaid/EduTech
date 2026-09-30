@@ -383,6 +383,44 @@ if (!process.env.BEILE_PARTENAIRES) {
   }
 }
 
+titre("Administration déléguée (cascade, plafond, cumul, double validation)");
+{
+  const CEG = "ORG-ETB-ETB-PAR-PILOTE-CEG", BORGOU = "ORG-DD-MESTFP-borgou";
+  const moi = await directrice!.appel("GET", "/delegation/moi");
+  verifier("Directrice : délégation de niveau 3 sur son établissement", liste(moi.json.delegations)[0]?.niveau === 3, true);
+  const orgs = await departement!.appel("GET", `/delegation/organisations?parent=${BORGOU}`);
+  const autre = liste(orgs.json.enfants).find((o) => o.id !== CEG)?.id as string | undefined;
+  verifier("Direction départementale : parcours de son sous-arbre", orgs.statut === 200 && !!autre, true, `HTTP ${orgs.statut}`);
+  verifier("Directrice → compte dans un autre établissement : 403", (await directrice!.appel("POST", "/delegation/comptes", { nomAffiche: "Hors Perimetre", fonction: "Professeur", role: "enseignant", organisationId: autre })).statut, 403);
+  verifier("Directrice → rôle au-dessus de son plafond (inspecteur) : 403", (await directrice!.appel("POST", "/delegation/comptes", { nomAffiche: "Inspecteur Indu", fonction: "Inspecteur", role: "inspecteur", organisationId: CEG })).statut, 403);
+  verifier("Directrice → rôle attribué à elle-même : 403", (await directrice!.appel("POST", "/delegation/attributions", { profilId: "p-directeur", role: "enseignant", organisationId: CEG, motif: "Auto-attribution" })).statut, 403);
+  verifier("Direction → nomination à son propre niveau : 403", (await departement!.appel("POST", "/delegation/delegations", { profilId: "p-inspecteur", organisationId: BORGOU, motif: "Même niveau" })).statut, 403);
+  verifier("Direction du Borgou → comptes du Zou : 403", (await departement!.appel("GET", "/delegation/comptes?organisation=ORG-DD-MESTFP-zou")).statut, 403);
+  verifier("DPO + délégation d'administration : 422", (await admin!.appel("POST", "/delegation/delegations", { profilId: "p-dpo", organisationId: "ORG-MIN-MEMP", motif: "Cumul interdit" })).statut, 422);
+  verifier("Profil sans délégation → création de compte : 403", (await dpo!.appel("POST", "/delegation/comptes", { nomAffiche: "Quelqu'un Test", fonction: "Test", role: "enseignant", organisationId: CEG })).statut, 403);
+  const comptes = await directrice!.appel("GET", `/delegation/comptes?organisation=${CEG}`);
+  const soi = liste(comptes.json).find((c) => c.id === "p-directeur");
+  verifier("Directrice : ses propres droits ne sont pas gérables", (soi?.attributions as { gerable: boolean }[] | undefined)?.every((a) => !a.gerable) ?? false, true);
+  if (ECRITURES) {
+    const n2 = await central!.appel("POST", "/delegation/delegations", { profilId: "p-inspecteur", organisationId: "ORG-DD-MESTFP-zou", motif: "Administrateur départemental du Zou" });
+    verifier("Cabinet → nomination de niveau 2 en attente de seconde validation", n2.statut === 201 && n2.json.statut === "en_attente", true, `HTTP ${n2.statut}`);
+    verifier("Le demandeur ne valide pas sa propre demande : 403", (await central!.appel("POST", `/delegation/delegations/${n2.json.id}/valider`)).statut, 403);
+    const valide = await admin!.appel("POST", `/delegation/delegations/${n2.json.id}/valider`);
+    verifier("Autorité (niveau 0) : seconde validation", valide.statut === 200 && valide.json.statut === "active", true, `HTTP ${valide.statut}`);
+    const cree = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Chef Recette Delegation", fonction: "Directeur", role: "chef_etablissement", organisationId: autre });
+    verifier("Direction → compte de chef d'établissement dans son sous-arbre", cree.statut, 201, String(cree.json.erreur ?? ""));
+    if (cree.statut === 201) {
+      const nouveau = new Session();
+      const cr = cree.json as unknown as { compte: { identifiant: string }; motDePasseTemporaire: string; profilId: string };
+      verifier("Nouveau compte : connexion avec le mot de passe provisoire", (await nouveau.connexion(cr.compte.identifiant, cr.motDePasseTemporaire)).statut, 200);
+      const ligne = liste((await departement!.appel("GET", `/delegation/comptes?organisation=${autre}`)).json).find((c) => c.id === cr.profilId);
+      const att = (ligne?.attributions as { id: string }[] | undefined)?.[0]?.id;
+      verifier("Révocation d'un rôle par la direction", (await departement!.appel("POST", `/delegation/attributions/${att}/revoquer`, { motif: "Fin de la recette" })).statut, 200);
+      verifier("Révocation : la session du compte est coupée", (await nouveau.appel("GET", "/auth/session")).statut, 401);
+    }
+  }
+}
+
 titre("Fin de session");
 verifier("Déconnexion", (await enseignant!.appel("POST", "/auth/deconnexion")).statut, 200);
 verifier("Session révoquée côté serveur", (await enseignant!.appel("GET", "/auth/session")).statut, 401);

@@ -74,7 +74,7 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
   const courant = [...nav].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
   // Garde d'espace (cosmétique) : l'entrée de navigation la plus spécifique fixe les rôles admis.
   const entree = [...NAVIGATION].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
-  const autorise = !entree || entree.roles.some((r) => rolesProfil.includes(r));
+  const autorise = !entree || (entree.delegation ? !!session.contexte?.delegue : entree.roles.some((r) => rolesProfil.includes(r)));
   useTitre(courant?.libelle ?? entree?.libelle ?? "Mon espace");
 
   useEffect(() => {

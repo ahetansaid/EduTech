@@ -2,7 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Finalite, Profil } from "@beile/contracts";
 import { connecter, schema } from "@beile/db";
 import { empreinteJeton } from "@beile/db/securite";
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
@@ -147,6 +147,16 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   // Activité glissante, écrite au plus toutes les 5 minutes.
   if (Date.now() - ligne.session.derniereActivite.getTime() > 5 * 60_000) {
     await base().update(schema.sessions).set({ derniereActivite: new Date() }).where(eq(schema.sessions.empreinte, empreinte));
+  }
+  // Échéance des droits : une attribution arrivée à sa date de fin sans reconfirmation tombe, et sort des
+  // droits effectifs avant même que la requête ne soit servie.
+  const echues = await base().update(schema.attributions).set({ revoqueeLe: new Date(), motifRevocation: "Échéance sans reconfirmation" })
+    .where(and(eq(schema.attributions.profilId, ligne.profil.id), isNull(schema.attributions.revoqueeLe), lt(schema.attributions.au, new Date())))
+    .returning({ role: schema.attributions.role, perimetre: schema.attributions.perimetre });
+  if (echues.length) {
+    const cles = new Set(echues.map((e) => `${e.role}|${JSON.stringify(e.perimetre)}`));
+    ligne.profil.habilitations = (ligne.profil.habilitations as Profil["habilitations"]).filter((h) => !cles.has(`${h.role}|${JSON.stringify(h.perimetre)}`));
+    await base().update(schema.profils).set({ habilitations: ligne.profil.habilitations }).where(eq(schema.profils.id, ligne.profil.id));
   }
   const profil = { ...ligne.profil, habilitations: ligne.profil.habilitations as Profil["habilitations"] };
   const compte = { id: ligne.compte.id, identifiant: ligne.compte.identifiant, doitChangerMotDePasse: ligne.compte.doitChangerMotDePasse, empreinteSession: empreinte };

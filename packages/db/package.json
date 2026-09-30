@@ -24,7 +24,8 @@
     "calendrier": "tsx src/calendrier.ts",
     "superieur": "tsx src/superieur.ts",
     "referentiel": "tsx src/referentiel.ts",
-    "reel": "tsx src/reel.ts"
+    "reel": "tsx src/reel.ts",
+    "organisations": "tsx src/organisations.ts"
   },
   "dependencies": {
     "@beile/contracts": "*",

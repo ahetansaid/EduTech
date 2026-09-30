@@ -44,25 +44,27 @@ const s = postgres(url, { ssl: tls(url), max: 1, onnotice: () => {} });
 try {
   const debut = Date.now();
   await s.unsafe(`DROP SCHEMA IF EXISTS ${SCHEMAS.join(", ")} CASCADE`);
-  console.log(`1/${reel ? 5 : 9} Schémas supprimés (${SCHEMAS.length}) en ${Date.now() - debut} ms.`);
+  console.log(`1/${reel ? 6 : 10} Schémas supprimés (${SCHEMAS.length}) en ${Date.now() - debut} ms.`);
 } finally {
   await s.end();
 }
 
 const etapes: [string, string][] = reel ? [
-  ["2/5 Migrations et durcissement", "src/migrer.ts"],
-  ["3/5 Socle réel et référentiel des établissements", "src/reel.ts"],
-  ["4/5 Comptes de test (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
-  ["5/5 Calendrier scolaire officiel", "src/calendrier.ts"],
+  ["2/6 Migrations et durcissement", "src/migrer.ts"],
+  ["3/6 Socle réel et référentiel des établissements", "src/reel.ts"],
+  ["4/6 Comptes de test (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
+  ["5/6 Organisations et administration déléguée", "src/organisations.ts"],
+  ["6/6 Calendrier scolaire officiel", "src/calendrier.ts"],
 ] : [
-  ["2/9 Migrations et durcissement", "src/migrer.ts"],
-  ["3/9 Peuplement de démonstration", "src/peupler.ts"],
-  ["4/9 Référentiel du supérieur (établissements, filières, étudiants)", "src/superieur.ts"],
-  ["5/9 Référentiel réel des établissements (annuaire public)", "src/referentiel.ts"],
-  ["6/9 Comptes (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
-  ["7/9 Projections de lecture", "src/projections.ts"],
-  ["8/9 Calendrier scolaire officiel", "src/calendrier.ts"],
-  ["9/9 Vérification (ajout seul, droits, RLS)", "src/verifier.ts"],
+  ["2/10 Migrations et durcissement", "src/migrer.ts"],
+  ["3/10 Peuplement de démonstration", "src/peupler.ts"],
+  ["4/10 Référentiel du supérieur (établissements, filières, étudiants)", "src/superieur.ts"],
+  ["5/10 Référentiel réel des établissements (annuaire public)", "src/referentiel.ts"],
+  ["6/10 Comptes (nouveaux mots de passe → COMPTES.local.md)", "src/creer_comptes.ts"],
+  ["7/10 Organisations et administration déléguée", "src/organisations.ts"],
+  ["8/10 Projections de lecture", "src/projections.ts"],
+  ["9/10 Calendrier scolaire officiel", "src/calendrier.ts"],
+  ["10/10 Vérification (ajout seul, droits, RLS)", "src/verifier.ts"],
 ];
 for (const [libelle, script] of etapes) {
   console.log(`\n${libelle}…`);

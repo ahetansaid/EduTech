@@ -17,10 +17,12 @@ export interface EntreeNav {
    * d'inscription du K-12 pour une université). Sans effet sur un rôle national ou territorial.
    */
   cycles?: Cycle[];
+  /** Entrée ouverte par une délégation d'administration active (et non par un rôle métier). */
+  delegation?: boolean;
 }
 
 export type Cycle = "primaire" | "secondaire" | "superieur";
-export interface ContexteAffichage { cycles: Record<string, Cycle>; etudiantSuperieur: boolean }
+export interface ContexteAffichage { cycles: Record<string, Cycle>; etudiantSuperieur: boolean; delegue?: boolean }
 const K12: Cycle[] = ["primaire", "secondaire"];
 
 /** Navigation déterminée par les habilitations. Masquer une entrée est cosmétique : l'accès aux données reste décidé par le moteur ABAC. */
@@ -57,6 +59,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/audit/traitements", libelle: "Registre des traitements", icone: ShieldCheck, roles: ["dpo"], groupe: "Conformité", processus: "P14" },
   { href: "/plateforme/etat", libelle: "État du service", icone: FileSearch, roles: ["administration_centrale", "dpo", "administrateur"], groupe: "Conformité", processus: "P15" },
 
+  { href: "/delegation", libelle: "Administration déléguée", icone: KeyRound, roles: [], groupe: "Administration", delegation: true },
   { href: "/administration", libelle: "Comptes et accès", icone: KeyRound, roles: ["administrateur"], groupe: "Administration" },
 ];
 
@@ -64,10 +67,10 @@ export const ENTREE_PUBLIQUE = { href: "/verifier", libelle: "Vérifier un dipl�
 
 /** Entrées visibles : un rôle qui les ouvre, et, pour un rôle d'établissement, le bon cycle. */
 export function navigationPour(profil: Profil, contexte?: ContexteAffichage) {
-  return NAVIGATION.filter((e) => profil.habilitations.some((h) => {
+  return NAVIGATION.filter((e) => (e.delegation ? !!contexte?.delegue : profil.habilitations.some((h) => {
     if (!e.roles.includes(h.role)) return false;
     if (!e.cycles || h.perimetre.niveau !== "etablissement" || !contexte) return true;
     const cycle = contexte.cycles[h.perimetre.etablissementId];
     return !cycle || e.cycles.includes(cycle);
-  }));
+  })));
 }
