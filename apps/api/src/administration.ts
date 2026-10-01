@@ -6,7 +6,7 @@ import { and, asc, count, desc, eq, ilike, inArray, like, ne, or, sql } from "dr
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { authentifie, exigerElevation, base, cleUtilisateur, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
 
 /**
  * Administration des utilisateurs et assistance.
@@ -214,6 +214,7 @@ const NOM_AFFICHE = texte(3, 80).pipe(z.string().regex(/^\p{L}[\p{L}\p{M}' .’-
 const FONCTION = texte(3, 120).pipe(z.string().refine((v) => !v.includes("�"), "caractère invalide (encodage)"));
 
 administration.post("/admin/utilisateurs", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
+  exigerElevation(c);
   await exigerAdmin(c, "Création d'un utilisateur", "core.comptes");
   const saisie = await corps(c, z.object({
     nomAffiche: NOM_AFFICHE,
@@ -274,6 +275,7 @@ async function revoquerSessions(compteId: string, sauf: string | null) {
 }
 
 administration.post("/admin/comptes/:id/profil", authentifie, async (c) => {
+  exigerElevation(c);
   await exigerAdmin(c, "Modification d'un utilisateur", c.req.param("id"));
   const id = ID_COMPTE.parse(c.req.param("id"));
   const saisie = await corps(c, z.object({ nomAffiche: NOM_AFFICHE.optional(), fonction: FONCTION.optional(), npi: NPI.nullable().optional(), habilitations: HABILITATIONS.optional() }).strict());

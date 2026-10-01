@@ -15,14 +15,19 @@ export function GardeSession({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Étapes imposées, dans l'ordre : mot de passe personnel, puis second facteur (administrateurs de niveau 0 à 2).
+  const etape = !session ? null
+    : session.compte.doitChangerMotDePasse ? "/mot-de-passe"
+    : session.compte.mfaExige && !session.compte.mfaVerifie ? "/second-facteur"
+    : null;
   useEffect(() => {
     if (isPending) return;
     if (!session) router.replace(`/connexion?retour=${encodeURIComponent(pathname)}`);
-    else if (session.compte.doitChangerMotDePasse && pathname !== "/mot-de-passe") router.replace(`/mot-de-passe?retour=${encodeURIComponent(pathname)}`);
-  }, [session, isPending, pathname, router]);
+    else if (etape && pathname !== etape) router.replace(`${etape}?retour=${encodeURIComponent(pathname)}`);
+  }, [session, isPending, pathname, router, etape]);
 
   if (isError) return <Chargement message="Service momentanément indisponible. Nouvelle tentative…" />;
-  if (isPending || !session || (session.compte.doitChangerMotDePasse && pathname !== "/mot-de-passe")) return <Chargement />;
+  if (isPending || !session || (etape && pathname !== etape)) return <Chargement />;
   return <FournisseurSession session={session}>{children}</FournisseurSession>;
 }
 

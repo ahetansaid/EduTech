@@ -52,3 +52,50 @@ export const empreinteContenu = (champs: readonly (string | number | null | unde
   (cle ? createHmac("sha256", cle) : createHash("sha256")).update(champs.map((x) => x ?? "").join("|")).digest("hex");
 
 export const nouveauJeton = () => randomBytes(32).toString("base64url");
+
+/* ------------------------------------------------------------------ TOTP (RFC 6238), sans dépendance */
+
+const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+export function base32(octets: Buffer): string {
+  let bits = 0, valeur = 0, sortie = "";
+  for (const o of octets) {
+    valeur = (valeur << 8) | o; bits += 8;
+    while (bits >= 5) { sortie += BASE32[(valeur >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) sortie += BASE32[(valeur << (5 - bits)) & 31];
+  return sortie;
+}
+export function depuisBase32(texte: string): Buffer {
+  const propre = texte.toUpperCase().replace(/[^A-Z2-7]/g, "");
+  let bits = 0, valeur = 0;
+  const octets: number[] = [];
+  for (const ch of propre) {
+    valeur = (valeur << 5) | BASE32.indexOf(ch); bits += 5;
+    if (bits >= 8) { octets.push((valeur >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return Buffer.from(octets);
+}
+
+/** Secret TOTP : 20 octets aléatoires (160 bits), en base32 pour les applications d'authentification. */
+export const nouveauSecretTotp = () => base32(randomBytes(20));
+
+/** Code TOTP à 6 chiffres, pas de 30 s, HMAC-SHA1 (compatible avec toutes les applications courantes). */
+export function codeTotp(secret: string, instant = Date.now(), decalage = 0): string {
+  const compteur = Math.floor(instant / 30_000) + decalage;
+  const tampon = Buffer.alloc(8);
+  tampon.writeBigUInt64BE(BigInt(compteur));
+  const h = createHmac("sha1", depuisBase32(secret)).update(tampon).digest();
+  const d = h[h.length - 1]! & 15;
+  const n = ((h[d]! & 0x7f) << 24) | (h[d + 1]! << 16) | (h[d + 2]! << 8) | h[d + 3]!;
+  return String(n % 1_000_000).padStart(6, "0");
+}
+
+/** Vérification tolérant une dérive d'horloge d'un pas (±30 s) ; renvoie le pas accepté (anti-rejeu) ou null. */
+export function verifierTotp(secret: string, code: string, instant = Date.now()): number | null {
+  if (!/^\d{6}$/.test(code)) return null;
+  for (const d of [0, -1, 1]) {
+    const attendu = Buffer.from(codeTotp(secret, instant, d)), recu = Buffer.from(code);
+    if (timingSafeEqual(attendu, recu)) return Math.floor(instant / 30_000) + d;
+  }
+  return null;
+}

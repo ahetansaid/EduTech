@@ -548,6 +548,16 @@ export const comptes = core.table("comptes", {
   verrouilleJusquA: timestamp("verrouille_jusqu_a", { withTimezone: true }),
   derniereConnexion: timestamp("derniere_connexion", { withTimezone: true }),
   creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  /** Canaux d'activation et de récupération : un code à usage unique n'est envoyé qu'ici. */
+  telephone: text("telephone"),
+  courriel: text("courriel"),
+  telephoneVerifie: boolean("telephone_verifie").notNull().default(false),
+  courrielVerifie: boolean("courriel_verifie").notNull().default(false),
+  /** Second facteur : secret TOTP chiffré (AES-256-GCM), jamais en clair ; clés FIDO2 dans core.cles_fido. */
+  totpChiffre: text("totp_chiffre"),
+  /** Dernier pas TOTP accepté : un même code ne sert qu'une fois (anti-rejeu). */
+  totpDernierPas: integer("totp_dernier_pas"),
+  mfaActive: boolean("mfa_active").notNull().default(false),
 }, (t) => [index("comptes_profil_idx").on(t.profilId)]);
 
 /** Sessions : seule l'empreinte SHA-256 du jeton est conservée ; le jeton ne vit que dans un cookie HttpOnly. */
@@ -560,7 +570,79 @@ export const sessions = core.table("sessions", {
   adresseIp: text("adresse_ip"),
   agent: text("agent"),
   revoquee: boolean("revoquee").notNull().default(false),
+  /** Second facteur présenté pour cette session (exigé des administrateurs de niveau 0 à 2). */
+  mfaVerifie: boolean("mfa_verifie").notNull().default(false),
+  /** Élévation « juste à temps » : actions d'administration permises jusqu'à cette heure, après re-vérification. */
+  eleveJusquA: timestamp("eleve_jusqu_a", { withTimezone: true }),
 }, (t) => [index("sessions_compte_idx").on(t.compteId)]);
+
+/**
+ * Codes à usage unique (activation, récupération) : seule une empreinte HMAC est conservée ; 10 minutes,
+ * 5 essais, un seul usage. Le code ne vit que dans le SMS ou le courriel envoyé.
+ */
+export const codesUsageUnique = core.table("codes_usage_unique", {
+  id: text("id").primaryKey(),
+  compteId: text("compte_id").notNull().references(() => comptes.id),
+  objet: text("objet", { enum: ["activation", "recuperation", "verification"] }).notNull(),
+  canal: text("canal", { enum: ["sms", "courriel"] }).notNull(),
+  empreinte: text("empreinte").notNull(),
+  /** Vérification d'une nouvelle coordonnée : la destination proposée, chiffrée, adoptée seulement si le code revient. */
+  destinationChiffree: text("destination_chiffree"),
+  expireLe: timestamp("expire_le", { withTimezone: true }).notNull(),
+  tentatives: integer("tentatives").notNull().default(0),
+  utiliseLe: timestamp("utilise_le", { withTimezone: true }),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("codes_compte_idx").on(t.compteId, t.creeLe)]);
+
+/**
+ * Messages sortants (SMS, courriel) : trace de chaque envoi. Le texte n'est conservé en clair que par le
+ * fournisseur « journal » (développement, recette) ; avec un vrai fournisseur, le code y est masqué.
+ */
+export const messagesSortants = core.table("messages_sortants", {
+  id: text("id").primaryKey(),
+  compteId: text("compte_id").references(() => comptes.id),
+  canal: text("canal", { enum: ["sms", "courriel"] }).notNull(),
+  destinataire: text("destinataire").notNull(),
+  objet: text("objet").notNull(),
+  texte: text("texte").notNull(),
+  fournisseur: text("fournisseur").notNull(),
+  statut: text("statut", { enum: ["envoye", "echec"] }).notNull(),
+  erreur: text("erreur"),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("messages_compte_idx").on(t.compteId, t.creeLe)]);
+
+/** Clés de sécurité FIDO2 / WebAuthn (clé publique seulement), et codes de secours à usage unique (empreintes). */
+export const clesFido = core.table("cles_fido", {
+  id: text("id").primaryKey(),
+  compteId: text("compte_id").notNull().references(() => comptes.id),
+  clePublique: text("cle_publique").notNull(),
+  compteur: integer("compteur").notNull().default(0),
+  transports: jsonb("transports").$type<string[]>().notNull().default([]),
+  nom: text("nom").notNull(),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  utiliseeLe: timestamp("utilisee_le", { withTimezone: true }),
+}, (t) => [index("cles_fido_compte_idx").on(t.compteId)]);
+
+export const codesSecours = core.table("codes_secours", {
+  id: text("id").primaryKey(),
+  compteId: text("compte_id").notNull().references(() => comptes.id),
+  empreinte: text("empreinte").notNull(),
+  utiliseLe: timestamp("utilise_le", { withTimezone: true }),
+}, (t) => [index("codes_secours_compte_idx").on(t.compteId)]);
+
+/** Alertes de sécurité détectées automatiquement (refus en rafale, nouvel appareil d'administrateur…). */
+export const alertesSecurite = core.table("alertes_securite", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  gravite: text("gravite", { enum: ["info", "moyenne", "haute"] }).notNull(),
+  profilId: text("profil_id").references(() => profils.id),
+  cle: text("cle").notNull(),
+  detail: text("detail").notNull(),
+  creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
+  traiteeLe: timestamp("traitee_le", { withTimezone: true }),
+  traiteePar: text("traitee_par").references(() => profils.id),
+  suite: text("suite"),
+}, (t) => [uniqueIndex("alertes_securite_cle_uq").on(t.cle), index("alertes_securite_date_idx").on(t.creeLe)]);
 
 /** Notifications nées des faits du registre (absence, note, inscription…), destinées à une personne. */
 export const notifications = core.table("notifications", {

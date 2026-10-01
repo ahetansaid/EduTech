@@ -23,6 +23,9 @@ const MESSAGES_MOTIF: Record<string, { ton: "info" | "avertissement"; texte: str
   session: { ton: "avertissement", texte: "Votre session a expiré ou a été révoquée. Reconnectez-vous pour continuer." },
   deconnexion: { ton: "info", texte: "Vous êtes déconnecté. Votre session a été révoquée sur le serveur." },
   "mot-de-passe": { ton: "info", texte: "Mot de passe modifié. Vos autres sessions ont été fermées." },
+  inactivite: { ton: "avertissement", texte: "Session fermée après une période d'inactivité. Reconnectez-vous pour continuer." },
+  active: { ton: "info", texte: "Compte activé. Connectez-vous avec le mot de passe que vous venez de choisir." },
+  recupere: { ton: "info", texte: "Mot de passe enregistré. Connectez-vous avec le nouveau mot de passe." },
 };
 
 export default function PageConnexion() {
@@ -68,10 +71,12 @@ function Connexion() {
     setEnvoi(true);
     setErreur(null);
     try {
-      const s = await requete<Session>("POST", "/auth/connexion", { identifiant: identifiant.trim().toLowerCase(), motDePasse }, { silencieux401: true });
-      client.setQueryData(CLE_SESSION, s);
+      const s = await requete<Session & { etape: string | null }>("POST", "/auth/connexion", { identifiant: identifiant.trim().toLowerCase(), motDePasse }, { silencieux401: true });
+      // Session relue sur le serveur (étapes restantes : mot de passe personnel, second facteur).
+      await client.invalidateQueries({ queryKey: CLE_SESSION });
       setSucces(s.profil.nomAffiche);
-      setTimeout(() => router.replace(destination(s)), 650);
+      const suite = s.etape === "mfa_a_verifier" || s.etape === "mfa_a_enroler" ? "/second-facteur" : null;
+      setTimeout(() => router.replace(suite ?? destination(s)), 650);
     } catch (x) {
       const statut = x instanceof ErreurApi ? x.statut : 0;
       setErreur(
@@ -161,7 +166,7 @@ function Connexion() {
                     )}
                   </AnimatePresence>
 
-                  <form onSubmit={soumettre} className="mt-7 space-y-4" noValidate>
+                  <form method="post" onSubmit={soumettre} className="mt-7 space-y-4" noValidate>
                     <Champ id="identifiant" libelle="Identifiant" icone={UserRound}>
                       <input
                         id="identifiant" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus
@@ -203,7 +208,11 @@ function Connexion() {
 
                   <div className="mt-8 rounded-lg border border-line/70 bg-surface-2/50 p-4 text-[12.5px] leading-relaxed text-ink-muted">
                     <p className="flex items-center gap-1.5 font-semibold text-ink-2"><ShieldCheck size={14} aria-hidden /> Protection du compte</p>
-                    <p className="mt-1">Après 5 essais infructueux, le compte est verrouillé 15 minutes. Mot de passe oublié : adressez-vous à l'administrateur de la plateforme, qui vous remettra un mot de passe temporaire.</p>
+                    <p className="mt-1">Après 5 essais infructueux, le compte est verrouillé 15 minutes. Les comptes d'administration demandent en plus un second facteur.</p>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-between gap-2 text-[13.5px] font-medium">
+                    <Link href="/activation" className="text-blue hover:underline">Activer mon compte</Link>
+                    <Link href="/mot-de-passe-oublie" className="text-blue hover:underline">Mot de passe oublié ?</Link>
                   </div>
                 </motion.div>
               )}

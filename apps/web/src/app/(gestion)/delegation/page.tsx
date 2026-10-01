@@ -157,16 +157,18 @@ function LigneCompte({ c, onRevoquer, onReconfirmer }: { c: CompteDelegue; onRev
 }
 
 function DialogueCreation({ ouvert, onFermer, organisation, roles }: { ouvert: boolean; onFermer: () => void; organisation: Organisation; roles: string[] }) {
-  const action = useActionDelegation<{ compte: { identifiant: string }; motDePasseTemporaire: string; au: string }>();
-  const [f, setF] = useState({ nomAffiche: "", fonction: "", npi: "", apprenantId: "", role: roles[0] ?? "" });
-  const [resultat, setResultat] = useState<{ identifiant: string; mdp: string; au: string } | null>(null);
-  const fermer = () => { setResultat(null); setF({ nomAffiche: "", fonction: "", npi: "", apprenantId: "", role: roles[0] ?? "" }); action.reset(); onFermer(); };
+  const action = useActionDelegation<{ compte: { identifiant: string }; motDePasseTemporaire?: string; activation?: { canal: "sms" | "courriel"; destination: string }; au: string }>();
+  const vide = { nomAffiche: "", fonction: "", npi: "", apprenantId: "", role: roles[0] ?? "", telephone: "", courriel: "" };
+  const [f, setF] = useState(vide);
+  const [resultat, setResultat] = useState<{ identifiant: string; mdp?: string; activation?: { canal: string; destination: string }; au: string } | null>(null);
+  const fermer = () => { setResultat(null); setF(vide); action.reset(); onFermer(); };
   const role = f.role || roles[0] || "";
   const npiRequis = ["enseignant", "apprenant", "parent"].includes(role);
   const envoyer = () => action.mutate({ chemin: "/delegation/comptes", corps: {
     nomAffiche: f.nomAffiche.trim(), fonction: f.fonction.trim(), role, organisationId: organisation.id,
     ...(f.npi.trim() ? { npi: f.npi.trim() } : {}), ...(role === "apprenant" ? { apprenantId: f.apprenantId.trim() } : {}),
-  } }, { onSuccess: (r) => setResultat({ identifiant: r.compte.identifiant, mdp: r.motDePasseTemporaire, au: r.au }) });
+    ...(f.telephone.trim() ? { telephone: f.telephone.trim() } : {}), ...(f.courriel.trim() ? { courriel: f.courriel.trim() } : {}),
+  } }, { onSuccess: (r) => setResultat({ identifiant: r.compte.identifiant, mdp: r.motDePasseTemporaire, activation: r.activation, au: r.au }) });
   return (
     <Modale ouvert={ouvert} onFermer={fermer} titre="Nouveau compte" sousTitre={organisation.nom} icone={UserPlus}
       pied={resultat ? <Button onClick={fermer}>Terminé</Button> : (
@@ -177,8 +179,14 @@ function DialogueCreation({ ouvert, onFermer, organisation, roles }: { ouvert: b
         <div className="space-y-3 text-[14px]">
           <p className="rounded-lg bg-success-bg px-3 py-2 text-success">Compte créé, valable jusqu&apos;au {date(resultat.au)}.</p>
           <p>Identifiant : <strong className="font-mono">{resultat.identifiant}</strong></p>
-          <p>Mot de passe provisoire : <strong className="font-mono">{resultat.mdp}</strong></p>
-          <p className="text-[12.5px] text-ink-muted">Il n&apos;est affiché qu&apos;une fois. Remettez-le en main propre ; il devra être changé à la première connexion.</p>
+          {resultat.activation ? (
+            <p className="text-[13.5px] text-ink-2">La personne a reçu son identifiant par {resultat.activation.canal === "sms" ? "SMS" : "courriel"} ({resultat.activation.destination}). Elle active elle-même son compte (« Activer mon compte ») : aucun mot de passe ne vous est montré.</p>
+          ) : (
+            <>
+              <p>Mot de passe provisoire : <strong className="font-mono">{resultat.mdp}</strong></p>
+              <p className="text-[12.5px] text-ink-muted">Il n&apos;est affiché qu&apos;une fois. Remettez-le en main propre ; il devra être changé à la première connexion. Avec un téléphone ou un courriel, la personne activerait elle-même son compte.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -191,6 +199,10 @@ function DialogueCreation({ ouvert, onFermer, organisation, roles }: { ouvert: b
           </label>
           <Champ libelle={`NPI${npiRequis ? " (obligatoire)" : " (facultatif)"}`} valeur={f.npi} onChange={(v) => setF({ ...f, npi: v.replace(/\D/g, "").slice(0, 10) })} placeholder="10 chiffres" />
           {role === "apprenant" && <Champ libelle="Dossier de l'apprenant" valeur={f.apprenantId} onChange={(v) => setF({ ...f, apprenantId: v.toUpperCase() })} placeholder="APP-000123" />}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Champ libelle="Téléphone (activation par SMS)" valeur={f.telephone} onChange={(v) => setF({ ...f, telephone: v })} placeholder="+229 01 97 00 00 00" />
+            <Champ libelle="Courriel (facultatif)" valeur={f.courriel} onChange={(v) => setF({ ...f, courriel: v })} placeholder="prenom.nom@exemple.bj" />
+          </div>
           {action.error && <p role="alert" className="rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">{messageErreur(action.error)}</p>}
         </div>
       )}

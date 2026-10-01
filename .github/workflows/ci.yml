@@ -114,6 +114,8 @@ jobs:
           npm run start --workspace=@beile/api > api.log 2>&1 &
           for i in $(seq 1 40); do curl -sf http://localhost:4000/api/v1/sante > /dev/null && exit 0; sleep 1; done
           cat api.log; exit 1
+      - name: Second facteur des comptes de test (TOTP enregistré par l'API, secrets dans COMPTES.local.md)
+        run: npm run mfa:comptes-test --workspace=@beile/api
       - name: Année universitaire jouée par l'API (inscriptions, notes, jury, diplômes, guichet)
         run: npm run scenario:superieur --workspace=@beile/api
       - name: "Rejeu du scénario (idempotence : rien ne se double)"

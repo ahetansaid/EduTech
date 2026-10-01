@@ -24,6 +24,7 @@ Chaque mesure ci-dessous est **vérifiable en direct**, pas seulement décrite.
 | Validation des entrées | Toute saisie est bornée et validée (notes 0–20 au quart de point, longueurs maximales, formats d'identifiant) ; aucun HTML injecté (`dangerouslySetInnerHTML` réservé à un script statique de thème, sans donnée utilisateur) | Code des formulaires |
 | Données personnelles | **Aucune donnée réelle** : le prototype est entièrement fictif et déterministe ; le stockage local du navigateur ne contient que les actions de démonstration | Bandeau permanent |
 | Chaîne logicielle | `npm audit` : 0 vulnérabilité à la date de rédaction ; dépendances en contraintes `^` pour recevoir les correctifs | `package.json` |
+| Comptes et administration | Administration en cascade, activation et récupération par code, second facteur (TOTP, FIDO2) des administrateurs de niveau 0 à 2, élévation juste à temps, vigie, portails cloisonnés | [SECURITE_COMPTES.md](SECURITE_COMPTES.md) |
 
 > **Réserve assumée.** Dans le prototype, l'autorisation s'exécute dans le navigateur : elle **démontre les règles**, elle ne constitue pas une frontière de sécurité. En production, la même décision est prise **côté serveur** (API) et redoublée par la sécurité au niveau des lignes de PostgreSQL. Masquer un écran n'est jamais une mesure de sécurité.
 
@@ -75,9 +76,9 @@ Chaque mesure ci-dessous est **vérifiable en direct**, pas seulement décrite.
 - [ ] `npm audit` sans vulnérabilité élevée ou critique
 - [ ] En-têtes de sécurité vérifiés (CSP, HSTS, anti-framing) sur l'environnement cible
 - [ ] Limitation de débit active sur toutes les routes publiques (vérification, connexion)
-- [ ] MFA imposé aux rôles à données individuelles
+- [x] MFA imposé aux administrateurs de niveau 0 à 2 (à étendre aux rôles à données individuelles)
 - [ ] RLS PostgreSQL activée et testée (tentative d'accès hors périmètre refusée au niveau de la base)
-- [ ] Journal d'audit en écriture seule, alertes configurées
+- [ ] Journal d'audit en écriture seule (fait), alertes de la vigie en place (fait) ; stockage WORM à mettre en place
 - [ ] Sauvegarde chiffrée **restaurée avec succès** sur un environnement isolé
 - [ ] Test d'intrusion réalisé, vulnérabilités critiques corrigées
 - [ ] Dossier APDP déposé

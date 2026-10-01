@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * la page ne peut pas être encadrée (clickjacking), aucune ressource tierce n'est chargée.
  */
 /** Pages publiques : tout le reste exige une session (contrôle d'ergonomie ; l'API reste seule juge de l'accès). */
-const PUBLIQUES = [/^\/$/, /^\/connexion/, /^\/verifier/, /^\/aide/, /^\/etablissements/, /^\/inscription-scolaire/, /^\/calendrier/, /^\/donnees/, /^\/confidentialite/, /^\/resultats/];
+const PUBLIQUES = [/^\/$/, /^\/connexion/, /^\/activation$/, /^\/mot-de-passe-oublie$/, /^\/verifier/, /^\/aide/, /^\/etablissements/, /^\/inscription-scolaire/, /^\/calendrier/, /^\/donnees/, /^\/confidentialite/, /^\/resultats/];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

@@ -6,7 +6,10 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { proposerIdentifiant, suffixeAleatoire, verifierCoherence } from "./administration";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { authentifie, base, exigerElevation, cleUtilisateur, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { masquer } from "./cryptographie";
+import { canauxDisponibles, envoyer } from "./messagerie";
+import { surCreationCompte } from "./vigie";
 
 /**
  * Administration déléguée en cascade.
@@ -227,11 +230,14 @@ delegation.get("/delegation/a-valider", authentifie, async (c) => {
 
 /** Créer un compte portant un rôle métier sur une organisation de mon périmètre. Mot de passe provisoire, à changer. */
 delegation.post("/delegation/comptes", authentifie, limiteDebit(60, 60_000, cleUtilisateur), async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const s = await corps(c, z.object({
     nomAffiche: z.string().trim().min(3).max(120), fonction: z.string().trim().min(2).max(160),
     npi: z.string().regex(/^\d{10}$/).nullable().optional(), apprenantId: z.string().regex(/^APP-\d{6}$/).optional(),
     role: z.enum(ROLES_METIER), organisationId: ID_ORG, au: z.string().optional(),
+    telephone: z.string().trim().transform((t) => t.replace(/[\s.-]/g, "")).pipe(z.string().regex(/^\+\d{8,15}$/)).optional(),
+    courriel: z.string().trim().toLowerCase().email().max(120).optional(),
   }).strict());
   const org = await organisation(s.organisationId);
   const d = await exigerCouverture(profil, org.id, "Création d'un compte délégué");
@@ -252,15 +258,28 @@ delegation.post("/delegation/comptes", authentifie, limiteDebit(60, 60_000, cleU
   const hash = await hacherMotDePasse(temporaire);
   await base().transaction(async (tx) => {
     await tx.insert(schema.profils).values({ id: profilId, nomAffiche: s.nomAffiche, fonction: s.fonction, npi: s.npi ?? null, habilitations });
-    await tx.insert(schema.comptes).values({ id: compteId, identifiant, motDePasseHash: hash, profilId, doitChangerMotDePasse: true });
+    await tx.insert(schema.comptes).values({ id: compteId, identifiant, motDePasseHash: hash, profilId, doitChangerMotDePasse: true, telephone: s.telephone ?? null, courriel: s.courriel ?? null });
     await tx.insert(schema.attributions).values({ id: `ATT-${suffixeAleatoire(16)}`, profilId, role: s.role, perimetre, organisationId: org.id, accordeePar: profil.id, motif: "Création du compte", au });
   });
   await journaliser(profil, "Création d'un compte délégué", `${compteId} · ${identifiant} · ${s.role} · ${org.id}`, "gestion", true, null);
+  await surCreationCompte(profil.id, profil.nomAffiche);
+  // Activation autonome : avec une coordonnée et un canal ouvert, la personne reçoit son identifiant et active
+  // elle-même son compte par code (le mot de passe provisoire n'est alors jamais montré à l'administrateur).
+  const canaux = canauxDisponibles();
+  const canal = s.telephone && canaux.sms ? { k: "sms" as const, v: s.telephone } : s.courriel && canaux.courriel ? { k: "courriel" as const, v: s.courriel } : null;
+  if (canal) {
+    const parti = await envoyer({
+      canal: canal.k, destinataire: canal.v, compteId, objet: "Votre compte BEILE",
+      texte: `BEILE : un compte a été ouvert à votre nom (identifiant ${identifiant}). Activez-le vous-même sur le portail, rubrique « Activer mon compte ». Aucun agent ne vous demandera de code.`,
+    }).catch(() => false);
+    if (parti) return c.json({ compte: { id: compteId, identifiant }, profilId, activation: { canal: canal.k, destination: masquer(canal.v) }, au: au.toISOString() }, 201);
+  }
   return c.json({ compte: { id: compteId, identifiant }, profilId, motDePasseTemporaire: temporaire, au: au.toISOString() }, 201);
 });
 
 /** Ajouter un rôle métier à un profil existant (cumul encadré). Jamais à soi-même. */
 delegation.post("/delegation/attributions", authentifie, async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const s = await corps(c, z.object({ profilId: ID_PROFIL, role: z.enum(ROLES_METIER), organisationId: ID_ORG, apprenantId: z.string().regex(/^APP-\d{6}$/).optional(), au: z.string().optional(), motif: z.string().trim().min(5).max(200) }).strict());
   if (s.profilId === profil.id) {
@@ -298,6 +317,7 @@ async function attributionGeree(profil: Profil, id: string, action: string) {
 }
 
 delegation.post("/delegation/attributions/:id/revoquer", authentifie, async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const id = z.string().regex(/^ATT-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const { motif } = await corps(c, z.object({ motif: z.string().trim().min(5).max(200) }).strict());
@@ -310,6 +330,7 @@ delegation.post("/delegation/attributions/:id/revoquer", authentifie, async (c) 
 
 /** Reconfirmation annuelle : le droit est prolongé (au plus jusqu'à la fin de ma propre délégation). */
 delegation.post("/delegation/attributions/:id/reconfirmer", authentifie, async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const id = z.string().regex(/^ATT-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const s = await corps(c, z.object({ au: z.string().optional() }).strict());
@@ -326,6 +347,7 @@ delegation.post("/delegation/attributions/:id/reconfirmer", authentifie, async (
  * en attente d'une seconde validation.
  */
 delegation.post("/delegation/delegations", authentifie, async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const s = await corps(c, z.object({
     profilId: ID_PROFIL, organisationId: ID_ORG, referent: z.boolean().default(false),
@@ -358,6 +380,7 @@ delegation.post("/delegation/delegations", authentifie, async (c) => {
 
 /** Seconde validation d'une nomination : par un administrateur de niveau supérieur couvrant l'organisation, ni bénéficiaire ni demandeur. */
 delegation.post("/delegation/delegations/:id/:decision{valider|refuser}", authentifie, async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const id = z.string().regex(/^DLG-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const decision = c.req.param("decision");
@@ -377,6 +400,7 @@ delegation.post("/delegation/delegations/:id/:decision{valider|refuser}", authen
 });
 
 delegation.post("/delegation/delegations/:id/revoquer", authentifie, async (c) => {
+  exigerElevation(c);
   const profil = c.get("profil");
   const id = z.string().regex(/^DLG-[A-Za-z0-9-]+$/).parse(c.req.param("id"));
   const { motif } = await corps(c, z.object({ motif: z.string().trim().min(5).max(200) }).strict());

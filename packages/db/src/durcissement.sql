@@ -54,6 +54,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA core TO beile_app;
 REVOKE INSERT, UPDATE ON core.referentiel_etablissements FROM beile_app;
 -- Arbre des organisations : dérivé du territoire par le script « organisations », lecture seule pour l'application.
 REVOKE INSERT, UPDATE ON core.organisations FROM beile_app;
+-- Clés FIDO2 : une clé retirée par son titulaire est supprimée (seule la clé publique y figure).
+GRANT DELETE ON core.cles_fido TO beile_app;
 GRANT SELECT, INSERT, UPDATE ON workflow.modeles, workflow.demandes TO beile_app;
 -- Tables en ajout seul : lecture et insertion uniquement (seconde barrière, en plus des déclencheurs).
 GRANT SELECT, INSERT ON ledger.evenements, audit.journal, workflow.decisions TO beile_app;
@@ -146,3 +148,28 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON core.compteurs_debit TO beile_app;
 -- double clic, la seconde décision est refusée par la base, pas seulement par l'API.
 CREATE UNIQUE INDEX IF NOT EXISTS evenements_decision_justification_uq ON ledger.evenements ((donnees->>'justificationId'))
   WHERE type = 'DECISION_JUSTIFICATION';
+
+-- ------------------------------------------------------------------ Portail public (lot D)
+-- Rôle du déploiement « portail public » : lecture des seules données publiques, aucune donnée nominative.
+-- Même compromis (injection, fuite de la chaîne de connexion), ce portail ne lit ni élève, ni note, ni compte.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'beile_portail_public') THEN
+    CREATE ROLE beile_portail_public NOLOGIN NOBYPASSRLS;
+  END IF;
+  EXECUTE format('GRANT beile_portail_public TO %I WITH INHERIT FALSE, SET TRUE', current_user);
+END $$;
+GRANT USAGE ON SCHEMA core, analytics TO beile_portail_public;
+GRANT SELECT ON core.referentiel_etablissements, core.communes, core.departements, core.calendrier, core.etablissements,
+  core.filiere_superieure, core.homologations_filiere, core.concours_session TO beile_portail_public;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO beile_portail_public;
+-- Vérification publique des diplômes, des actes et des résultats d'examens : tables sans donnée nominative,
+-- et des élèves seulement prénoms, nom et date de naissance (jamais NPI, adresse, note, absence ni famille).
+GRANT SELECT ON core.certificats, core.examens_sessions, core.examens_centres, core.examens_candidatures TO beile_portail_public;
+GRANT SELECT (id, prenoms, nom, date_naissance) ON core.apprenants TO beile_portail_public;
+GRANT SELECT (id, apprenant_id, type_acte, annee_universitaire, periode_id, disponible_le, statut, empreinte, autorite) ON core.demandes_acte TO beile_portail_public;
+-- Chaque consultation publique est tracée (ajout seul).
+GRANT USAGE ON SCHEMA audit TO beile_portail_public;
+GRANT INSERT ON audit.journal TO beile_portail_public;
+-- Plafond de débit partagé entre instances (vérifications publiques).
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.compteurs_debit TO beile_portail_public;
