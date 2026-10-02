@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, ErreurCodee, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
 import { parcours } from "./parcours";
 import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { auth } from "./auth";
@@ -21,6 +21,9 @@ import { publique } from "./public";
 import { interop } from "./interop";
 import { droits } from "./droits";
 import { delegation } from "./delegation";
+import { filtrePortail } from "./portails";
+import { securiteComptes } from "./securite-comptes";
+import { vigie } from "./vigie";
 import { empreintePresentee, sceauCorrespond, sceauxAdmis } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { QuestionAnalyse, RequeteSemantique } from "@beile/contracts";
@@ -50,16 +53,19 @@ import { lireEnv } from "./env";
 export const app = new Hono<{ Variables: Variables }>().basePath("/api/v1");
 
 app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site", xFrameOptions: "DENY" }));
-app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "X-CSRF-Token"], credentials: true, maxAge: 600 }));
+app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ? origine : null), allowMethods: ["GET", "POST"], allowHeaders: ["Content-Type", "X-CSRF-Token", "X-Beile-Actif"], credentials: true, maxAge: 600 }));
 // 16 Ko partout, sauf le report des verdicts d'un examen national (lots de 5 000 lignes, ≈ 250 Ko).
 const corpsCourant = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) });
 const corpsVerdicts = bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ erreur: "Lot de verdicts trop volumineux : 5 000 lignes au plus" }, 413) });
 app.use("*", (c, next) => (/\/examens\/sessions\/[^/]+\/deliberation$|\/interop\//.test(c.req.path) ? corpsVerdicts : corpsCourant)(c, next));
 // Deux plafonds : par IP (large — un établissement entier peut partager une IP publique) et par utilisateur.
+// Portail servi par cette instance (lot D) : réseau autorisé et surface exposée, avant toute route.
+app.use("*", filtrePortail);
 app.use("*", limiteDebit(1500, 60_000));
 app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
 
 app.onError((err, c) => {
+  if (err instanceof ErreurCodee) return c.json({ erreur: err.message, code: err.code }, err.status);
   if (err instanceof HTTPException) return c.json({ erreur: err.message }, err.status);
   // Contraintes de la base, lues sur l'erreur PostgreSQL (directe ou enveloppée par Drizzle) : seul
   // l'index d'idempotence signifie « déjà enregistré » ; toute autre unicité est un vrai conflit, et une
@@ -120,7 +126,8 @@ app.get("/certificats/:id/verification", limiteDebitPartage("verification-diplom
   if (!/^CERT-[A-Z]+-\d{4}-\d{6}$/.test(id)) throw new HTTPException(400, { message: "Identifiant de diplôme mal formé" });
   const presente = empreintePresentee(c.req.query("e"));
   const [cert] = await base().select().from(schema.certificats).where(eq(schema.certificats.id, id));
-  const [titulaire] = cert ? await base().select().from(schema.apprenants).where(eq(schema.apprenants.id, cert.apprenantId)) : [];
+  // Du titulaire, seuls prénoms et nom sont lus (le portail public n'a droit qu'à ces colonnes).
+  const [titulaire] = cert ? await base().select({ prenoms: schema.apprenants.prenoms, nom: schema.apprenants.nom }).from(schema.apprenants).where(eq(schema.apprenants.id, cert.apprenantId)) : [];
   const [etablissement] = cert?.etablissementId ? await base().select({ nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, cert.etablissementId)) : [];
   const [filiere] = cert?.filiereId ? await base().select({ nom: schema.filiereSuperieure.nom }).from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, cert.filiereId)) : [];
   const nom = titulaire ? `${titulaire.prenoms} ${titulaire.nom}` : "";
@@ -323,3 +330,5 @@ app.route("/", publique);
 app.route("/", interop);
 app.route("/", droits);
 app.route("/", delegation);
+app.route("/", securiteComptes);
+app.route("/", vigie);

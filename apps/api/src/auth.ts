@@ -2,12 +2,14 @@ import { randomBytes } from "node:crypto";
 import type { Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { empreinteJeton, genererMotDePasse, hacherMotDePasse, motDePasseConforme, nouveauJeton, verifierMotDePasse } from "@beile/db/securite";
-import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lte, ne, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { adresseIp, authentifie, base, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser, type Variables } from "./commun";
+import { adresseIp, authentifie, base, type CompteSession, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, exigerElevation, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser, type Variables } from "./commun";
+import { exigerPortail } from "./portails";
+import { surConnexionAdministrateur, surVerrouillage } from "./vigie";
 
 /**
  * Authentification : identifiant + mot de passe (scrypt), session serveur de 12 h dans un cookie HttpOnly,
@@ -48,17 +50,36 @@ auth.post("/auth/connexion", limiteDebitPartage("connexion", 60, 60_000), async 
       const echecs = compte.echecsConsecutifs + 1;
       await base().update(schema.comptes).set({ echecsConsecutifs: echecs, verrouilleJusquA: echecs >= ECHECS_MAX ? new Date(Date.now() + VERROU_MS) : null }).where(eq(schema.comptes.id, compte.id));
       if (profil) await journaliser(profil, "Connexion refusée", `${identifiant} (${echecs} échec(s))`, "gestion", false, "role");
+      if (profil && echecs === ECHECS_MAX) await surVerrouillage(profil.id, identifiant);
     }
     throw new HTTPException(401, { message: "Identifiant ou mot de passe incorrect" });
   }
 
+  const mfaExige = await exigeSecondFacteur(profil);
+  try {
+    exigerPortail(profil as unknown as Profil, mfaExige);
+  } catch (e) {
+    await journaliser(profil, "Connexion refusée sur ce portail", identifiant, "gestion", false, "portail");
+    throw e;
+  }
+  if (mfaExige) await surConnexionAdministrateur(profil.id, compte.id, identifiant, adresseIp(c));
   const jeton = nouveauJeton();
   await base().insert(schema.sessions).values({ empreinte: empreinteJeton(jeton), compteId: compte.id, expireLe: new Date(Date.now() + DUREE_SESSION_MS), adresseIp: adresseIp(c), agent: (c.req.header("user-agent") ?? "").slice(0, 200) });
   await base().update(schema.comptes).set({ echecsConsecutifs: 0, verrouilleJusquA: null, derniereConnexion: new Date() }).where(eq(schema.comptes.id, compte.id));
   await journaliser(profil, "Connexion", identifiant, "gestion", true, null);
   poserCookies(c, jeton);
-  return c.json({ profil, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse } });
+  // Étape suivante annoncée au portail : choisir son mot de passe, puis présenter (ou enregistrer) le second facteur.
+  const etape = compte.doitChangerMotDePasse ? "mot_de_passe" : mfaExige ? (compte.mfaActive ? "mfa_a_verifier" : "mfa_a_enroler") : null;
+  return c.json({ profil, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse }, etape });
 });
+
+/** Second facteur exigé : administrateur de la plateforme, ou délégation d'administration active de niveau 0 à 2. */
+async function exigeSecondFacteur(profil: { id: string; habilitations: unknown }) {
+  if ((profil.habilitations as Profil["habilitations"]).some((h) => h.role === "administrateur")) return true;
+  const [d] = await base().select({ id: schema.delegations.id }).from(schema.delegations)
+    .where(and(eq(schema.delegations.profilId, profil.id), eq(schema.delegations.statut, "active"), gt(schema.delegations.au, new Date()), lte(schema.delegations.niveau, 2))).limit(1);
+  return !!d;
+}
 
 /**
  * État de session sans erreur : pour les pages publiques (accueil, connexion) qui veulent seulement savoir si
@@ -94,10 +115,14 @@ auth.get("/auth/etat", async (c) => {
   }
   const compte = c.get("compte");
   const profil = c.get("profil");
-  return c.json({ session: { profil, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse }, contexte: await contexteDe(profil) } });
+  return c.json({ session: { profil, compte: etatCompte(compte), contexte: await contexteDe(profil) } });
 });
 
-auth.get("/auth/session", authentifie, (c) => c.json({ profil: c.get("profil"), compte: { identifiant: c.get("compte").identifiant, doitChangerMotDePasse: c.get("compte").doitChangerMotDePasse } }));
+auth.get("/auth/session", authentifie, (c) => c.json({ profil: c.get("profil"), compte: etatCompte(c.get("compte")) }));
+
+function etatCompte(k: CompteSession) {
+  return { identifiant: k.identifiant, doitChangerMotDePasse: k.doitChangerMotDePasse, mfaExige: k.mfaExige, mfaActive: k.mfaActive, mfaVerifie: k.mfaVerifie, eleveJusquA: k.eleveJusquA ? new Date(k.eleveJusquA).toISOString() : null };
+}
 
 auth.post("/auth/deconnexion", authentifie, async (c) => {
   await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.empreinte, c.get("compte").empreinteSession));
@@ -117,6 +142,7 @@ auth.post("/auth/mot-de-passe", authentifie, limiteDebit(10, 60_000), async (c) 
   if (actuel === nouveau) throw new HTTPException(422, { message: "Le nouveau mot de passe doit être différent de l'actuel" });
   await base().update(schema.comptes).set({ motDePasseHash: await hacherMotDePasse(nouveau), doitChangerMotDePasse: false }).where(eq(schema.comptes.id, compte.id));
   await base().update(schema.sessions).set({ revoquee: true }).where(and(eq(schema.sessions.compteId, compte.id), ne(schema.sessions.empreinte, compte.empreinteSession)));
+  oublierSession(compte.empreinteSession);
   await journaliser(c.get("profil"), "Changement de mot de passe", compte.identifiant, "gestion", true, null);
   return c.json({ ok: true });
 });
@@ -145,6 +171,7 @@ auth.get("/admin/comptes", authentifie, async (c) => {
 
 auth.post("/admin/comptes/:id/reinitialiser", authentifie, async (c) => {
   exigerAdmin(c);
+  exigerElevation(c);
   const id = z.string().regex(/^CPT-[a-z]+$/).parse(c.req.param("id"));
   const temporaire = genererMotDePasse();
   const [maj] = await base().update(schema.comptes).set({ motDePasseHash: await hacherMotDePasse(temporaire), doitChangerMotDePasse: true, echecsConsecutifs: 0, verrouilleJusquA: null }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });
@@ -156,6 +183,7 @@ auth.post("/admin/comptes/:id/reinitialiser", authentifie, async (c) => {
 
 auth.post("/admin/comptes/:id/activation", authentifie, async (c) => {
   exigerAdmin(c);
+  exigerElevation(c);
   const id = z.string().regex(/^CPT-[a-z]+$/).parse(c.req.param("id"));
   const { actif } = await corps(c, z.object({ actif: z.boolean() }).strict());
   if (id === c.get("compte").id && !actif) throw new HTTPException(422, { message: "Impossible de désactiver son propre compte" });

@@ -13,7 +13,13 @@ import type { ContexteAffichage } from "./navigation";
  */
 export interface Session {
   profil: Profil;
-  compte: { identifiant: string; doitChangerMotDePasse: boolean };
+  compte: {
+    identifiant: string; doitChangerMotDePasse: boolean;
+    /** Second facteur exigé (administrateur de niveau 0 à 2), enregistré, présenté pour cette session. */
+    mfaExige?: boolean; mfaActive?: boolean; mfaVerifie?: boolean;
+    /** Élévation en cours (actions d'administration), jusqu'à cette heure. */
+    eleveJusquA?: string | null;
+  };
   /** Contexte d'affichage calculé par le serveur (cycle des établissements, étudiant du supérieur). */
   contexte?: ContexteAffichage;
 }

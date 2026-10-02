@@ -56,6 +56,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/plateforme/interoperabilite", libelle: "Interopérabilité", icone: Network, roles: ["administration_centrale", "administrateur", "dpo"], groupe: "Données", processus: "P12" },
 
   { href: "/audit", libelle: "Journal d'audit", icone: ScrollText, roles: ["dpo"], groupe: "Conformité", processus: "P11 · P14" },
+  { href: "/securite", libelle: "Alertes de sécurité", icone: Siren, roles: ["dpo", "administrateur"], groupe: "Conformité", processus: "P11" },
   { href: "/audit/traitements", libelle: "Registre des traitements", icone: ShieldCheck, roles: ["dpo"], groupe: "Conformité", processus: "P14" },
   { href: "/plateforme/etat", libelle: "État du service", icone: FileSearch, roles: ["administration_centrale", "dpo", "administrateur"], groupe: "Conformité", processus: "P15" },
 

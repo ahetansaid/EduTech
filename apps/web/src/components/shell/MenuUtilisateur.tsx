@@ -73,8 +73,8 @@ export function MenuUtilisateur({ compact = false, vers = "haut" }: { compact?: 
               <p className="mt-1 text-[12.5px] text-ink-2">{profil.fonction}</p>
             </div>
             <div className="my-1 h-px bg-line/60" />
-            <Link role="menuitem" href="/mot-de-passe" onClick={() => setOuvert(false)} className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink">
-              <KeyRound size={15} aria-hidden /> Changer mon mot de passe
+            <Link role="menuitem" href="/mon-compte" onClick={() => setOuvert(false)} className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink">
+              <KeyRound size={15} aria-hidden /> Mon compte et sécurité
             </Link>
             <Link role="menuitem" href="/assistance" onClick={() => setOuvert(false)} className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink">
               <LifeBuoy size={15} aria-hidden /> Assistance

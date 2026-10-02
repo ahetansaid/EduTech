@@ -2,7 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Finalite, Profil } from "@beile/contracts";
 import { connecter, schema } from "@beile/db";
 import { empreinteJeton } from "@beile/db/securite";
-import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
@@ -17,7 +17,13 @@ export function base() {
   return connexion.db;
 }
 
-export interface CompteSession { id: string; identifiant: string; doitChangerMotDePasse: boolean; empreinteSession: string }
+export interface CompteSession {
+  id: string; identifiant: string; doitChangerMotDePasse: boolean; empreinteSession: string;
+  /** Second facteur exigé (administrateur de la plateforme ou délégation de niveau 0 à 2) et présenté pour cette session. */
+  mfaExige: boolean; mfaActive: boolean; mfaVerifie: boolean;
+  /** Élévation juste à temps en cours, jusqu'à cette heure (ms). */
+  eleveJusquA: number | null;
+}
 export type Variables = { profil: Profil; compte: CompteSession };
 
 export const COOKIE_SESSION = "beile_session";
@@ -124,6 +130,24 @@ const CACHE_SESSIONS_MS = 30_000;
 const cacheSessions = new Map<string, { expire: number; profil: Profil; compte: CompteSession }>();
 export const oublierSession = (empreinte: string) => cacheSessions.delete(empreinte);
 
+/**
+ * Routes ouvertes à une session « incomplète » (mot de passe initial à changer, second facteur à présenter) :
+ * de quoi connaître son état, le compléter ou se déconnecter — rien d'autre.
+ */
+const LIBRES = /\/auth\/(etat|session|deconnexion|mot-de-passe|mfa\/[a-z]+(\/[a-z-]+)?)$/;
+/** Inactivité réelle (clic, frappe, écriture) : 30 min pour un administrateur, 2 h pour les autres. */
+const INACTIVITE_ADMIN_MS = 30 * 60_000, INACTIVITE_MS = 2 * 3600_000;
+
+function exigerSessionComplete(c: Context, compte: CompteSession) {
+  if (LIBRES.test(c.req.path)) return;
+  if (compte.doitChangerMotDePasse) throw new ErreurCodee(403, "Choisissez d'abord votre propre mot de passe", "mot_de_passe_a_changer");
+  if (compte.mfaExige && !compte.mfaVerifie) {
+    throw compte.mfaActive
+      ? new ErreurCodee(403, "Présentez votre second facteur pour continuer", "mfa_a_verifier")
+      : new ErreurCodee(403, "Votre fonction exige un second facteur : enregistrez-le pour continuer", "mfa_a_enroler");
+  }
+}
+
 /** Session : cookie HttpOnly → empreinte SHA-256 → session valide, compte actif → profil d'habilitations. */
 export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c, next) => {
   const jeton = getCookie(c, COOKIE_SESSION);
@@ -132,6 +156,7 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   const enCache = cacheSessions.get(empreinte);
   if (enCache && enCache.expire > Date.now()) {
     if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) { controlerOrigine(c); controlerCsrf(c); }
+    exigerSessionComplete(c, enCache.compte);
     c.set("profil", enCache.profil);
     c.set("compte", enCache.compte);
     return next();
@@ -144,8 +169,20 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
     .where(and(eq(schema.sessions.empreinte, empreinte), eq(schema.sessions.revoquee, false), gt(schema.sessions.expireLe, new Date()), eq(schema.comptes.actif, true)));
   if (!ligne) throw new HTTPException(401, { message: "Session expirée : reconnectez-vous" });
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) { controlerOrigine(c); controlerCsrf(c); }
-  // Activité glissante, écrite au plus toutes les 5 minutes.
-  if (Date.now() - ligne.session.derniereActivite.getTime() > 5 * 60_000) {
+  const [privilegie] = await base().select({ id: schema.delegations.id }).from(schema.delegations)
+    .where(and(eq(schema.delegations.profilId, ligne.profil.id), eq(schema.delegations.statut, "active"), gt(schema.delegations.au, new Date()), lte(schema.delegations.niveau, 2))).limit(1);
+  const mfaExige = !!privilegie || (ligne.profil.habilitations as Profil["habilitations"]).some((h) => h.role === "administrateur");
+  // Portail : une session ouverte ailleurs ne vaut rien ici (lot D).
+  (await import("./portails")).exigerPortail({ habilitations: ligne.profil.habilitations as Profil["habilitations"] }, mfaExige);
+  // Inactivité : une session sans interaction réelle depuis trop longtemps est close (les rafraîchissements
+  // automatiques des écrans n'envoient pas l'en-tête d'activité et ne la prolongent donc pas).
+  const inactif = Date.now() - ligne.session.derniereActivite.getTime();
+  if (inactif > (mfaExige ? INACTIVITE_ADMIN_MS : INACTIVITE_MS)) {
+    await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.empreinte, empreinte));
+    throw new ErreurCodee(401, "Session close après une période d'inactivité : reconnectez-vous", "inactivite");
+  }
+  const actif = c.req.header("x-beile-actif") === "1" || !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
+  if (actif && inactif > 2 * 60_000) {
     await base().update(schema.sessions).set({ derniereActivite: new Date() }).where(eq(schema.sessions.empreinte, empreinte));
   }
   // Échéance des droits : une attribution arrivée à sa date de fin sans reconfirmation tombe, et sort des
@@ -159,9 +196,16 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
     await base().update(schema.profils).set({ habilitations: ligne.profil.habilitations }).where(eq(schema.profils.id, ligne.profil.id));
   }
   const profil = { ...ligne.profil, habilitations: ligne.profil.habilitations as Profil["habilitations"] };
-  const compte = { id: ligne.compte.id, identifiant: ligne.compte.identifiant, doitChangerMotDePasse: ligne.compte.doitChangerMotDePasse, empreinteSession: empreinte };
-  if (cacheSessions.size > 50_000) for (const [k, v] of cacheSessions) if (v.expire <= Date.now()) cacheSessions.delete(k);
-  cacheSessions.set(empreinte, { expire: Date.now() + CACHE_SESSIONS_MS, profil, compte });
+  const compte: CompteSession = {
+    id: ligne.compte.id, identifiant: ligne.compte.identifiant, doitChangerMotDePasse: ligne.compte.doitChangerMotDePasse, empreinteSession: empreinte,
+    mfaExige, mfaActive: ligne.compte.mfaActive, mfaVerifie: ligne.session.mfaVerifie, eleveJusquA: ligne.session.eleveJusquA?.getTime() ?? null,
+  };
+  exigerSessionComplete(c, compte);
+  // Seules les sessions complètes sont mises en cache : une étape franchie sur une autre instance est vue aussitôt.
+  if (!compte.doitChangerMotDePasse && (!mfaExige || compte.mfaVerifie)) {
+    if (cacheSessions.size > 50_000) for (const [k, v] of cacheSessions) if (v.expire <= Date.now()) cacheSessions.delete(k);
+    cacheSessions.set(empreinte, { expire: Date.now() + CACHE_SESSIONS_MS, profil, compte });
+  }
   c.set("profil", profil);
   c.set("compte", compte);
   await next();
@@ -185,11 +229,25 @@ export async function journaliser(profil: Pick<Profil, "id" | "nomAffiche">, act
     if (dernieresConsultations.size > 100_000) for (const [k, t] of dernieresConsultations) if (maintenant - t > FENETRE_CONSULTATION_MS) dernieresConsultations.delete(k);
   }
   await base().insert(schema.journal).values({ id: `AUD-${randomUUID()}`, profilId: profil.id, profilNom: profil.nomAffiche, action, ressource: ressource.slice(0, 200), finalite, autorise, critereManquant });
+  if (!autorise && profil.id !== "inconnu") await (await import("./vigie")).surRefus(profil.id, profil.nomAffiche).catch(() => {});
 }
 
 export const refuser = (message: string): never => {
   throw new HTTPException(403, { message });
 };
+
+/** Refus porteur d'un code machine (le front sait alors quoi proposer : changer le mot de passe, second facteur…). */
+export class ErreurCodee extends HTTPException {
+  constructor(statut: 401 | 403 | 422 | 429 | 503, message: string, public code: string) {
+    super(statut, { message });
+  }
+}
+
+/** Élévation juste à temps : les actions d'administration exigent une re-vérification récente (15 min). */
+export function exigerElevation(c: Context<{ Variables: Variables }>) {
+  const e = c.get("compte").eleveJusquA;
+  if (!e || e < Date.now()) throw new ErreurCodee(403, "Action d'administration : confirmez votre identité pour continuer", "elevation_requise");
+}
 
 /** Tri alphabétique français : un collateur partagé (localeCompare avec locale en recrée un à chaque appel, ×6 plus lent). */
 const collateur = new Intl.Collator("fr");

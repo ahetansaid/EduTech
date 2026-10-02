@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { MotionProvider } from "@/components/motion";
 import { ErreurApi } from "@/lib/http";
 import { Notifications, notifier } from "@/components/ui/Notifications";
+import { DialogueElevation } from "@/components/securite/DialogueElevation";
 
 /**
  * Cache de requêtes partagé : données fraîches 15 s, rafraîchies au retour sur l'onglet et à la reconnexion,
@@ -30,6 +31,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <MotionProvider>
         {children}
         <Notifications />
+        <DialogueElevation />
       </MotionProvider>
     </QueryClientProvider>
   );

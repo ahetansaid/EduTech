@@ -73,7 +73,7 @@ function ChangerMotDePasse() {
             {impose ? `Bienvenue ${profil.nomAffiche.split(" ")[0]}. Le mot de passe qui vous a été remis est temporaire : remplacez-le par un mot de passe personnel.` : "Toutes vos autres sessions seront fermées après le changement."}
           </p>
 
-          <form onSubmit={soumettre} className="mt-6 space-y-4">
+          <form method="post" onSubmit={soumettre} className="mt-6 space-y-4">
             <ChampMdp id="actuel" libelle={impose ? "Mot de passe temporaire" : "Mot de passe actuel"} valeur={actuel} onChange={setActuel} visible={visible} autoComplete="current-password" />
             <ChampMdp id="nouveau" libelle="Nouveau mot de passe" valeur={nouveau} onChange={setNouveau} visible={visible} autoComplete="new-password" />
 

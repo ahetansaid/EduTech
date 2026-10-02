@@ -1,4 +1,6 @@
-import { Session } from "./client-recette";
+import { connecter, schema } from "@beile/db";
+import { and, desc, eq } from "drizzle-orm";
+import { COMPTES, codeFrais, Session, TOTP } from "./client-recette";
 
 /**
  * Recette de l'API avec de VRAIS comptes (identifiant + mot de passe, cookie de session, jeton CSRF).
@@ -41,6 +43,8 @@ const [central, departement, inspecteur, directrice, enseignant, parent, apprena
   }),
 );
 verifier("Cookie de session HttpOnly posé", enseignant!.aSession, true);
+// Administration des comptes : élévation juste à temps de l'autorité (second facteur), valable 15 minutes.
+verifier("Administrateur : élévation par second facteur", (await admin!.elever()).statut, 200);
 const absence = { classeId: "CLS-PAR-5eA-S", date: AUJOURDHUI, apprenantIds: ["APP-000001"] };
 verifier("Écriture sans jeton CSRF", (await enseignant!.appel("POST", "/evenements/absences", absence, { "x-csrf-token": "" })).statut, 403);
 verifier("Écriture depuis une origine étrangère", (await enseignant!.appel("POST", "/evenements/absences", absence, { origin: "https://pirate.example" })).statut, 403);
@@ -383,6 +387,115 @@ if (!process.env.BEILE_PARTENAIRES) {
   }
 }
 
+titre("Sécurité des comptes : second facteur, élévation, inactivité, vigie");
+{
+  // Second facteur exigé des administrateurs de niveau 0 à 2 : sans lui, rien n'est servi.
+  const brute = new Session();
+  const r = await brute.appel("POST", "/auth/connexion", { identifiant: "admin.beile", motDePasse: COMPTES["admin.beile"] });
+  verifier("Autorité : après le mot de passe, second facteur à présenter", r.json.etape === "mfa_a_verifier", true, String(r.json.etape));
+  verifier("Sans second facteur : données refusées (« mfa_a_verifier »)", (await brute.appel("GET", "/delegation/moi")).json.code === "mfa_a_verifier", true);
+  verifier("Code faux : refusé", (await brute.appel("POST", "/auth/mfa/verifier", { code: "000000" })).statut, 422);
+  const code = await codeFrais("admin.beile");
+  verifier("Code juste : second facteur accepté", (await brute.appel("POST", "/auth/mfa/verifier", { code })).statut, 200);
+  verifier("Session complète : données servies", (await brute.appel("GET", "/delegation/moi")).statut, 200);
+  const rejeu = new Session();
+  await rejeu.appel("POST", "/auth/connexion", { identifiant: "admin.beile", motDePasse: COMPTES["admin.beile"] });
+  verifier("Rejeu du même code TOTP sur une autre session : refusé", (await rejeu.appel("POST", "/auth/mfa/verifier", { code })).statut, 422);
+  verifier("Élévation : un code de secours n'est pas accepté", (await brute.appel("POST", "/auth/elevation", { code: "abcde12345" })).statut, 422);
+  verifier("Élévation : mot de passe faux refusé (compte sans second facteur)", (await directrice!.appel("POST", "/auth/elevation", { motDePasse: "Faux-Mot-De-Passe-1" })).statut, 422);
+  const etatMfa = await brute.appel("GET", "/auth/mfa/etat");
+  verifier("État du second facteur : application enregistrée, codes de secours disponibles", etatMfa.json.totp === true && Number(etatMfa.json.codesSecoursRestants) > 0, true);
+  verifier("Enseignant (sans délégation) : second facteur non exigé", (await enseignant!.appel("GET", "/auth/mfa/etat")).json.exige === false, true);
+  verifier("Témoin : route libre inexistante → 404", (await brute.appel("GET", "/auth/mfa/inexistant")).statut, 404);
+
+  // Vigie : consultation réservée ; une rafale de refus lève une alerte.
+  verifier("Enseignant → alertes de sécurité : 403", (await enseignant!.appel("GET", "/securite/alertes")).statut, 403);
+  for (let i = 0; i < 9; i++) await enseignant!.appel("GET", "/etablissements/ETB-PAR-PILOTE-EPP/tableau");
+  const alertes = await dpo!.appel("GET", "/securite/alertes");
+  verifier("DPO : alerte « refus en rafale » levée par la vigie", liste(alertes.json).some((a) => a.type === "refus_en_rafale"), true, `${liste(alertes.json).length} alerte(s) ouverte(s)`);
+  const exp = await dpo!.appel("GET", "/securite/alertes/export");
+  verifier("DPO : export pour notification d'incident (bjCSIRT)", exp.statut === 200 && Array.isArray(exp.json.evenements), true);
+
+  verifier("Directrice : écriture d'administration sans élévation → 403 « elevation_requise »", ((await directrice!.appel("POST", "/delegation/comptes", { nomAffiche: "Sans Elevation", fonction: "Professeur", role: "enseignant", organisationId: "ORG-ETB-ETB-PAR-PILOTE-CEG" })).json.code) === "elevation_requise", true);
+  for (const [nom, s] of [["Directrice (mot de passe)", directrice], ["Direction départementale (second facteur)", departement], ["Cabinet (second facteur)", central], ["Autorité (second facteur)", admin]] as const) {
+    verifier(`${nom} : élévation juste à temps`, (await s!.elever()).statut, 200);
+  }
+}
+
+if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)) {
+  titre("Activation et récupération par code (SMS, courriel)");
+  // Recette seulement : le fournisseur « journal » (hors production) garde le message ; on y lit le code.
+  const { db, client } = connecter(process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL);
+  const dernierCode = async (compteId: string) => {
+    const [m] = await db.select({ texte: schema.messagesSortants.texte }).from(schema.messagesSortants).where(eq(schema.messagesSortants.compteId, compteId)).orderBy(desc(schema.messagesSortants.creeLe)).limit(1);
+    return /est (\d{6})\./.exec(m?.texte ?? "")?.[1] ?? "";
+  };
+  const canaux = await anonyme.appel("GET", "/auth/canaux");
+  verifier("Canaux d'envoi ouverts (fournisseur « journal » hors production)", canaux.json.sms === true && canaux.json.courriel === true, true);
+  const orgs = await departement!.appel("GET", "/delegation/organisations?parent=ORG-DD-MESTFP-borgou");
+  const etab = liste(orgs.json.enfants).find((o) => o.id !== "ORG-ETB-ETB-PAR-PILOTE-CEG")?.id as string;
+  const nouveau = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Activation Recette Code", fonction: "Directeur", role: "chef_etablissement", organisationId: etab, telephone: "+229 01 97 00 00 01" });
+  const n = nouveau.json as unknown as { compte?: { id: string; identifiant: string }; activation?: { canal: string }; motDePasseTemporaire?: string };
+  verifier("Compte créé avec un téléphone : activation autonome, aucun mot de passe montré à l'administrateur", nouveau.statut === 201 && n.activation?.canal === "sms" && !n.motDePasseTemporaire, true, `HTTP ${nouveau.statut}`);
+  const id = n.compte?.identifiant ?? "", cid = n.compte?.id ?? "";
+  const generique = await anonyme.appel("POST", "/auth/code/demande", { identifiant: "personne.inexistante", objet: "activation" });
+  const demande = await anonyme.appel("POST", "/auth/code/demande", { identifiant: id, objet: "activation" });
+  verifier("Demande de code : réponse identique que le compte existe ou non (pas d'énumération)", JSON.stringify(generique.json) === JSON.stringify(demande.json) && demande.statut === 200, true);
+  const code = await dernierCode(cid);
+  verifier("Code d'activation envoyé par SMS", /^\d{6}$/.test(code), true);
+  const MDP = "Activation-Recette-2026";
+  verifier("Code faux : refusé", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code: code === "000000" ? "111111" : "000000", nouveau: MDP })).statut, 422);
+  verifier("Mot de passe trop faible : refusé", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code, nouveau: "faible" })).statut, 422);
+  verifier("Code juste : compte activé avec le mot de passe choisi", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code, nouveau: MDP })).statut, 200);
+  verifier("Code déjà utilisé : refusé", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code, nouveau: MDP })).statut, 422);
+  const active = new Session();
+  const cx = await active.connexion(id, MDP);
+  verifier("Compte activé : connexion directe, aucune étape restante", cx.statut === 200 && cx.json.etape === null, true, String(cx.json.etape));
+  const [cpt] = await db.select({ v: schema.comptes.telephoneVerifie }).from(schema.comptes).where(eq(schema.comptes.id, cid));
+  verifier("Téléphone vérifié par l'activation", cpt?.v === true, true);
+
+  await anonyme.appel("POST", "/auth/code/demande", { identifiant: id, objet: "recuperation" });
+  const codeRec = await dernierCode(cid);
+  const MDP2 = "Recuperation-Recette-2026";
+  verifier("Mot de passe oublié : récupération par code", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code: codeRec, nouveau: MDP2 })).statut, 200);
+  verifier("Récupération : l'ancien mot de passe ne passe plus", (await new Session().connexion(id, MDP)).statut, 401);
+  verifier("Récupération : le nouveau mot de passe passe", (await new Session().connexion(id, MDP2)).statut, 200);
+  verifier("Récupération : les sessions ouvertes avant sont coupées", (await active.appel("GET", "/auth/session")).statut, 401);
+
+  // Mot de passe initial : tant qu'il n'est pas changé, l'API ne sert rien d'autre (plus seulement l'écran).
+  // Une personne sans compte : un enseignant du CEG, à défaut un responsable légal d'un de ses élèves.
+  const [libre] = (await client`select e.npi, 'enseignant' as role from core.enseignants e where e.etablissement_id = 'ETB-PAR-PILOTE-CEG' and not exists (select 1 from core.profils p where p.npi = e.npi)
+    union all select l.responsable_npi, 'parent' from core.liens_familiaux l join core.scolarites x on x.apprenant_id = l.apprenant_id where x.etablissement_id = 'ETB-PAR-PILOTE-CEG' and not exists (select 1 from core.profils p where p.npi = l.responsable_npi)
+    limit 1`) as unknown as { npi: string; role: "enseignant" | "parent" }[];
+  const provisoire = await directrice!.appel("POST", "/delegation/comptes", { nomAffiche: "Provisoire Recette", fonction: "Recette", role: libre?.role ?? "enseignant", organisationId: "ORG-ETB-ETB-PAR-PILOTE-CEG", npi: libre?.npi });
+  const lecture = libre?.role === "parent" ? "/famille/enfants" : "/moi/classes";
+  const p = provisoire.json as unknown as { compte?: { identifiant: string }; motDePasseTemporaire?: string };
+  const sp = new Session();
+  const cxp = await sp.connexion(p.compte?.identifiant ?? "", p.motDePasseTemporaire ?? "");
+  verifier("Mot de passe provisoire : étape « mot_de_passe » annoncée", cxp.json.etape === "mot_de_passe", true, `HTTP ${provisoire.statut} · ${String(cxp.json.etape)}`);
+  verifier("Mot de passe provisoire : données refusées par l'API (« mot_de_passe_a_changer »)", (await sp.appel("GET", lecture)).json.code === "mot_de_passe_a_changer", true);
+  verifier("Changement du mot de passe initial", (await sp.appel("POST", "/auth/mot-de-passe", { actuel: p.motDePasseTemporaire, nouveau: "Enseignant-Recette-2026" })).statut, 200);
+  verifier("Après changement : données servies aussitôt", (await sp.appel("GET", lecture)).statut, 200);
+
+  // Coordonnée de récupération ajoutée par l'utilisateur : adoptée seulement si le code revient.
+  const cEns = await db.select({ id: schema.comptes.id }).from(schema.comptes).where(eq(schema.comptes.identifiant, "idrissou.sanni"));
+  verifier("Enseignant : ajout d'un courriel de récupération (code envoyé)", (await enseignant!.appel("POST", "/moi/coordonnees/demande", { canal: "courriel", destination: "idrissou.sanni@exemple.bj" })).statut, 200);
+  verifier("Code faux : coordonnée non adoptée", (await enseignant!.appel("POST", "/moi/coordonnees/confirmer", { code: "000000" })).statut, 422);
+  const codeVerif = await dernierCode(cEns[0]!.id);
+  verifier("Code juste : courriel vérifié", (await enseignant!.appel("POST", "/moi/coordonnees/confirmer", { code: codeVerif })).statut, 200);
+  const coord = await enseignant!.appel("GET", "/moi/coordonnees");
+  verifier("Coordonnées affichées masquées et vérifiées", (coord.json.courriel as { valeur?: string; verifie?: boolean } | null)?.verifie === true && !String((coord.json.courriel as { valeur?: string }).valeur).includes("idrissou.sanni@"), true);
+
+  // Inactivité : une session sans interaction depuis plus de 2 h est close à la requête suivante.
+  const dormeuse = new Session();
+  await dormeuse.connexion("aicha.zannou");
+  const [cptA] = await db.select({ id: schema.comptes.id }).from(schema.comptes).where(eq(schema.comptes.identifiant, "aicha.zannou"));
+  await db.update(schema.sessions).set({ derniereActivite: new Date(Date.now() - 3 * 3600_000) }).where(and(eq(schema.sessions.compteId, cptA!.id), eq(schema.sessions.revoquee, false)));
+  const endormie = await dormeuse.appel("GET", "/moi/passeport");
+  verifier("Session inactive depuis 3 h : close (« inactivite »)", endormie.statut === 401 && endormie.json.code === "inactivite", true, `HTTP ${endormie.statut}`);
+  await client.end();
+}
+
 titre("Administration déléguée (cascade, plafond, cumul, double validation)");
 {
   const CEG = "ORG-ETB-ETB-PAR-PILOTE-CEG", BORGOU = "ORG-DD-MESTFP-borgou";
@@ -407,6 +520,8 @@ titre("Administration déléguée (cascade, plafond, cumul, double validation)")
     verifier("Le demandeur ne valide pas sa propre demande : 403", (await central!.appel("POST", `/delegation/delegations/${n2.json.id}/valider`)).statut, 403);
     const valide = await admin!.appel("POST", `/delegation/delegations/${n2.json.id}/valider`);
     verifier("Autorité (niveau 0) : seconde validation", valide.statut === 200 && valide.json.statut === "active", true, `HTTP ${valide.statut}`);
+    // Remise en état : le compte de test de l'inspecteur ne reste pas administrateur de niveau 2.
+    verifier("Autorité : révocation de la délégation de recette", (await admin!.appel("POST", `/delegation/delegations/${n2.json.id}/revoquer`, { motif: "Fin de la recette" })).statut, 200);
     const cree = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Chef Recette Delegation", fonction: "Directeur", role: "chef_etablissement", organisationId: autre });
     verifier("Direction → compte de chef d'établissement dans son sous-arbre", cree.statut, 201, String(cree.json.erreur ?? ""));
     if (cree.statut === 201) {

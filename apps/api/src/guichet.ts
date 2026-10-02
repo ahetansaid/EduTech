@@ -732,7 +732,12 @@ guichet.get("/actes/:demandeId/verification", limiteDebitPartage("verification-a
   const brut = c.req.param("demandeId");
   const demandeId = ID_DEMANDE.parse(brut.replace(/^acte-/i, "ACTE-").replace(/(?<=^ACTE-).*/, (x) => x.toLowerCase()));
   const presente = empreintePresentee(c.req.query("e"));
-  const [d] = await base().select().from(schema.demandesActe).where(eq(schema.demandesActe.id, demandeId));
+  // Seules les colonnes nécessaires au contrôle sont lues (le portail public n'a droit qu'à celles-ci).
+  const a = schema.demandesActe;
+  const [d] = await base().select({
+    id: a.id, apprenantId: a.apprenantId, typeActe: a.typeActe, anneeUniversitaire: a.anneeUniversitaire, periodeId: a.periodeId,
+    disponibleLe: a.disponibleLe, statut: a.statut, empreinte: a.empreinte, autorite: a.autorite,
+  }).from(a).where(eq(a.id, demandeId));
   let r: VerificationActe;
   if (!d) {
     r = { statut: "introuvable", explication: "Aucun acte délivré ne porte cet identifiant." };

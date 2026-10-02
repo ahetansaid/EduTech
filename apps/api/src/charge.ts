@@ -1,4 +1,4 @@
-import { COMPTES, Session } from "./client-recette";
+import { COMPTES, Session, TOTP } from "./client-recette";
 
 /**
  * Test de charge par utilisateurs virtuels : chaque utilisateur a SA session (vraie connexion), sa propre
@@ -28,10 +28,24 @@ const latences: number[] = [];
 const statuts = new Map<number, number>();
 let enCours = true;
 
+/**
+ * Répartition réaliste : un administrateur soumis au second facteur est une personne, avec une session
+ * (un code TOTP ne sert qu'une fois par pas de 30 s) — un seul utilisateur virtuel par compte de ce type ;
+ * tous les autres utilisateurs virtuels se répartissent entre les rôles sans second facteur.
+ */
+const administrateurs = roles.filter((r) => TOTP[r]);
+const autres = roles.filter((r) => !TOTP[r]);
+const identifiantDe = (i: number) => (i < administrateurs.length ? administrateurs[i]! : autres[(i - administrateurs.length) % autres.length]!);
+
 /** Phase 1 : connexion (scrypt, volontairement coûteux) — mesurée à part, comme un pic d'arrivée du matin. */
 async function connecter(i: number) {
-  const identifiant = roles[i % roles.length]!;
+  const identifiant = identifiantDe(i);
   const ip = `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`;
+  if (TOTP[identifiant]) {
+    const s = new Session(identifiant);
+    const r = await s.connexion(identifiant, COMPTES[identifiant], { "x-forwarded-for": ip }).catch(() => null);
+    return r?.statut === 200 ? { s, identifiant, ip } : null;
+  }
   const s = new Session(identifiant);
   const r = await s.appel("POST", "/auth/connexion", { identifiant, motDePasse: COMPTES[identifiant] }, { "x-forwarded-for": ip }).catch(() => null);
   return r?.statut === 200 ? { s, identifiant, ip } : null;
