@@ -75,7 +75,9 @@ export function limiteDebitPartage(nom: string, max: number, fenetreMs: number, 
       n = r?.n ?? 1;
       // Purge paresseuse des fenêtres échues (une requête sur cent), sans jamais retarder la réponse.
       if (Math.random() < 0.01) void base().delete(schema.compteursDebit).where(lt(schema.compteursDebit.fenetre, fenetre - 2)).catch(() => {});
-    } catch {
+    } catch (e) {
+      // Repli sur le plafond de l'instance : la base ne répond pas. Tracé, car un repli fréquent affaiblit le plafond.
+      console.error(JSON.stringify({ niveau: "avertissement", message: `Plafond partagé « ${nom} » indisponible, repli local`, code: (e as { code?: string }).code ?? null }));
       return local(c, next);
     }
     if (n > max) {

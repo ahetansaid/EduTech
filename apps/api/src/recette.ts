@@ -172,7 +172,8 @@ verifier("Public : sans date de naissance, ni nom ni moyenne", (resAdmis.json as
 verifier("Public : date de naissance dans l'adresse (GET) refusée", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001&naissance=1900-01-01")).statut, 422);
 const resDateFausse = await anonyme.appel("POST", "/public/resultats", { examen: "CEP", session: "Juin 2024", table: "2024000001", naissance: "1900-01-01" });
 // Plafond d'essais de date : un numéro « déguisé » (espaces) désigne le même candidat et n'ouvre pas de nouveaux essais.
-const variantes = await Promise.all(Array.from({ length: 11 }, (_, i) => anonyme.appel("POST", "/public/resultats", { examen: "CEP", session: "Juin 2024", table: `${" ".repeat(i)}2024000002`, naissance: `1900-01-${String(i + 1).padStart(2, "0")}` })));
+const variantes: { statut: number }[] = [];
+for (let i = 0; i < 11; i++) variantes.push(await anonyme.appel("POST", "/public/resultats", { examen: "CEP", session: "Juin 2024", table: `${" ".repeat(i)}2024000002`, naissance: `1900-01-${String(i + 1).padStart(2, "0")}` }));
 verifier("Public : essais de date plafonnés par candidat, même déguisé par des espaces", variantes.some((v) => v.statut === 429), true, variantes.map((v) => v.statut).join(","));
 verifier("Public : date de naissance fausse → aucune identité, signalée", (resDateFausse.json as { identite?: unknown; dateNonConcordante?: boolean }).identite === null && (resDateFausse.json as { dateNonConcordante?: boolean }).dateNonConcordante === true, true);
 const sessionsPub = await anonyme.appel("GET", "/public/resultats/sessions");
@@ -476,7 +477,7 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
   const [cpt] = await db.select({ v: schema.comptes.telephoneVerifie }).from(schema.comptes).where(eq(schema.comptes.id, cid));
   verifier("Téléphone vérifié par l'activation", cpt?.v === true, true);
 
-  await anonyme.appel("POST", "/auth/code/demande", { identifiant: id, objet: "recuperation" });
+  verifier("Mot de passe oublié : demande de code acceptée", (await anonyme.appel("POST", "/auth/code/demande", { identifiant: id, objet: "recuperation" })).statut, 200);
   const codeRec = await dernierCode(cid);
   const MDP2 = "Recuperation-Recette-2026";
   verifier("Mot de passe oublié : récupération par code", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code: codeRec, nouveau: MDP2 })).statut, 200);
