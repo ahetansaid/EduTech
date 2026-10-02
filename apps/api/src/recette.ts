@@ -429,6 +429,16 @@ titre("Sécurité des comptes : second facteur, élévation, inactivité, vigie"
   const etatMfa = await brute.appel("GET", "/auth/mfa/etat");
   verifier("État du second facteur : application enregistrée, codes de secours disponibles", etatMfa.json.totp === true && Number(etatMfa.json.codesSecoursRestants) > 0, true);
   verifier("Enseignant (sans délégation) : second facteur non exigé", (await enseignant!.appel("GET", "/auth/mfa/etat")).json.exige === false, true);
+  // Comptes de démonstration (jury) : le code est rendu après le mot de passe, et il fonctionne.
+  const demo = new Session();
+  await demo.appel("POST", "/auth/connexion", { identifiant: "admin.beile", motDePasse: COMPTES["admin.beile"] });
+  const codeDemo = await demo.appel("GET", "/auth/mfa/demonstration");
+  verifier("Compte de démonstration : code affiché après le mot de passe", codeDemo.statut === 200 && /^\d{6}$/.test(String(codeDemo.json.code)), true, `HTTP ${codeDemo.statut}`);
+  const attente = Number(codeDemo.json.valableDans ?? 0);
+  if (attente > 0) await new Promise((r) => setTimeout(r, attente * 1000 + 300));
+  verifier("Compte de démonstration : ce code ouvre la session", (await demo.appel("POST", "/auth/mfa/verifier", { code: String(codeDemo.json.code) })).statut, 200);
+  verifier("Compte sans second facteur : aucun code rendu (404)", (await enseignant!.appel("GET", "/auth/mfa/demonstration")).statut, 404);
+  verifier("Sans session : aucun code rendu (401)", (await new Session().appel("GET", "/auth/mfa/demonstration")).statut, 401);
   verifier("Témoin : route libre inexistante → 404", (await brute.appel("GET", "/auth/mfa/inexistant")).statut, 404);
 
   // Vigie : consultation réservée ; une rafale de refus lève une alerte.

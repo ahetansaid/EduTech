@@ -67,8 +67,8 @@ try {
     const motDePasse = genererMotDePasse();
     const hash = await hacherMotDePasse(motDePasse);
     // Secret TOTP perdu avec l'ancien fichier : le second facteur est remis à zéro (nouvel enregistrement à faire).
-    if (existant) await db.update(schema.comptes).set({ motDePasseHash: hash, echecsConsecutifs: 0, verrouilleJusquA: null, actif: true, mfaActive: false, totpChiffre: null, totpDernierPas: null }).where(eq(schema.comptes.id, existant.id));
-    else await db.insert(schema.comptes).values({ id: `CPT-${p.id.slice(2)}`, identifiant, motDePasseHash: hash, profilId: p.id });
+    if (existant) await db.update(schema.comptes).set({ motDePasseHash: hash, echecsConsecutifs: 0, verrouilleJusquA: null, actif: true, mfaActive: false, totpChiffre: null, totpDernierPas: null, demonstration: true }).where(eq(schema.comptes.id, existant.id));
+    else await db.insert(schema.comptes).values({ id: `CPT-${p.id.slice(2)}`, identifiant, motDePasseHash: hash, profilId: p.id, demonstration: true });
     lignes.push(`| ${p.nomAffiche} | ${p.fonction} | \`${identifiant}\` | \`${motDePasse}\` |`);
   }
   const doc = [

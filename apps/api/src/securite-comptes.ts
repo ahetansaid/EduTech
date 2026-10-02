@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, createHmac } from "node:crypto";
 import { schema } from "@beile/db";
-import { hacherMotDePasse, motDePasseConforme, nouveauSecretTotp, verifierMotDePasse, verifierTotp } from "@beile/db/securite";
+import { codeTotp, hacherMotDePasse, motDePasseConforme, nouveauSecretTotp, verifierMotDePasse, verifierTotp } from "@beile/db/securite";
 import {
   generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse,
   type AuthenticationResponseJSON, type AuthenticatorTransportFuture, type RegistrationResponseJSON,
@@ -49,7 +49,9 @@ const DUREE_REPONSE_CODE_MS = 1500;
  * Plafond PARTAGÉ (en base, toutes instances) et par COMPTE sur les vérifications de second facteur et
  * d'élévation : ni une nouvelle connexion, ni une autre instance serverless ne remettent le compteur à zéro.
  */
-const limiteParCompte = (nom: string) => limiteDebitPartage(nom, 10, 15 * 60_000, (c) => `compte:${(c as Context<{ Variables: Variables }>).get("compte")?.id ?? "anonyme"}`);
+// 30 par quart d'heure : la force brute est déjà bornée par le compteur d'échecs (blocage croissant après 5 codes
+// faux) ; ce plafond est une seconde barrière, assez large pour un compte de démonstration partagé par un jury.
+const limiteParCompte = (nom: string) => limiteDebitPartage(nom, 30, 15 * 60_000, (c) => `compte:${(c as Context<{ Variables: Variables }>).get("compte")?.id ?? "anonyme"}`);
 
 async function profilDuCompte(compteId: string) {
   const [l] = await base().select({ id: schema.profils.id, nomAffiche: schema.profils.nomAffiche }).from(schema.comptes)
@@ -324,6 +326,30 @@ securiteComptes.post("/auth/mfa/verifier", authentifie, limiteParCompte("mfa-ver
   if (!(await verifierCodeMfa(c.get("compte").id, code, true))) return echecSecondFacteur(c);
   await reussiteSecondFacteur(c, false);
   return c.json({ ok: true });
+});
+
+/**
+ * Comptes de DÉMONSTRATION (jury) : le code courant du second facteur est rendu au portail, qui l'affiche au-dessus
+ * du formulaire. Seulement après un mot de passe juste (session ouverte), seulement pour un compte marqué
+ * « démonstration » en base. Un compte réel répond 404 : rien ne distingue la route de son absence.
+ */
+securiteComptes.get("/auth/mfa/demonstration", authentifie, async (c) => {
+  const compte = c.get("compte");
+  const [cpt] = await base().select({ demo: schema.comptes.demonstration, actif: schema.comptes.mfaActive, totp: schema.comptes.totpChiffre, pas: schema.comptes.totpDernierPas })
+    .from(schema.comptes).where(eq(schema.comptes.id, compte.id));
+  if (!cpt?.demo || !cpt.actif || !cpt.totp || cpt.pas === null) throw new HTTPException(404, { message: "Introuvable" });
+  const secret = dechiffrer(cpt.totp, "totp");
+  // Un code ne sert qu'une fois : on donne le premier pas jamais consommé. Le serveur accepte ±1 pas : un pas
+  // plus lointain ne devient valable qu'à la période suivante (« valableDans »).
+  const maintenant = Math.floor(Date.now() / 30_000);
+  const pas = Math.max(maintenant, cpt.pas + 1);
+  const ecoule = Math.floor(Date.now() / 1000) % 30;
+  c.header("Cache-Control", "no-store");
+  return c.json({
+    code: codeTotp(secret, Date.now(), pas - maintenant),
+    valableDans: pas - maintenant > 1 ? 30 - ecoule : 0,
+    resteSecondes: 30 * (pas - maintenant + 1) - ecoule,
+  });
 });
 
 /** Nouveaux codes de secours (les anciens sont annulés) : exige une élévation. */

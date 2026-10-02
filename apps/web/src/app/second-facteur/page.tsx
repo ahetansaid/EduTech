@@ -7,6 +7,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GardeSession } from "@/components/shell/GardeSession";
 import { AnimatePresence, EASE, motion } from "@/components/motion";
+import { CodeDemonstration } from "@/components/securite/CodeDemonstration";
 import { CodesSecours } from "@/components/securite/CodesSecours";
 import { BandeNationale, Button, Logo } from "@/components/ui/primitives";
 import { enregistrerCle, presenterCle, useEtatMfa } from "@/lib/api/securite";
@@ -85,6 +86,7 @@ function Presenter({ onReussi, cles }: { onReussi: () => void; cles: boolean }) 
     <>
       <h1 className="mt-4 font-display text-[24px] font-bold text-ink">Second facteur</h1>
       <p className="mt-1.5 text-[14px] text-ink-2">Votre fonction d'administration exige une seconde preuve d'identité à chaque connexion.</p>
+      <div className="mt-5"><CodeDemonstration onUtiliser={(c) => { setSecours(false); setCode(c); }} /></div>
       <form method="post" onSubmit={soumettre} className="mt-6 space-y-4">
         <label className="block text-[13px] font-medium text-ink-2">
           {secours ? "Code de secours (10 caractères)" : "Code de votre application d'authentification"}

@@ -563,6 +563,11 @@ export const comptes = core.table("comptes", {
    * enchaîne connexion + 4 codes indéfiniment). Remis à zéro par une vérification réussie seulement.
    */
   echecsMfa: integer("echecs_mfa").notNull().default(0),
+  /**
+   * Compte de DÉMONSTRATION (jury, recette) : le code du second facteur est affiché au-dessus du formulaire,
+   * après un mot de passe juste. Jamais pour un compte réel ; à supprimer avec les comptes de test.
+   */
+  demonstration: boolean("demonstration").notNull().default(false),
   mfaBloqueJusquA: timestamp("mfa_bloque_jusqu_a", { withTimezone: true }),
 }, (t) => [index("comptes_profil_idx").on(t.profilId)]);
 
