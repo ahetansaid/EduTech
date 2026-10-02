@@ -24,7 +24,19 @@ export async function verifierMotDePasse(motDePasse: string, stocke: string): Pr
 
 /** Politique : 12 caractères minimum, au moins une minuscule, une majuscule, un chiffre. */
 export function motDePasseConforme(m: string) {
-  return m.length >= 12 && /[a-z]/.test(m) && /[A-Z]/.test(m) && /\d/.test(m);
+  return m.length >= 12 && /[a-z]/.test(m) && /[A-Z]/.test(m) && /\d/.test(m) && !motDePasseCourant(m);
+}
+
+/**
+ * Mots de passe courants : un mot de liste (« Motdepasse2026 », « Azerty123456 », « Benin2026Benin ») ou un
+ * même caractère répété respecte les classes de caractères mais se devine en quelques essais.
+ */
+const RACINES_COURANTES = ["motdepasse", "password", "passw0rd", "azerty", "qwerty", "abcdef", "bienvenue", "welcome", "soleil", "admin", "administrateur",
+  "beile", "benin", "cotonou", "portonovo", "parakou", "education", "ecole", "enseignant", "eleve", "directeur", "secret", "bonjour", "jesus", "dieu", "amour"];
+export function motDePasseCourant(m: string) {
+  const lettres = m.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+  if (/(.)\1{4,}/.test(m) || /0123|1234|2345|3456|4567|5678|6789|abcd|qwer|azer/i.test(m) && lettres.length < 6) return true;
+  return RACINES_COURANTES.some((r) => lettres === r || (lettres.startsWith(r) && lettres.length - r.length <= 2) || lettres.replace(new RegExp(r, "g"), "").length <= 2);
 }
 
 /** Mot de passe initial lisible et robuste (≈ 90 bits) : groupes séparés par des tirets. */

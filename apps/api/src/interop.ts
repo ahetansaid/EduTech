@@ -48,9 +48,12 @@ const ENTETES = z.object({
   signature: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
-/** Signature attendue d'une requête : HMAC-SHA256(secret, horodatage.lot.corps). Exposée pour les clients. */
-export const signer = (secret: string, horodatage: number, lot: string, corps: string) =>
-  createHmac("sha256", secret).update(`${horodatage}.${lot}.${corps}`).digest("hex");
+/**
+ * Signature attendue d'une requête : HMAC-SHA256(secret, MÉTHODE chemin.horodatage.lot.corps). La méthode et le
+ * chemin sont signés : un message valide pour une route ne s'envoie pas sur une autre. Exposée pour les clients.
+ */
+export const signer = (secret: string, methode: string, chemin: string, horodatage: number, lot: string, corps: string) =>
+  createHmac("sha256", secret).update(`${methode.toUpperCase()} ${chemin}.${horodatage}.${lot}.${corps}`).digest("hex");
 
 /** Authentifie le système appelant et rend son corps JSON. Tout refus est journalisé, sans détail exploitable. */
 async function partenaire(c: Context<{ Variables: Variables }>, message: string) {
@@ -68,7 +71,7 @@ async function partenaire(c: Context<{ Variables: Variables }>, message: string)
   const secret = lireEnv().PARTENAIRES[id];
   if (!secret) throw await refus("partenaire non provisionné");
   if (Math.abs(Date.now() - horodatage) > FENETRE_MS) throw await refus("horodatage hors fenêtre (rejeu ?)");
-  const attendue = Buffer.from(signer(secret, horodatage, lot, brut), "hex");
+  const attendue = Buffer.from(signer(secret, c.req.method, c.req.path.replace(/^\/api\/v1/, ""), horodatage, lot, brut), "hex");
   const recue = Buffer.from(signature, "hex");
   if (attendue.length !== recue.length || !timingSafeEqual(attendue, recue)) throw await refus("signature invalide");
   const conf = PARTENAIRES[id];
@@ -97,7 +100,15 @@ const NPI = z.string().regex(/^\d{10}$/);
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ANNEE = z.string().regex(/^\d{4}-\d{4}$/);
 
-interop.use("/interop/*", limiteDebitPartage("interop", 600, 60_000, (c) => String(c.req.header("x-beile-partenaire") ?? "inconnu")));
+// Plafond par ADRESSE, avant toute authentification : un en-tête « partenaire » non vérifié ne doit pas
+// permettre à un tiers d'épuiser le quota d'eRESULTATS.
+interop.use("/interop/*", limiteDebitPartage("interop", 600, 60_000));
+
+/** Lot non idempotent par nature (PV, publication) : reçu une fois. Un rejeu, même signé, est refusé. */
+async function lotUnique(p: { id: string; lot: string }, message: string) {
+  const [neuf] = await base().insert(schema.lotsInterop).values({ partenaire: p.id, lot: p.lot, message }).onConflictDoNothing().returning({ lot: schema.lotsInterop.lot });
+  if (!neuf) throw new HTTPException(409, { message: "Lot déjà reçu : un PV ou une publication ne se rejoue pas" });
+}
 
 /* ------------------------------------------------------------------ EducMaster : vie scolaire */
 
@@ -144,12 +155,14 @@ interop.post("/interop/eresultats/pv-examen", async (c) => {
     examen: Examen, session: z.string().trim().min(3).max(40), pvReference: z.string().trim().min(3).max(80),
     decisions: z.array(LigneVerdict).min(1).max(5000),
   }).strict(), p.json);
+  await lotUnique(p, "pv-examen");
   return c.json({ lot: p.lot, ...(await recevoirPv(await sessionParLibelle(m.examen, m.session), m.decisions, m.pvReference, p.auteur)) });
 });
 
 interop.post("/interop/eresultats/publication", async (c) => {
   const p = await partenaire(c, "publication");
   const m = valider(z.object({ examen: Examen, session: z.string().trim().min(3).max(40) }).strict(), p.json);
+  await lotUnique(p, "publication");
   return c.json({ lot: p.lot, ...(await publierSession(await sessionParLibelle(m.examen, m.session), p.auteur, "examens")) });
 });
 

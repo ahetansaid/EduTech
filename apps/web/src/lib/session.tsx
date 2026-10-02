@@ -3,7 +3,8 @@
 import type { Profil, Role } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { definirCompteCourant, nettoyerApresDeconnexion } from "./fileHorsConnexion";
 import { ecrire, requete } from "./http";
 import type { ContexteAffichage } from "./navigation";
 
@@ -39,6 +40,8 @@ export function useSessionServeur() {
 }
 
 export function FournisseurSession({ session, children }: { session: Session; children: ReactNode }) {
+  // La file hors connexion n'envoie que les saisies de ce compte (appareil partagé).
+  useEffect(() => { definirCompteCourant(session.compte.identifiant); }, [session.compte.identifiant]);
   return <Contexte.Provider value={session}>{children}</Contexte.Provider>;
 }
 
@@ -67,6 +70,7 @@ export function useDeconnexion() {
   return useMutation({
     mutationFn: () => ecrire("/auth/deconnexion"),
     onSettled: () => {
+      nettoyerApresDeconnexion();
       client.clear();
       router.replace("/connexion?motif=deconnexion");
     },

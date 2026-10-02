@@ -424,6 +424,18 @@ scolariteSuperieure.post("/etablissements/:id/inscriptions", authentifie, async 
   }).strict());
   const [apprenant] = await base().select({ id: schema.apprenants.id }).from(schema.apprenants).where(eq(schema.apprenants.id, saisie.apprenantId));
   if (!apprenant) throw new HTTPException(404, { message: "Apprenant inconnu" });
+  // Titre d'accès : un diplôme au-delà du CEP (BAC, BEPC pour l'EFTP…), une scolarité supérieure déjà
+  // ouverte, ou un vœu vers cet établissement. Sans cette preuve, un établissement inscrirait n'importe quel
+  // identifiant (séquentiel) et lirait le nom d'élèves du primaire.
+  const [titre] = (await base().execute(sql`
+    select 1 where exists (select 1 from core.certificats x where x.apprenant_id = ${saisie.apprenantId} and x.examen <> 'CEP' and not x.revoque)
+      or exists (select 1 from core.inscriptions_superieures i where i.apprenant_id = ${saisie.apprenantId})
+      or exists (select 1 from core.voeu_superieur v join core.filiere_superieure f on f.id = v.filiere_id
+                 where v.apprenant_id = ${saisie.apprenantId} and f.etablissement_id = ${id} and v.statut in ('soumis','admissible','admis'))`)) as unknown as unknown[];
+  if (!titre) {
+    await journaliser(profil, "Inscription supérieure sans titre d'accès", saisie.apprenantId, "gestion", false, "relation");
+    throw new HTTPException(422, { message: "Aucun titre d'accès au supérieur pour cette personne (diplôme, scolarité supérieure ou vœu vers cet établissement)." });
+  }
   const filiere = await filiereDe(saisie.filiereId);
   if (filiere.etablissementId !== id) throw new HTTPException(422, { message: "Filière hors de cet établissement" });
   if (saisie.composante && !filiere.composantes.includes(saisie.composante)) throw new HTTPException(422, { message: `Composante ${saisie.composante} non ouverte dans cette filière` });
@@ -676,8 +688,9 @@ scolariteSuperieure.post("/etablissements/:id/contrat/ue", authentifie, async (c
  * jugé. Rien d'estimé — une UE non évaluée est nommée comme telle, sans note inventée. Le cumul
  * applique le paramètre 7 : un acquis périmé reste lisible mais ne compte plus au diplôme.
  */
-async function contratPedagogique(apprenantId: string): Promise<ContratPedagogique> {
-  const insc = await inscriptionDe(apprenantId);
+/** Contrat pédagogique : celui de l'établissement demandé (un établissement ne lit jamais l'inscription d'un autre). */
+async function contratPedagogique(apprenantId: string, etablissementId?: string): Promise<ContratPedagogique> {
+  const insc = await inscriptionDe(apprenantId, etablissementId);
   if (!insc) throw new HTTPException(404, { message: "Aucune inscription dans l'enseignement supérieur" });
   const filiere = await filiereDe(insc.filiereId);
   const lignes = await base()
@@ -690,7 +703,7 @@ async function contratPedagogique(apprenantId: string): Promise<ContratPedagogiq
     .orderBy(asc(schema.unitesEnseignement.code));
   const [validations, notes] = await Promise.all([
     base().select().from(schema.validationsUe).where(and(eq(schema.validationsUe.apprenantId, apprenantId), eq(schema.validationsUe.etablissementId, insc.etablissementId))).orderBy(asc(schema.validationsUe.acquiseLe)),
-    base().select({ ueId: schema.notesUe.ueId }).from(schema.notesUe).where(eq(schema.notesUe.apprenantId, apprenantId)),
+    base().select({ ueId: schema.notesUe.ueId }).from(schema.notesUe).where(and(eq(schema.notesUe.apprenantId, apprenantId), inArray(schema.notesUe.ueId, lignes.length ? lignes.map((l) => l.ue.id) : [""]))),
   ]);
   const regle = await regleAppliquee({ etablissementId: insc.etablissementId, filiereId: insc.filiereId, periodeId: null, regime: insc.regimePedagogique });
   const valides = validations.filter((v) => acquisToujoursValide(v.acquiseLe, regle.dureeValiditeAcquis));
@@ -723,7 +736,7 @@ scolariteSuperieure.get("/etablissements/:id/contrat/:apprenantId", authentifie,
   const apprenantId = ID_APPRENANT.parse(c.req.param("apprenantId"));
   const { profil, finalite } = await accesEtablissement(c, id);
   if (!(await inscriptionDe(apprenantId, id))) throw new HTTPException(404, { message: "Aucune inscription de cette personne dans cet établissement" });
-  const contrat = await contratPedagogique(apprenantId);
+  const contrat = await contratPedagogique(apprenantId, id);
   await journaliser(profil, "Consultation du contrat pédagogique d'un étudiant", apprenantId, finalite, true, null);
   return c.json(contrat);
 });

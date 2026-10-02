@@ -6,7 +6,12 @@ import { lireEnv } from "./env";
  * usage par clef : un code à usage unique, un secret TOTP ou un code de secours ne partagent jamais la
  * même clef. Hors production, sans clef du sceau, la chaîne de connexion tient lieu de clef maîtresse.
  */
-const maitre = () => lireEnv().CLE_SEAU ?? lireEnv().DATABASE_URL_API;
+const maitre = () => {
+  const cle = lireEnv().CLE_MAITRESSE;
+  // En production la clé est obligatoire (env.ts) ; le repli ne vaut qu'en développement et en recette jetable.
+  if (!cle && lireEnv().PRODUCTION) throw new Error("Clé maîtresse absente en production");
+  return cle ?? lireEnv().DATABASE_URL_API;
+};
 const cles = new Map<string, Buffer>();
 export function cleDerivee(usage: string): Buffer {
   let k = cles.get(usage);

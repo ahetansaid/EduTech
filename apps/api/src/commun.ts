@@ -75,7 +75,9 @@ export function limiteDebitPartage(nom: string, max: number, fenetreMs: number, 
       n = r?.n ?? 1;
       // Purge paresseuse des fenêtres échues (une requête sur cent), sans jamais retarder la réponse.
       if (Math.random() < 0.01) void base().delete(schema.compteursDebit).where(lt(schema.compteursDebit.fenetre, fenetre - 2)).catch(() => {});
-    } catch {
+    } catch (e) {
+      // Repli sur le plafond de l'instance : la base ne répond pas. Tracé, car un repli fréquent affaiblit le plafond.
+      console.error(JSON.stringify({ niveau: "avertissement", message: `Plafond partagé « ${nom} » indisponible, repli local`, code: (e as { code?: string }).code ?? null }));
       return local(c, next);
     }
     if (n > max) {
@@ -92,7 +94,27 @@ export const cleUtilisateur = (c: Context) => {
   return jeton ? `s:${createHash("sha256").update(jeton).digest("base64url").slice(0, 22)}` : `ip:${adresseIp(c)}`;
 };
 
-export const adresseIp = (c: Context) => c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || "local";
+/**
+ * Adresse du client, selon la source configurée (BEILE_SOURCE_IP) — jamais un en-tête que le client choisit :
+ * - « vercel » (défaut sur Vercel) : la plateforme ÉCRASE X-Forwarded-For à l'entrée (mesuré : un en-tête
+ *   usurpé ne contourne pas les plafonds) ; on lit sa première valeur ;
+ * - « mandataire » : derrière N mandataires de confiance (BEILE_MANDATAIRES, nginx…), l'adresse est la N-ième
+ *   en partant de la DROITE (les valeurs de gauche sont fournies par le client) ;
+ * - « socket » (défaut ailleurs) : l'adresse de la connexion TCP.
+ */
+export function adresseIp(c: Context): string {
+  const { SOURCE_IP, MANDATAIRES } = lireEnv();
+  if (SOURCE_IP === "vercel") return c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || "inconnue";
+  if (SOURCE_IP === "mandataire") {
+    const chaine = (c.req.header("x-forwarded-for") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    return chaine[chaine.length - MANDATAIRES] ?? chaine[0] ?? "inconnue";
+  }
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+  return env?.incoming?.socket?.remoteAddress ?? "inconnue";
+}
+
+/** Cookies « Secure » : toujours en production (pas seulement si un en-tête le dit), et dès que la requête est en HTTPS. */
+export const cookieSecurise = (c: Context) => lireEnv().PRODUCTION || c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https";
 
 /** Validation zod du corps JSON : aucune donnée non conforme au contrat n'entre. */
 export async function corps<T>(c: Context, schemaZod: z.ZodType<T>): Promise<T> {
@@ -111,8 +133,9 @@ export async function corps<T>(c: Context, schemaZod: z.ZodType<T>): Promise<T> 
 export function controlerOrigine(c: Context) {
   const origine = c.req.header("origin");
   if (!origine) return;
-  const hote = new URL(c.req.url).host;
-  if (new URL(origine).host !== hote && !lireEnv().ORIGINES.includes(origine)) throw new HTTPException(403, { message: "Origine de la requête non autorisée" });
+  let hoteOrigine: string;
+  try { hoteOrigine = new URL(origine).host; } catch { throw new HTTPException(403, { message: "Origine de la requête non autorisée" }); }
+  if (hoteOrigine !== new URL(c.req.url).host && !lireEnv().ORIGINES.includes(origine)) throw new HTTPException(403, { message: "Origine de la requête non autorisée" });
 }
 
 function controlerCsrf(c: Context) {
@@ -134,14 +157,21 @@ export const oublierSession = (empreinte: string) => cacheSessions.delete(emprei
  * Routes ouvertes à une session « incomplète » (mot de passe initial à changer, second facteur à présenter) :
  * de quoi connaître son état, le compléter ou se déconnecter — rien d'autre.
  */
-const LIBRES = /\/auth\/(etat|session|deconnexion|mot-de-passe|mfa\/[a-z]+(\/[a-z-]+)?)$/;
+const LIBRES = /^\/api\/v1\/auth\/(etat|session|deconnexion|mot-de-passe|mfa\/[a-z]+(\/[a-z-]+)?)$/;
 /** Inactivité réelle (clic, frappe, écriture) : 30 min pour un administrateur, 2 h pour les autres. */
 const INACTIVITE_ADMIN_MS = 30 * 60_000, INACTIVITE_MS = 2 * 3600_000;
 
 function exigerSessionComplete(c: Context, compte: CompteSession) {
+  const secondFacteurDu = (compte.mfaExige || compte.mfaActive) && !compte.mfaVerifie;
+  // Changer de mot de passe AVANT d'avoir présenté son second facteur couperait l'accès du titulaire avec le
+  // seul mot de passe volé : réservé au mot de passe initial imposé.
+  if (secondFacteurDu && compte.mfaActive && /\/auth\/mot-de-passe$/.test(c.req.path) && !compte.doitChangerMotDePasse) {
+    throw new ErreurCodee(403, "Présentez votre second facteur pour continuer", "mfa_a_verifier");
+  }
   if (LIBRES.test(c.req.path)) return;
   if (compte.doitChangerMotDePasse) throw new ErreurCodee(403, "Choisissez d'abord votre propre mot de passe", "mot_de_passe_a_changer");
-  if (compte.mfaExige && !compte.mfaVerifie) {
+  // Second facteur exigé par la fonction, ou enregistré volontairement : dans les deux cas, il est demandé.
+  if (secondFacteurDu) {
     throw compte.mfaActive
       ? new ErreurCodee(403, "Présentez votre second facteur pour continuer", "mfa_a_verifier")
       : new ErreurCodee(403, "Votre fonction exige un second facteur : enregistrez-le pour continuer", "mfa_a_enroler");
@@ -202,7 +232,7 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   };
   exigerSessionComplete(c, compte);
   // Seules les sessions complètes sont mises en cache : une étape franchie sur une autre instance est vue aussitôt.
-  if (!compte.doitChangerMotDePasse && (!mfaExige || compte.mfaVerifie)) {
+  if (!compte.doitChangerMotDePasse && (!(mfaExige || compte.mfaActive) || compte.mfaVerifie)) {
     if (cacheSessions.size > 50_000) for (const [k, v] of cacheSessions) if (v.expire <= Date.now()) cacheSessions.delete(k);
     cacheSessions.set(empreinte, { expire: Date.now() + CACHE_SESSIONS_MS, profil, compte });
   }
@@ -230,6 +260,26 @@ export async function journaliser(profil: Pick<Profil, "id" | "nomAffiche">, act
   }
   await base().insert(schema.journal).values({ id: `AUD-${randomUUID()}`, profilId: profil.id, profilNom: profil.nomAffiche, action, ressource: ressource.slice(0, 200), finalite, autorise, critereManquant });
   if (!autorise && profil.id !== "inconnu") await (await import("./vigie")).surRefus(profil.id, profil.nomAffiche).catch(() => {});
+}
+
+/** Révoque toutes les sessions d'un compte ET les retire du cache de cette instance (effet immédiat). */
+export async function revoquerSessionsDuCompte(compteId: string) {
+  const r = await base().update(schema.sessions).set({ revoquee: true }).where(and(eq(schema.sessions.compteId, compteId), eq(schema.sessions.revoquee, false))).returning({ e: schema.sessions.empreinte });
+  for (const x of r) oublierSession(x.e);
+  return r.length;
+}
+
+/**
+ * Compte privilégié : administrateur de la plateforme, DPO, administration centrale, ou délégation active de
+ * niveau 0 à 2. Il ne se réinitialise jamais par un mot de passe remis à un tiers (prise de contrôle).
+ */
+export async function comptePrivilegie(compteId: string) {
+  const [l] = (await base().execute(sql`
+    select exists (select 1 from core.comptes c join core.profils p on p.id = c.profil_id, jsonb_array_elements(p.habilitations) h
+                   where c.id = ${compteId} and h->>'role' in ('administrateur','dpo','administration_centrale'))
+        or exists (select 1 from core.comptes c join core.delegations d on d.profil_id = c.profil_id
+                   where c.id = ${compteId} and d.statut = 'active' and d.au > now() and d.niveau <= 2) as p`)) as unknown as { p: boolean }[];
+  return !!l?.p;
 }
 
 export const refuser = (message: string): never => {

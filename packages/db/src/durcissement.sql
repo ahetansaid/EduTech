@@ -172,4 +172,45 @@ GRANT SELECT (id, apprenant_id, type_acte, annee_universitaire, periode_id, disp
 GRANT USAGE ON SCHEMA audit TO beile_portail_public;
 GRANT INSERT ON audit.journal TO beile_portail_public;
 -- Plafond de débit partagé entre instances (vérifications publiques).
-GRANT SELECT, INSERT, UPDATE, DELETE ON core.compteurs_debit TO beile_portail_public;
+GRANT SELECT, INSERT, UPDATE ON core.compteurs_debit TO beile_portail_public;
+REVOKE DELETE ON core.compteurs_debit FROM beile_portail_public;
+
+-- ------------------------------------------------------------------ Audit d'octobre 2026
+-- Liens enseignant–classe : supprimés à la mutation d'un enseignant (fin des droits dans l'ancien établissement).
+GRANT DELETE ON core.enseignements TO beile_app;
+-- Défis WebAuthn : consommés (supprimés) à l'usage, purgés à l'échéance.
+GRANT DELETE ON core.defis_webauthn TO beile_app;
+
+-- Résultats d'examens nationaux : une fois la session publiée, ni verdict, ni moyenne, ni mention ne
+-- changent EN BASE (pas seulement dans l'API) ; une session publiée ne redevient jamais brouillon.
+CREATE OR REPLACE FUNCTION public.beile_resultat_publie_immuable() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'examens_sessions' THEN
+    IF OLD.statut = 'publiee' AND (TG_OP = 'DELETE' OR NEW.statut IS DISTINCT FROM 'publiee') THEN
+      RAISE EXCEPTION 'Session d''examen publiée : son statut ne change plus';
+    END IF;
+  ELSIF EXISTS (SELECT 1 FROM core.examens_sessions s WHERE s.id = OLD.session_id AND s.statut = 'publiee') THEN
+    IF TG_OP = 'DELETE' OR NEW.decision IS DISTINCT FROM OLD.decision OR NEW.moyenne IS DISTINCT FROM OLD.moyenne
+       OR NEW.mention IS DISTINCT FROM OLD.mention OR NEW.session_id IS DISTINCT FROM OLD.session_id OR NEW.apprenant_id IS DISTINCT FROM OLD.apprenant_id THEN
+      RAISE EXCEPTION 'Résultat d''une session publiée : non modifiable';
+    END IF;
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END $$;
+DROP TRIGGER IF EXISTS resultat_publie_immuable ON core.examens_sessions;
+CREATE TRIGGER resultat_publie_immuable BEFORE UPDATE OR DELETE ON core.examens_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.beile_resultat_publie_immuable();
+DROP TRIGGER IF EXISTS resultat_publie_immuable ON core.examens_candidatures;
+CREATE TRIGGER resultat_publie_immuable BEFORE UPDATE OR DELETE ON core.examens_candidatures
+  FOR EACH ROW EXECUTE FUNCTION public.beile_resultat_publie_immuable();
+
+-- Tables en ajout seul : la troncature est interdite aussi (seconde barrière, propriétaire compris).
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['workflow.decisions', 'core.tickets_messages', 'core.notes_ue', 'core.validations_ue', 'core.deliberations_diplome'] LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS ajout_seul_troncature ON %s', t);
+    EXECUTE format('CREATE TRIGGER ajout_seul_troncature BEFORE TRUNCATE ON %s FOR EACH STATEMENT EXECUTE FUNCTION public.beile_interdire_modification()', t);
+  END LOOP;
+END $$;

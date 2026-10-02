@@ -35,6 +35,23 @@ export interface SaisieEnAttente {
   saisiLe: string;
   tentatives: number;
   derniereErreur?: string;
+  /** Compte auteur : une saisie n'est jamais envoyée sous la session d'un autre (appareil partagé). */
+  compte?: string;
+}
+
+/** Compte de la session ouverte sur cet appareil (posé par le fournisseur de session). */
+let compteCourant: string | null = null;
+export function definirCompteCourant(identifiant: string | null) { compteCourant = identifiant; }
+
+/**
+ * À la déconnexion : les brouillons de notes (données d'élèves en clair dans le navigateur) sont effacés.
+ * Les saisies déjà mises en file restent, rattachées à leur auteur : elles ne partiront qu'à SA reconnexion.
+ */
+export function nettoyerApresDeconnexion() {
+  try {
+    for (const cle of Object.keys(localStorage)) if (cle.startsWith("beile.brouillon-notes.")) localStorage.removeItem(cle);
+  } catch { /* stockage indisponible */ }
+  compteCourant = null;
 }
 
 export interface BilanSynchronisation {
@@ -100,7 +117,7 @@ function identifiant() {
 /* ------------------------------------------------------------------ Opérations */
 
 export function mettreEnFile(s: Pick<SaisieEnAttente, "type" | "chemin" | "corps" | "libelle" | "classeId">): SaisieEnAttente {
-  const saisie: SaisieEnAttente = { ...s, id: identifiant(), saisiLe: new Date().toISOString(), tentatives: 0 };
+  const saisie: SaisieEnAttente = { ...s, id: identifiant(), saisiLe: new Date().toISOString(), tentatives: 0, compte: compteCourant ?? undefined };
   ecrireFile([...lireFile(), saisie]);
   return saisie;
 }
@@ -146,6 +163,8 @@ export function synchroniser(): Promise<BilanSynchronisation> {
     for (const saisie of [...lireFile()]) {
       // Relire à chaque tour : un autre onglet a pu la traiter entre-temps.
       if (!lireFile().some((s) => s.id === saisie.id)) continue;
+      // Saisie d'un autre compte (ou d'avant l'attribution des comptes) : jamais envoyée sous cette session.
+      if (!compteCourant || saisie.compte !== compteCourant) continue;
       if (dejaAcceptees.has(saisie.id)) { retirerDeLaFile(saisie.id); continue; }
       if (typeof navigator !== "undefined" && !navigator.onLine) break;
       try {
@@ -191,6 +210,6 @@ function abonner(f: () => void) {
 
 /** Saisies en attente (toutes, ou celles d'une classe). Se met à jour entre onglets. */
 export function useFileHorsConnexion(classeId?: string): SaisieEnAttente[] {
-  const liste = useSyncExternalStore(abonner, lireFile, () => VIDE);
+  const liste = useSyncExternalStore(abonner, lireFile, () => VIDE).filter((s) => s.compte === compteCourant);
   return classeId ? liste.filter((s) => s.classeId === classeId) : liste;
 }

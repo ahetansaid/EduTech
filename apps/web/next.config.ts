@@ -5,11 +5,14 @@ import type { NextConfig } from "next";
  * que Next réécrit vers le back-end : cookies de session « first-party », aucune origine tierce dans la CSP.
  * BEILE_API_INTERNE : URL du back-end (http://localhost:4000 en local, URL du projet API sur Vercel).
  */
+if (process.env.NODE_ENV === "production" && process.env.VERCEL && !process.env.BEILE_API_INTERNE) {
+  throw new Error("BEILE_API_INTERNE absent : le front réécrirait /api/v1 vers localhost.");
+}
 const API_INTERNE = (process.env.BEILE_API_INTERNE ?? "http://localhost:4000").replace(/\/$/, "");
 
 /** En-têtes de sécurité appliqués à toutes les réponses (la CSP à nonce est posée par proxy.ts). */
 const securityHeaders = [
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

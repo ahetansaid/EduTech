@@ -21,7 +21,7 @@ export async function envoyer(partenaire: string, chemin: string, corps: unknown
     method: "POST",
     headers: {
       "content-type": "application/json", "x-beile-partenaire": partenaire, "x-beile-horodatage": String(horodatage),
-      "x-beile-lot": lot, "x-beile-signature": signer(options.secret ?? secretDe(partenaire), horodatage, lot, texte),
+      "x-beile-lot": lot, "x-beile-signature": signer(options.secret ?? secretDe(partenaire), "POST", chemin.split("?")[0]!, horodatage, lot, texte),
     },
     body: texte,
   });

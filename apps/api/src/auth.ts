@@ -7,9 +7,12 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { adresseIp, authentifie, base, type CompteSession, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, corps, exigerElevation, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser, type Variables } from "./commun";
+import {
+  adresseIp, authentifie, base, type CompteSession, comptePrivilegie, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, cookieSecurise, corps, exigerElevation, journaliser, limiteDebit,
+  limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
+} from "./commun";
 import { exigerPortail } from "./portails";
-import { surConnexionAdministrateur, surVerrouillage } from "./vigie";
+import { signaler, surConnexionAdministrateur, surVerrouillage } from "./vigie";
 
 /**
  * Authentification : identifiant + mot de passe (scrypt), session serveur de 12 h dans un cookie HttpOnly,
@@ -23,10 +26,8 @@ const VERROU_MS = 15 * 60_000;
 /** Empreinte factice : la vérification coûte le même temps même si le compte n'existe pas (pas d'énumération). */
 const HASH_FACTICE = "scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$" + "A".repeat(86);
 
-const securise = (c: Context) => c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https";
-
 function poserCookies(c: Context, jeton: string) {
-  const secure = securise(c);
+  const secure = cookieSecurise(c);
   setCookie(c, COOKIE_SESSION, jeton, { httpOnly: true, secure, sameSite: "Lax", path: "/", maxAge: DUREE_SESSION_MS / 1000 });
   setCookie(c, COOKIE_CSRF, randomBytes(24).toString("base64url"), { httpOnly: false, secure, sameSite: "Strict", path: "/", maxAge: DUREE_SESSION_MS / 1000 });
 }
@@ -39,12 +40,15 @@ auth.post("/auth/connexion", limiteDebitPartage("connexion", 60, 60_000), async 
   const [compte] = await base().select().from(schema.comptes).where(eq(schema.comptes.identifiant, identifiant));
   const [profil] = compte ? await base().select().from(schema.profils).where(eq(schema.profils.id, compte.profilId)) : [];
 
+  const valide = await verifierMotDePasse(motDePasse, compte?.motDePasseHash ?? HASH_FACTICE);
+  // Compte verrouillé : seul celui qui donne le BON mot de passe l'apprend (423). Pour tout autre, la réponse
+  // est celle d'un identifiant inconnu : le verrou ne révèle pas qu'un compte existe.
   if (compte?.verrouilleJusquA && compte.verrouilleJusquA > new Date()) {
     if (profil) await journaliser(profil, "Connexion — compte verrouillé", identifiant, "gestion", false, "role");
+    if (!valide) throw new HTTPException(401, { message: "Identifiant ou mot de passe incorrect" });
     const minutes = Math.ceil((compte.verrouilleJusquA.getTime() - Date.now()) / 60_000);
     throw new HTTPException(423, { message: `Compte temporairement verrouillé après plusieurs échecs. Réessayez dans ${minutes} minute(s).` });
   }
-  const valide = await verifierMotDePasse(motDePasse, compte?.motDePasseHash ?? HASH_FACTICE);
   if (!compte || !profil || !compte.actif || !valide) {
     if (compte) {
       const echecs = compte.echecsConsecutifs + 1;
@@ -69,8 +73,10 @@ auth.post("/auth/connexion", limiteDebitPartage("connexion", 60, 60_000), async 
   await journaliser(profil, "Connexion", identifiant, "gestion", true, null);
   poserCookies(c, jeton);
   // Étape suivante annoncée au portail : choisir son mot de passe, puis présenter (ou enregistrer) le second facteur.
-  const etape = compte.doitChangerMotDePasse ? "mot_de_passe" : mfaExige ? (compte.mfaActive ? "mfa_a_verifier" : "mfa_a_enroler") : null;
-  return c.json({ profil, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse }, etape });
+  const etape = compte.doitChangerMotDePasse ? "mot_de_passe" : compte.mfaActive ? "mfa_a_verifier" : mfaExige ? "mfa_a_enroler" : null;
+  // Tant que le second facteur n'est pas présenté, les habilitations ne sont pas révélées.
+  const visible = etape === "mfa_a_verifier" || etape === "mfa_a_enroler" ? { ...profil, habilitations: [] } : profil;
+  return c.json({ profil: visible, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse }, etape });
 });
 
 /** Second facteur exigé : administrateur de la plateforme, ou délégation d'administration active de niveau 0 à 2. */
@@ -115,6 +121,8 @@ auth.get("/auth/etat", async (c) => {
   }
   const compte = c.get("compte");
   const profil = c.get("profil");
+  // Second facteur dû et pas encore présenté : ni habilitations ni contexte (rien à montrer d'autre que l'étape).
+  if ((compte.mfaExige || compte.mfaActive) && !compte.mfaVerifie) return c.json({ session: { profil: { ...profil, habilitations: [] }, compte: etatCompte(compte), contexte: null } });
   return c.json({ session: { profil, compte: etatCompte(compte), contexte: await contexteDe(profil) } });
 });
 
@@ -173,10 +181,18 @@ auth.post("/admin/comptes/:id/reinitialiser", authentifie, async (c) => {
   exigerAdmin(c);
   exigerElevation(c);
   const id = z.string().regex(/^CPT-[a-z]+$/).parse(c.req.param("id"));
+  if (id === c.get("compte").id) refuser("Votre propre mot de passe se change depuis « Mon compte »");
+  // Compte privilégié : un mot de passe remis à un autre administrateur vaudrait prise de contrôle (suivie de
+  // l'enregistrement de son propre second facteur). La personne récupère elle-même son compte, par code.
+  if (await comptePrivilegie(id)) {
+    await journaliser(c.get("profil"), "Réinitialisation du mot de passe — compte privilégié", id, "gestion", false, "privilege");
+    await signaler("reinitialisation_privilegiee", "haute", c.get("profil").id, id, `${c.get("profil").nomAffiche} a tenté de réinitialiser le mot de passe du compte privilégié ${id}.`);
+    throw new HTTPException(422, { message: "Compte privilégié : la personne récupère elle-même son accès (« Mot de passe oublié », par code). Aucun mot de passe ne peut vous être remis." });
+  }
   const temporaire = genererMotDePasse();
   const [maj] = await base().update(schema.comptes).set({ motDePasseHash: await hacherMotDePasse(temporaire), doitChangerMotDePasse: true, echecsConsecutifs: 0, verrouilleJusquA: null }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });
   if (!maj) throw new HTTPException(404, { message: "Compte introuvable" });
-  await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.compteId, id));
+  await revoquerSessionsDuCompte(id);
   await journaliser(c.get("profil"), "Réinitialisation du mot de passe", id, "gestion", true, null);
   return c.json({ motDePasseTemporaire: temporaire });
 });
@@ -188,7 +204,7 @@ auth.post("/admin/comptes/:id/activation", authentifie, async (c) => {
   const { actif } = await corps(c, z.object({ actif: z.boolean() }).strict());
   if (id === c.get("compte").id && !actif) throw new HTTPException(422, { message: "Impossible de désactiver son propre compte" });
   await base().update(schema.comptes).set({ actif }).where(eq(schema.comptes.id, id));
-  if (!actif) await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.compteId, id));
+  if (!actif) await revoquerSessionsDuCompte(id);
   await journaliser(c.get("profil"), actif ? "Activation d'un compte" : "Désactivation d'un compte", id, "gestion", true, null);
   return c.json({ ok: true });
 });

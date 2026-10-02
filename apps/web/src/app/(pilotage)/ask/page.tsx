@@ -262,10 +262,18 @@ function Ask() {
     });
   };
 
+  // Question passée dans l'adresse : lancée d'elle-même seulement si elle vient d'un lien de la plateforme
+  // (marque posée au clic) ; venue d'un lien extérieur, elle est seulement proposée — un lien piégé ne fait
+  // pas poser, au nom de la personne, une question journalisée.
   useEffect(() => {
     const q = params.get("q");
-    if (q && !deja.current) { deja.current = true; poser(q); }
-  });
+    if (!q || deja.current) return;
+    deja.current = true;
+    let interne = false;
+    try { interne = sessionStorage.getItem("beile.ask.lancer") === q; sessionStorage.removeItem("beile.ask.lancer"); } catch { /* stockage indisponible */ }
+    if (interne) poser(q); else setSaisie(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule fois par question (garde « deja »)
+  }, [params]);
 
   const refusesSecurite = echanges.filter((e) => e.etat === "reponse" && e.reponse.statut === "refuse" && MOTIF[e.reponse.motif]?.securite).length;
 

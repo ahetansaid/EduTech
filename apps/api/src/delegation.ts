@@ -124,6 +124,32 @@ function perimetreDe(role: string, org: Org, sujet?: { apprenantId?: string; npi
   return { niveau: "etablissement", etablissementId: org.etablissementId! };
 }
 
+/**
+ * Ancrage d'un rôle d'usager dans l'organisation qui l'accorde. Sans lui, un administrateur d'établissement
+ * créerait un compte « responsable légal » au NPI de n'importe quel adulte du registre, et lirait le dossier
+ * de ses enfants partout au Bénin. Un parent n'est créé que pour un enfant scolarisé ICI ; un élève, s'il est
+ * inscrit ICI.
+ */
+async function verifierAncrage(role: string, org: Org, sujet: { apprenantId?: string; npi?: string | null }) {
+  if (role !== "parent" && role !== "apprenant") return;
+  const etab = org.etablissementId;
+  if (!etab) throw new HTTPException(422, { message: "Ce rôle se pose sur un établissement." });
+  const eleves = role === "apprenant"
+    ? sql`select ${sujet.apprenantId ?? ""}::text as id`
+    : sql`select apprenant_id as id from core.liens_familiaux where responsable_npi = ${sujet.npi ?? ""}`;
+  const [ok] = (await base().execute(sql`
+    with e as (${eleves})
+    select 1 from e where exists (select 1 from core.scolarites s left join core.classes c on c.id = s.classe_id
+        where s.apprenant_id = e.id and coalesce(s.etablissement_id, c.etablissement_id) = ${etab})
+      or exists (select 1 from core.inscriptions_superieures i where i.apprenant_id = e.id and i.etablissement_id = ${etab})
+    limit 1`)) as unknown as unknown[];
+  if (!ok) {
+    throw new HTTPException(422, { message: role === "parent"
+      ? "Aucun enfant rattaché à ce NPI n'est scolarisé dans cet établissement : le compte parent se crée là où l'enfant est inscrit."
+      : "Cet apprenant n'est pas inscrit dans cet établissement." });
+  }
+}
+
 /** Retire des droits effectifs une habilitation (même rôle, même périmètre), et invalide la session en cache. */
 async function retirerHabilitation(profilId: string, role: string, perimetre: unknown) {
   const [p] = await base().select().from(schema.profils).where(eq(schema.profils.id, profilId));
@@ -193,16 +219,17 @@ delegation.get("/delegation/comptes", authentifie, async (c) => {
       (select coalesce(json_agg(json_build_object('id', a.id, 'role', a.role, 'organisationId', a.organisation_id, 'organisation', oa.nom, 'au', a.au, 'garant', a.accordee_par, 'dansPerimetre', a.organisation_id in (select id from sous)) order by a.role), '[]')
          from core.attributions a join core.organisations oa on oa.id = a.organisation_id where a.profil_id = p.id and a.revoquee_le is null) as attributions,
       (select coalesce(json_agg(json_build_object('id', d.id, 'niveau', d.niveau, 'statut', d.statut, 'organisationId', d.organisation_id, 'organisation', od.nom, 'au', d.au)), '[]')
-         from core.delegations d join core.organisations od on od.id = d.organisation_id where d.profil_id = p.id and d.statut in ('active','en_attente')) as delegations
+         from core.delegations d join core.organisations od on od.id = d.organisation_id where d.profil_id = p.id and d.statut in ('active','en_attente') and d.organisation_id in (select id from sous)) as delegations
     from porteurs x join core.profils p on p.id = x.profil_id left join core.comptes c on c.profil_id = p.id
     ${motif ? sql`where p.nom_affiche ilike ${motif} or c.identifiant ilike ${motif}` : sql``}
     order by p.nom_affiche limit 100`)) as unknown as { id: string; attributions: { role: string; dansPerimetre: boolean }[]; delegations: unknown[] }[];
   await journaliser(profil, "Liste des comptes délégués", f.organisation, "gestion", true, null);
   // Cumul signalé : un même profil porte à la fois un rôle métier et une délégation d'administration.
   // « gerable » : ce que je peux reconfirmer ou révoquer (jamais mes propres droits) ; le serveur revérifie à l'action.
+  // Les droits détenus HORS de mon sous-arbre ne me regardent pas : seul le fait d'un cumul est signalé.
   return c.json(lignes.map((l) => ({
     ...l, cumul: l.attributions.length > 0 && l.delegations.length > 0,
-    attributions: l.attributions.map(({ dansPerimetre, ...a }) => ({ ...a, gerable: dansPerimetre && l.id !== profil.id && couvrante.rolesDelegables.includes(a.role) })),
+    attributions: l.attributions.filter((a) => a.dansPerimetre).map(({ dansPerimetre, ...a }) => ({ ...a, gerable: dansPerimetre && l.id !== profil.id && couvrante.rolesDelegables.includes(a.role) })),
   })));
 });
 
@@ -245,8 +272,11 @@ delegation.post("/delegation/comptes", authentifie, limiteDebit(60, 60_000, cleU
     await journaliser(profil, "Création d'un compte délégué", `${org.id} · ${s.role}`, "gestion", false, "role");
     refuser(`Votre délégation ne permet pas d'attribuer le rôle « ${s.role} » : refus journalisé`);
   }
+  // Toute personne qui reçoit un rôle est identifiée au registre national : pas de compte « fantôme ».
+  if (!s.npi) throw new HTTPException(422, { message: "Le NPI de la personne est requis pour tout compte." });
   const au = dateFin(s.au, d.au);
-  const perimetre = perimetreDe(s.role, org, { apprenantId: s.apprenantId, npi: s.npi ?? null });
+  const perimetre = perimetreDe(s.role, org, { apprenantId: s.apprenantId, npi: s.npi });
+  await verifierAncrage(s.role, org, { apprenantId: s.apprenantId, npi: s.npi });
   const habilitations = [{ role: s.role, perimetre }] as Habilitation[];
   const cumul = verifierCumul([s.role], []);
   if (cumul) throw new HTTPException(422, { message: cumul });
@@ -290,7 +320,9 @@ delegation.post("/delegation/attributions", authentifie, async (c) => {
   const d = await exigerCouverture(profil, org.id, "Attribution d'un rôle");
   if (!d.rolesDelegables.includes(s.role)) refuser(`Votre délégation ne permet pas d'attribuer le rôle « ${s.role} »`);
   const etat = await etatDuProfil(s.profilId);
+  if (!etat.profil.npi) throw new HTTPException(422, { message: "Ce profil n'est pas rattaché au registre national (NPI) : aucun rôle ne peut lui être attribué." });
   const perimetre = perimetreDe(s.role, org, { apprenantId: s.apprenantId, npi: etat.profil.npi });
+  await verifierAncrage(s.role, org, { apprenantId: s.apprenantId, npi: etat.profil.npi });
   if (etat.habilitations.some((h) => h.role === s.role && JSON.stringify(h.perimetre) === JSON.stringify(perimetre))) throw new HTTPException(409, { message: "Ce rôle est déjà attribué sur ce périmètre." });
   const cumul = verifierCumul([...etat.habilitations.map((h) => h.role), s.role], etat.niveaux);
   if (cumul) throw new HTTPException(422, { message: cumul });

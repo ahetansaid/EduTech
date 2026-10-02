@@ -7,6 +7,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, exigerElevation, base, cleUtilisateur, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { signaler } from "./vigie";
 
 /**
  * Administration des utilisateurs et assistance.
@@ -213,6 +214,30 @@ const HABILITATIONS = z.array(Habilitation).min(1, "au moins une habilitation").
 const NOM_AFFICHE = texte(3, 80).pipe(z.string().regex(/^\p{L}[\p{L}\p{M}' .’-]*$/u, "lettres, espaces, apostrophes et tirets uniquement"));
 const FONCTION = texte(3, 120).pipe(z.string().refine((v) => !v.includes("�"), "caractère invalide (encodage)"));
 
+/** Rôles dont l'octroi est une alerte de la vigie : ils ouvrent les comptes, le journal ou des données nationales. */
+const ROLES_PRIVILEGIES: Role[] = ["administrateur", "dpo", "administration_centrale"];
+const cleHabilitation = (h: Habilitation) => JSON.stringify([h.role, h.perimetre]);
+
+/**
+ * Garde-fous de l'administration de la plateforme :
+ * - nul ne s'ajoute de droits à lui-même (seul un retrait est permis) ;
+ * - l'administrateur de la plateforme ne porte aucun autre rôle (accès aux comptes ≠ accès aux données) ;
+ * - un rôle privilégié exige une personne du registre (NPI), et son octroi lève une alerte haute (DPO).
+ */
+async function verifierOctroi(c: Context<{ Variables: Variables }>, soiMeme: boolean, avant: Habilitation[], apres: Habilitation[], npi: string | null, cible: string) {
+  const deja = new Set(avant.map(cleHabilitation));
+  const ajouts = apres.filter((h) => !deja.has(cleHabilitation(h)));
+  if (soiMeme && ajouts.length) {
+    await journaliser(c.get("profil"), "Auto-attribution de droits", ajouts.map((h) => h.role).join(", "), "gestion", false, "role");
+    erreur422("Nul ne s'ajoute de droits à lui-même : demandez-le à un autre administrateur");
+  }
+  const roles = apres.map((h) => h.role);
+  if (roles.includes("administrateur") && roles.some((r) => r !== "administrateur")) erreur422("L'administrateur de la plateforme ne porte aucun autre rôle : l'accès aux comptes n'ouvre pas l'accès aux données");
+  const privilegies = ajouts.filter((h) => ROLES_PRIVILEGIES.includes(h.role));
+  if (privilegies.length && !npi) erreur422("Un rôle privilégié (administrateur, DPO, administration centrale) exige le NPI de la personne");
+  if (privilegies.length) await signaler("octroi_privilegie", "haute", c.get("profil").id, `${cible}|${privilegies.map((h) => h.role).join(",")}`, `${c.get("profil").nomAffiche} a accordé ${privilegies.map((h) => h.role).join(", ")} au compte ${cible}.`);
+}
+
 administration.post("/admin/utilisateurs", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
   exigerElevation(c);
   await exigerAdmin(c, "Création d'un utilisateur", "core.comptes");
@@ -225,6 +250,7 @@ administration.post("/admin/utilisateurs", authentifie, limiteDebit(30, 60_000, 
   }).strict());
   const npi = saisie.npi ?? null;
   await verifierCoherence(saisie.habilitations, npi, null);
+  await verifierOctroi(c, false, [], saisie.habilitations, npi, saisie.identifiant ?? saisie.nomAffiche);
 
   const identifiant = saisie.identifiant ?? (await proposerIdentifiant(saisie.nomAffiche)) ?? erreur422("Impossible de proposer un identifiant : saisissez-le");
   const [pris] = await base().select({ id: schema.comptes.id }).from(schema.comptes).where(eq(schema.comptes.identifiant, identifiant));
@@ -290,6 +316,7 @@ administration.post("/admin/comptes/:id/profil", authentifie, async (c) => {
   const droitsModifies = saisie.habilitations !== undefined && JSON.stringify(saisie.habilitations) !== JSON.stringify(profil.habilitations);
   const npiModifie = npi !== profil.npi;
   if (droitsModifies || npiModifie) await verifierCoherence(habilitations, npi, profil.id);
+  if (droitsModifies) await verifierOctroi(c, soiMeme, profil.habilitations, habilitations, npi, compte.identifiant);
 
   await base().update(schema.profils).set({ nomAffiche: saisie.nomAffiche ?? profil.nomAffiche, fonction: saisie.fonction ?? profil.fonction, npi, habilitations }).where(eq(schema.profils.id, profil.id));
   // Nouvelles habilitations : les sessions ouvertes portaient les anciennes. Elles sont révoquées (reconnexion) ;
@@ -302,6 +329,7 @@ administration.post("/admin/comptes/:id/profil", authentifie, async (c) => {
 });
 
 administration.post("/admin/comptes/:id/sessions/revoquer", authentifie, async (c) => {
+  exigerElevation(c);
   await exigerAdmin(c, "Révocation des sessions", c.req.param("id"));
   const id = ID_COMPTE.parse(c.req.param("id"));
   await compteEtProfil(id);
@@ -312,6 +340,7 @@ administration.post("/admin/comptes/:id/sessions/revoquer", authentifie, async (
 });
 
 administration.post("/admin/comptes/:id/deverrouiller", authentifie, async (c) => {
+  exigerElevation(c);
   await exigerAdmin(c, "Déverrouillage d'un compte", c.req.param("id"));
   const id = ID_COMPTE.parse(c.req.param("id"));
   const [maj] = await base().update(schema.comptes).set({ echecsConsecutifs: 0, verrouilleJusquA: null }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });

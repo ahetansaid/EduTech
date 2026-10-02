@@ -8,7 +8,7 @@ import { and, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, corps, journaliser, refuser, type Variables } from "./commun";
+import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
 import { classesCourantes, dejaSaisi, effectifClasse, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
 
@@ -140,14 +140,16 @@ function etablissementDe(profil: Profil) {
  * Recherche au registre national (simulé ; en production : ANIP via la plateforme d'interopérabilité).
  * Minimisation : seuls les enfants en âge scolaire sont renvoyés, avec le strict nécessaire à l'inscription.
  */
-parcours.get("/registre/personnes", authentifie, async (c) => {
+// Le registre national n'est pas un annuaire : nom ET prénoms obligatoires, et 200 recherches par jour et par
+// utilisateur, toutes instances confondues (une rentrée chargée, pas un balayage du pays).
+parcours.get("/registre/personnes", authentifie, limiteDebitPartage("registre-personnes", 200, 86_400_000, (c) => `compte:${(c as unknown as { get: (k: string) => { id: string } }).get("compte").id}`), async (c) => {
   const profil = c.get("profil");
   const etab = etablissementDe(profil);
   const nom = z.string().trim().max(40).catch("").parse(c.req.query("nom"));
   const prenoms = z.string().trim().max(40).catch("").parse(c.req.query("prenoms"));
   await journaliser(profil, "Recherche au registre national", `${nom} ${prenoms}`.trim() || "(vide)", "gestion", !!etab, etab ? null : "role");
   if (!etab) refuser("Recherche au registre réservée aux chefs d'établissement");
-  if (nom.length + prenoms.length < 2) throw new HTTPException(422, { message: "Saisir au moins deux caractères" });
+  if (nom.replace(/[%_]/g, "").length < 2 || prenoms.replace(/[%_]/g, "").length < 2) throw new HTTPException(422, { message: "Saisir le nom ET le prénom (deux caractères au moins chacun)" });
   const conditions = [gte(schema.personnes.dateNaissance, "2008-01-01")];
   if (nom) conditions.push(ilike(schema.personnes.nom, `%${nom.replace(/[%_]/g, "")}%`));
   if (prenoms) conditions.push(ilike(schema.personnes.prenoms, `%${prenoms.replace(/[%_]/g, "")}%`));

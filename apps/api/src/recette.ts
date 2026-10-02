@@ -22,6 +22,15 @@ function verifier(libelle: string, obtenu: number | boolean, attendu: number | b
   console.log(`${ok ? "✔" : "✘"} ${libelle} — ${obtenu}${ok ? "" : ` (attendu ${attendu})`}${detail ? ` · ${detail}` : ""}`);
 }
 const titre = (t: string) => console.log(`\n— ${t}`);
+
+/** NPI d'un adulte du registre sans compte (tout compte est rattaché à une personne réelle). Recette avec écritures seulement. */
+async function npiLibre(): Promise<string> {
+  const { client } = connecter(process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL);
+  const [p] = (await client`select p.npi from registre_simule.personnes p where p.date_naissance < '1995-01-01'
+    and not exists (select 1 from core.profils x where x.npi = p.npi) order by random() limit 1`) as unknown as { npi: string }[];
+  await client.end();
+  return p?.npi ?? "";
+}
 const liste = (j: unknown) => (Array.isArray(j) ? j : []) as Record<string, unknown>[];
 
 titre("Authentification");
@@ -160,7 +169,12 @@ const resAdmis = await anonyme.appel("GET", "/public/resultats?examen=CEP&sessio
 verifier("Public : session publiée → verdict", resAdmis.statut, 200, String(resAdmis.json.statut ?? ""));
 verifier("Public : numéro de table d'un lauréat → « admis »", (resAdmis.json as { statut?: string }).statut === "admis", true);
 verifier("Public : sans date de naissance, ni nom ni moyenne", (resAdmis.json as { identite?: unknown }).identite === null && !("titulaire" in resAdmis.json), true);
-const resDateFausse = await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001&naissance=1900-01-01");
+verifier("Public : date de naissance dans l'adresse (GET) refusée", (await anonyme.appel("GET", "/public/resultats?examen=CEP&session=Juin%202024&table=2024000001&naissance=1900-01-01")).statut, 422);
+const resDateFausse = await anonyme.appel("POST", "/public/resultats", { examen: "CEP", session: "Juin 2024", table: "2024000001", naissance: "1900-01-01" });
+// Plafond d'essais de date : un numéro « déguisé » (espaces) désigne le même candidat et n'ouvre pas de nouveaux essais.
+const variantes: { statut: number }[] = [];
+for (let i = 0; i < 11; i++) variantes.push(await anonyme.appel("POST", "/public/resultats", { examen: "CEP", session: "Juin 2024", table: `${" ".repeat(i)}2024000002`, naissance: `1900-01-${String(i + 1).padStart(2, "0")}` }));
+verifier("Public : essais de date plafonnés par candidat, même déguisé par des espaces", variantes.some((v) => v.statut === 429), true, variantes.map((v) => v.statut).join(","));
 verifier("Public : date de naissance fausse → aucune identité, signalée", (resDateFausse.json as { identite?: unknown; dateNonConcordante?: boolean }).identite === null && (resDateFausse.json as { dateNonConcordante?: boolean }).dateNonConcordante === true, true);
 const sessionsPub = await anonyme.appel("GET", "/public/resultats/sessions");
 verifier("Public : sessions publiées proposées au choix", liste(sessionsPub.json).some((x) => x.examen === "CEP" && x.session === "Juin 2024"), true);
@@ -373,6 +387,15 @@ if (!process.env.BEILE_PARTENAIRES) {
   verifier("Signature fausse → 401", (await envoyer("educmaster", "/interop/educmaster/absences", absence, { secret: "x".repeat(40) })).statut, 401);
   verifier("Horodatage périmé (rejeu d'une requête capturée) → 401", (await envoyer("educmaster", "/interop/educmaster/absences", absence, { horodatage: Date.now() - 3_600_000 })).statut, 401);
   verifier("Sans en-têtes de partenaire → 401", (await anonyme.appel("POST", "/interop/educmaster/absences", absence)).statut, 401);
+  {
+    // Message signé pour une route, présenté sur une autre : la signature couvre méthode et chemin.
+    const { signer } = await import("./interop");
+    const { secretDe } = await import("./client-interop");
+    const corpsPub = JSON.stringify({ examen: "CEP", session: "Juin 2024" }), h = Date.now(), lot = `LOT-DETOURNE-${h}`;
+    const sig = signer(secretDe("eresultats"), "POST", "/interop/eresultats/pv-examen", h, lot, corpsPub);
+    const r = await fetch(`${(await import("./client-recette")).BASE}/interop/eresultats/publication`, { method: "POST", headers: { "content-type": "application/json", "x-beile-partenaire": "eresultats", "x-beile-horodatage": String(h), "x-beile-lot": lot, "x-beile-signature": sig }, body: corpsPub });
+    verifier("Signature d'une autre route (détournement) → 401", r.status, 401);
+  }
   verifier("EducMaster → message réservé à eRESULTATS : 403", (await envoyer("educmaster", "/interop/eresultats/publication", { examen: "CEP", session: "Juin 2024" })).statut, 403);
   verifier("DBAU → PV de diplôme de l'université : 403", (await envoyer("dbau", "/interop/uac/pv-diplome", {})).statut, 403);
   verifier("Message mal formé (partenaire authentifié) → 422", (await envoyer("educmaster", "/interop/educmaster/absences", { classeId: 12 })).statut, 422);
@@ -434,7 +457,7 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
   verifier("Canaux d'envoi ouverts (fournisseur « journal » hors production)", canaux.json.sms === true && canaux.json.courriel === true, true);
   const orgs = await departement!.appel("GET", "/delegation/organisations?parent=ORG-DD-MESTFP-borgou");
   const etab = liste(orgs.json.enfants).find((o) => o.id !== "ORG-ETB-ETB-PAR-PILOTE-CEG")?.id as string;
-  const nouveau = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Activation Recette Code", fonction: "Directeur", role: "chef_etablissement", organisationId: etab, telephone: "+229 01 97 00 00 01" });
+  const nouveau = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Activation Recette Code", fonction: "Directeur", role: "chef_etablissement", organisationId: etab, npi: await npiLibre(), telephone: "+229 01 97 00 00 01" });
   const n = nouveau.json as unknown as { compte?: { id: string; identifiant: string }; activation?: { canal: string }; motDePasseTemporaire?: string };
   verifier("Compte créé avec un téléphone : activation autonome, aucun mot de passe montré à l'administrateur", nouveau.statut === 201 && n.activation?.canal === "sms" && !n.motDePasseTemporaire, true, `HTTP ${nouveau.statut}`);
   const id = n.compte?.identifiant ?? "", cid = n.compte?.id ?? "";
@@ -454,7 +477,7 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
   const [cpt] = await db.select({ v: schema.comptes.telephoneVerifie }).from(schema.comptes).where(eq(schema.comptes.id, cid));
   verifier("Téléphone vérifié par l'activation", cpt?.v === true, true);
 
-  await anonyme.appel("POST", "/auth/code/demande", { identifiant: id, objet: "recuperation" });
+  verifier("Mot de passe oublié : demande de code acceptée", (await anonyme.appel("POST", "/auth/code/demande", { identifiant: id, objet: "recuperation" })).statut, 200);
   const codeRec = await dernierCode(cid);
   const MDP2 = "Recuperation-Recette-2026";
   verifier("Mot de passe oublié : récupération par code", (await anonyme.appel("POST", "/auth/code/confirmer", { identifiant: id, code: codeRec, nouveau: MDP2 })).statut, 200);
@@ -479,6 +502,8 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
 
   // Coordonnée de récupération ajoutée par l'utilisateur : adoptée seulement si le code revient.
   const cEns = await db.select({ id: schema.comptes.id }).from(schema.comptes).where(eq(schema.comptes.identifiant, "idrissou.sanni"));
+  verifier("Enseignant : changer de coordonnée sans reconfirmer son identité → refusé", (await enseignant!.appel("POST", "/moi/coordonnees/demande", { canal: "courriel", destination: "idrissou.sanni@exemple.bj" })).json.code === "elevation_requise", true);
+  verifier("Enseignant : élévation par mot de passe", (await enseignant!.elever()).statut, 200);
   verifier("Enseignant : ajout d'un courriel de récupération (code envoyé)", (await enseignant!.appel("POST", "/moi/coordonnees/demande", { canal: "courriel", destination: "idrissou.sanni@exemple.bj" })).statut, 200);
   verifier("Code faux : coordonnée non adoptée", (await enseignant!.appel("POST", "/moi/coordonnees/confirmer", { code: "000000" })).statut, 422);
   const codeVerif = await dernierCode(cEns[0]!.id);
@@ -514,6 +539,15 @@ titre("Administration déléguée (cascade, plafond, cumul, double validation)")
   const comptes = await directrice!.appel("GET", `/delegation/comptes?organisation=${CEG}`);
   const soi = liste(comptes.json).find((c) => c.id === "p-directeur");
   verifier("Directrice : ses propres droits ne sont pas gérables", (soi?.attributions as { gerable: boolean }[] | undefined)?.every((a) => !a.gerable) ?? false, true);
+  // Audit : un compte parent ne se crée que là où un enfant de ce NPI est scolarisé.
+  verifier("Directrice → compte parent pour un adulte sans enfant dans son établissement : 422", (await directrice!.appel("POST", "/delegation/comptes", { nomAffiche: "Parent Hors Etablissement", fonction: "Parent", role: "parent", organisationId: CEG, npi: "1000000001" })).statut, [409, 422]);
+  // Audit : l'administrateur de la plateforme ne s'ajoute pas de droits, et ne réinitialise pas un compte privilégié.
+  const comptesAdm = liste((await admin!.appel("GET", "/admin/comptes")).json);
+  const moiAdm = comptesAdm.find((x) => x.identifiant === "admin.beile")?.id as string | undefined;
+  const cabinet = comptesAdm.find((x) => x.identifiant === "felicite.akakpo")?.id as string | undefined;
+  verifier("Administrateur : s'ajouter le rôle DPO → refusé", moiAdm ? (await admin!.appel("POST", `/admin/comptes/${moiAdm}/profil`, { habilitations: [{ role: "administrateur", perimetre: { niveau: "national" } }, { role: "dpo", perimetre: { niveau: "national" } }] })).statut : 0, 422);
+  verifier("Administrateur : mot de passe d'un compte privilégié (cabinet) → refusé, alerte", cabinet ? (await admin!.appel("POST", `/admin/comptes/${cabinet}/reinitialiser`)).statut : 0, 422);
+  verifier("Registre national : nom seul (sans prénom) → refusé", (await directrice!.appel("GET", "/registre/personnes?nom=WOROU")).statut, 422);
   if (ECRITURES) {
     const n2 = await central!.appel("POST", "/delegation/delegations", { profilId: "p-inspecteur", organisationId: "ORG-DD-MESTFP-zou", motif: "Administrateur départemental du Zou" });
     verifier("Cabinet → nomination de niveau 2 en attente de seconde validation", n2.statut === 201 && n2.json.statut === "en_attente", true, `HTTP ${n2.statut}`);
@@ -522,7 +556,8 @@ titre("Administration déléguée (cascade, plafond, cumul, double validation)")
     verifier("Autorité (niveau 0) : seconde validation", valide.statut === 200 && valide.json.statut === "active", true, `HTTP ${valide.statut}`);
     // Remise en état : le compte de test de l'inspecteur ne reste pas administrateur de niveau 2.
     verifier("Autorité : révocation de la délégation de recette", (await admin!.appel("POST", `/delegation/delegations/${n2.json.id}/revoquer`, { motif: "Fin de la recette" })).statut, 200);
-    const cree = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Chef Recette Delegation", fonction: "Directeur", role: "chef_etablissement", organisationId: autre });
+    const cree = await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Chef Recette Delegation", fonction: "Directeur", role: "chef_etablissement", organisationId: autre, npi: await npiLibre() });
+    verifier("Contrôle : compte sans NPI refusé (pas de compte fantôme)", (await departement!.appel("POST", "/delegation/comptes", { nomAffiche: "Fantome Sans Npi", fonction: "Directeur", role: "chef_etablissement", organisationId: autre })).statut, 422);
     verifier("Direction → compte de chef d'établissement dans son sous-arbre", cree.statut, 201, String(cree.json.erreur ?? ""));
     if (cree.statut === 201) {
       const nouveau = new Session();

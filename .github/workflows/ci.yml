@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -70,10 +70,13 @@ jobs:
       DATABASE_URL: postgres://postgres:ci-postgres-jetable@localhost:5432/beile?sslmode=disable
       DATABASE_URL_UNPOOLED: postgres://postgres:ci-postgres-jetable@localhost:5432/beile?sslmode=disable
       BEILE_ORIGINES_AUTORISEES: http://localhost:3000
+      # Recette derrière un mandataire simulé : le test de charge fournit l'adresse de chaque utilisateur virtuel.
+      BEILE_SOURCE_IP: mandataire
+      BEILE_MANDATAIRES: "1"
       BEILE_FICHIER_COMPTES: ${{ github.workspace }}/comptes-ci.md
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm

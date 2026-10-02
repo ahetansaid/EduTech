@@ -245,8 +245,10 @@ superieur.post("/moi/stages/:id/encadrer", authentifie, async (c) => {
   const profil = c.get("profil");
   const enseignantId = await monEnseignant(profil);
   const id = ID_STAGE.parse(c.req.param("id"));
+  // Encadrer un stage suppose d'enseigner dans l'établissement de l'étudiant (sinon : lecture d'une ligne nominative sans relation).
+  const [ens] = await base().select({ etablissementId: schema.enseignants.etablissementId }).from(schema.enseignants).where(eq(schema.enseignants.id, enseignantId));
   const [maj] = await base().update(schema.stage).set({ tuteurAcademiqueId: enseignantId })
-    .where(and(eq(schema.stage.id, id), isNull(schema.stage.tuteurAcademiqueId)))
+    .where(and(eq(schema.stage.id, id), isNull(schema.stage.tuteurAcademiqueId), eq(schema.stage.etablissementId, ens?.etablissementId ?? "")))
     .returning({ id: schema.stage.id });
   if (!maj) throw new HTTPException(409, { message: "Stage inconnu ou déjà encadré" });
   await journaliser(profil, "Encadrement académique d'un stage", id, "evaluation", true, null);

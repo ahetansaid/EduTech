@@ -10,6 +10,7 @@ import { AnimatePresence, EASE, motion } from "@/components/motion";
 import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { notifier } from "@/components/ui/Notifications";
 import { cn } from "@/lib/cn";
+import { retourSur } from "@/lib/retour";
 import { ErreurApi, ecrire } from "@/lib/http";
 import { accueilPour, CLE_SESSION, useSession } from "@/lib/session";
 
@@ -51,7 +52,7 @@ function ChangerMotDePasse() {
       await ecrire("/auth/mot-de-passe", { actuel, nouveau });
       client.setQueryData(CLE_SESSION, { profil, compte: { ...compte, doitChangerMotDePasse: false } });
       notifier({ ton: "succes", titre: "Mot de passe modifié", texte: "Vos autres sessions ont été fermées." });
-      router.replace(retour && retour.startsWith("/") && !retour.startsWith("//") ? retour : accueil);
+      router.replace(retourSur(retour) ?? accueil);
     } catch (x) {
       setErreur(x instanceof ErreurApi && x.statut === 401 ? "Le mot de passe actuel est incorrect." : (x as Error).message);
       setEnvoi(false);

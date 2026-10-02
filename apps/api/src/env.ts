@@ -45,12 +45,21 @@ const Schema = z.object({
   BEILE_PORTAIL: z.enum(["unique", "public", "usagers", "gestion", "national"]).default("unique"),
   /** Plages d'adresses autorisées (liste d'IP ou de préfixes « 10.0. »), exigées pour le portail national. */
   BEILE_IP_AUTORISEES: z.string().optional(),
+  /**
+   * Origine de l'adresse du client (limites de débit, liste d'adresses, journal) : « vercel » (la plateforme
+   * écrase X-Forwarded-For), « mandataire » (BEILE_MANDATAIRES mandataires de confiance devant l'API, ex. nginx),
+   * « socket » (connexion TCP directe). Par défaut : « vercel » sur Vercel, « socket » ailleurs.
+   */
+  BEILE_SOURCE_IP: z.enum(["vercel", "mandataire", "socket"]).optional(),
+  BEILE_MANDATAIRES: z.coerce.number().int().min(1).max(5).default(1),
+  /** Clé maîtresse des secrets dérivés (codes, TOTP, défis) ; à défaut la clé du sceau. Distincte : la rotation du sceau ne touche pas aux secrets TOTP. */
+  BEILE_CLE_MAITRESSE: z.string().min(32).optional(),
   NODE_ENV: z.string().optional(),
+  VERCEL: z.string().optional(),
   VERCEL_ENV: z.string().optional(),
 }).superRefine((v, ctx) => {
-  const production = v.VERCEL_ENV === "production" || v.NODE_ENV === "production";
-  if (production && !v.BEILE_CLE_SEAU) {
-    ctx.addIssue({ code: "custom", path: ["BEILE_CLE_SEAU"], message: "obligatoire en production (diplômes et actes scellés par MAC)" });
+  if (estProduction(v) && !v.BEILE_CLE_SEAU) {
+    ctx.addIssue({ code: "custom", path: ["BEILE_CLE_SEAU"], message: "obligatoire en production et en prévisualisation (diplômes et actes scellés par MAC, secrets dérivés)" });
   }
   if (v.BEILE_SMS_URL && !v.BEILE_SMS_CLE) ctx.addIssue({ code: "custom", path: ["BEILE_SMS_CLE"], message: "requise avec BEILE_SMS_URL" });
   if (v.BEILE_SMTP_URL && !v.BEILE_COURRIEL_EXPEDITEUR) ctx.addIssue({ code: "custom", path: ["BEILE_COURRIEL_EXPEDITEUR"], message: "requis avec BEILE_SMTP_URL (adresse du domaine de la plateforme)" });
@@ -63,6 +72,14 @@ const Schema = z.object({
     if (cle.length < 32) ctx.addIssue({ code: "custom", path: ["BEILE_CLES_SEAU_ANCIENNES"], message: "chaque clef fait au moins 32 caractères" });
   }
 });
+
+/**
+ * Production : tout déploiement hébergé (production ET prévisualisation Vercel) ou NODE_ENV=production. Une
+ * prévisualisation traitée en « développement » garderait les codes en clair et une clé maîtresse faible.
+ */
+function estProduction(v: { NODE_ENV?: string; VERCEL_ENV?: string }) {
+  return v.VERCEL_ENV === "production" || v.VERCEL_ENV === "preview" || v.NODE_ENV === "production";
+}
 
 /** Validation paresseuse : exécutée à la première requête (le build de production n'a pas besoin de la base). */
 let cache: ReturnType<typeof valider> | null = null;
@@ -90,7 +107,10 @@ return {
   /** Secrets partagés des systèmes partenaires, par identifiant. */
   PARTENAIRES: Object.fromEntries((v.BEILE_PARTENAIRES ?? "").split(",").map((x) => x.trim()).filter(Boolean)
     .map((paire) => [paire.slice(0, paire.indexOf(":")), paire.slice(paire.indexOf(":") + 1)])) as Record<string, string>,
-  PRODUCTION: v.VERCEL_ENV === "production" || v.NODE_ENV === "production",
+  PRODUCTION: estProduction(v),
+  SOURCE_IP: v.BEILE_SOURCE_IP ?? (v.VERCEL ? "vercel" : "socket"),
+  MANDATAIRES: v.BEILE_MANDATAIRES,
+  CLE_MAITRESSE: v.BEILE_CLE_MAITRESSE ?? v.BEILE_CLE_SEAU ?? null,
   SMS: v.BEILE_SMS_URL ? { url: v.BEILE_SMS_URL, cle: v.BEILE_SMS_CLE!, expediteur: v.BEILE_SMS_EXPEDITEUR } : null,
   SMTP: v.BEILE_SMTP_URL ? { url: v.BEILE_SMTP_URL, expediteur: v.BEILE_COURRIEL_EXPEDITEUR! } : null,
   RP_ID: v.BEILE_WEBAUTHN_RP_ID ?? null,

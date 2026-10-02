@@ -86,12 +86,11 @@ export function useCalendrier(annee?: string) {
 export function useResultatExamen(examen: Examen, session: string, table: string, naissance = "") {
   return useQuery({
     queryKey: ["public", "resultats", examen, session, table, naissance],
-    queryFn: ({ signal }) => requete<ResultatExamenPublic>(
-      "GET",
-      `/public/resultats?examen=${encodeURIComponent(examen)}&session=${encodeURIComponent(session)}&table=${encodeURIComponent(table)}${naissance ? `&naissance=${encodeURIComponent(naissance)}` : ""}`,
-      undefined,
-      { silencieux401: true, signal },
-    ),
+    // Avec la date de naissance (second facteur), POST : la date ne figure jamais dans une adresse, donc dans
+    // aucun journal d'accès ; sans elle, un GET suffit.
+    queryFn: ({ signal }) => naissance
+      ? requete<ResultatExamenPublic>("POST", "/public/resultats", { examen, session, table, naissance }, { silencieux401: true, signal })
+      : requete<ResultatExamenPublic>("GET", `/public/resultats?examen=${encodeURIComponent(examen)}&session=${encodeURIComponent(session)}&table=${encodeURIComponent(table)}`, undefined, { silencieux401: true, signal }),
     enabled: !!table.trim() && !!session.trim(),
     staleTime: 30_000,
     refetchOnWindowFocus: false,

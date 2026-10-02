@@ -103,7 +103,7 @@ export default function PageAlertes() {
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2 pl-7 sm:pl-0">
                                   <Badge ton={a.gravite === "critique" ? "critique" : "avertissement"}>{a.gravite === "critique" ? "Critique" : "Attention"}</Badge>
-                                  <Link href={`/ask?q=${encodeURIComponent(a.question)}`} className="group inline-flex min-h-9 items-center gap-1 text-[12.5px] font-semibold text-blue hover:underline">
+                                  <Link href={`/ask?q=${encodeURIComponent(a.question)}`} onClick={() => { try { sessionStorage.setItem("beile.ask.lancer", a.question); } catch { /* stockage indisponible */ } }} className="group inline-flex min-h-9 items-center gap-1 text-[12.5px] font-semibold text-blue hover:underline">
                                     Analyser <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" aria-hidden />
                                   </Link>
                                 </div>
