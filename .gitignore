@@ -22,3 +22,6 @@ COMPTES*.md
 *.pem
 *.key
 .claude/
+
+# Bilan avec les accès de test (mots de passe) : jamais versionné
+docs/BILAN_FONCTIONNEL_SECURITE.md
