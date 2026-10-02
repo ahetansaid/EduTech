@@ -3,6 +3,7 @@
 import { Fingerprint, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { CodeDemonstration } from "@/components/securite/CodeDemonstration";
 import { Modale } from "@/components/ui/Modale";
 import { Button } from "@/components/ui/primitives";
 import { presenterCle, useEtatMfa } from "@/lib/api/securite";
@@ -57,6 +58,7 @@ export function DialogueElevation() {
     <Modale ouvert={ouvert} onFermer={() => finir(false)} titre="Confirmez votre identité" sousTitre="Action d'administration : valable 15 minutes" icone={ShieldCheck}
       pied={<><Button variante="secondaire" onClick={() => finir(false)}>Annuler</Button><Button chargement={envoi} disabled={mfa ? !/^\d{6}$/.test(valeur) : !valeur} onClick={confirmer}>Confirmer</Button></>}>
       <form method="post" onSubmit={(e) => { e.preventDefault(); void confirmer(); }} className="space-y-3">
+        {mfa && ouvert && <CodeDemonstration onUtiliser={setValeur} />}
         <label className="block text-[13px] font-medium text-ink">
           {mfa ? "Code de votre application d'authentification" : "Votre mot de passe"}
           <input autoFocus type={mfa ? "text" : "password"} inputMode={mfa ? "numeric" : undefined} autoComplete={mfa ? "one-time-code" : "current-password"} value={valeur}
