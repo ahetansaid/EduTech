@@ -11,6 +11,7 @@ import { CodesSecours } from "@/components/securite/CodesSecours";
 import { BandeNationale, Button, Logo } from "@/components/ui/primitives";
 import { enregistrerCle, presenterCle, useEtatMfa } from "@/lib/api/securite";
 import { cn } from "@/lib/cn";
+import { retourSur } from "@/lib/retour";
 import { ErreurApi, ecrire } from "@/lib/http";
 import { accueilDeSession, CLE_SESSION, useDeconnexion, useSession } from "@/lib/session";
 
@@ -36,7 +37,7 @@ function SecondFacteur() {
   const terminer = async () => {
     await client.invalidateQueries({ queryKey: CLE_SESSION });
     const s = await client.fetchQuery({ queryKey: CLE_SESSION }) as typeof session | null;
-    router.replace(retour && retour.startsWith("/") && !retour.startsWith("//") && !retour.startsWith("/second-facteur") ? retour : s ? accueilDeSession(s) : "/");
+    router.replace(retourSur(retour) ?? (s ? accueilDeSession(s) : "/"));
   };
 
   return (

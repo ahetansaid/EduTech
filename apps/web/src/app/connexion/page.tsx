@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import { ErreurApi, requete } from "@/lib/http";
 import { accueilDeSession, CLE_SESSION, useSessionServeur, type Session } from "@/lib/session";
 import { useThemeEspace } from "@/lib/useSombre";
+import { retourSur } from "@/lib/retour";
 
 const ENONCES = [
   { icone: Fingerprint, titre: "Identité ancrée au registre national", texte: "Chaque apprenant est rattaché à son NPI. Aucun identifiant maison." },
@@ -50,7 +51,7 @@ function Connexion() {
   const [enonce, setEnonce] = useState(0);
 
   const destination = (s: Session) => {
-    const sur = retour && retour.startsWith("/") && !retour.startsWith("//") && !retour.startsWith("/connexion") ? retour : null;
+    const sur = retourSur(retour);
     return s.compte.doitChangerMotDePasse ? `/mot-de-passe${sur ? `?retour=${encodeURIComponent(sur)}` : ""}` : sur ?? accueilDeSession(s);
   };
 
@@ -91,7 +92,7 @@ function Connexion() {
     }
   };
 
-  const m = motif ? MESSAGES_MOTIF[motif] : null;
+  const m = motif && Object.hasOwn(MESSAGES_MOTIF, motif) ? MESSAGES_MOTIF[motif] : null;
   const E = ENONCES[enonce]!;
 
   return (

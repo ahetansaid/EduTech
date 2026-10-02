@@ -85,6 +85,13 @@
       "when": 1790810349335,
       "tag": "0011_securite_comptes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790936432343,
+      "tag": "0012_durcissement_audit",
+      "breakpoints": true
     }
   ]
 }

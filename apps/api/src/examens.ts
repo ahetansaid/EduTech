@@ -366,14 +366,38 @@ examens.get("/public/resultats/sessions", async (c) => {
     .map((l): SessionPubliee => ({ ...l, autorite: AUTORITE_EXAMEN[l.examen].libelle })));
 });
 
-/** Essais de date de naissance : 10 par candidat et par heure, toutes adresses confondues. */
-const essaisDate = limiteDebitPartage("resultat-naissance", 10, 3_600_000, (c) => `${c.req.query("examen")}|${c.req.query("session")}|${c.req.query("table")}`);
+const RECHERCHE_RESULTAT = z.object({
+  examen: EXAMEN, session: z.string().trim().min(1).max(40), table: z.string().trim().min(1).max(20),
+  naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+/** Clé d'un candidat NORMALISÉE (espaces, casse) : « %20123 » et « 123 » désignent le même candidat. */
+const cleCandidat = (examen: unknown, session: unknown, table: unknown) =>
+  [examen, session, table].map((x) => String(x ?? "").replace(/\s+/g, "").toLowerCase()).join("|");
 
-examens.get("/public/resultats", limiteDebitPartage("resultats", 60, 60_000), async (c, next) => (c.req.query("naissance") ? essaisDate(c, next) : next()), async (c) => {
-  const f = z.object({
-    examen: EXAMEN, session: z.string().trim().min(1).max(40), table: z.string().trim().min(1).max(20),
-    naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  }).parse(c.req.query());
+/**
+ * Essais de date de naissance : 10 par candidat et par heure (toutes adresses confondues), et 30 par
+ * adresse et par heure (tous candidats confondus) — ni balayage des dates, ni balayage des numéros.
+ */
+const rechercheDe = (c: Context) => (c as unknown as { get: (k: string) => z.infer<typeof RECHERCHE_RESULTAT> | undefined }).get("rechercheResultat");
+const essaisDateCandidat = limiteDebitPartage("resultat-naissance", 10, 3_600_000, (c) => { const f = rechercheDe(c); return cleCandidat(f?.examen, f?.session, f?.table); });
+const essaisDateAdresse = limiteDebitPartage("resultat-naissance-ip", 30, 3_600_000);
+
+/**
+ * GET : numéro de table seul (verdict et mention). La date de naissance d'un candidat (second facteur)
+ * passe par POST, dans le corps : jamais dans une URL, donc jamais dans les journaux d'accès.
+ */
+examens.get("/public/resultats", limiteDebitPartage("resultats", 60, 60_000), async (c) => {
+  if (c.req.query("naissance")) throw new HTTPException(422, { message: "La date de naissance s'envoie dans le corps d'une requête POST, jamais dans l'adresse." });
+  return repondreResultat(c, RECHERCHE_RESULTAT.parse(c.req.query()));
+});
+examens.post("/public/resultats", limiteDebitPartage("resultats", 60, 60_000), async (c, next) => {
+  const f = await corps(c, RECHERCHE_RESULTAT.strict());
+  (c as unknown as { set: (k: string, v: unknown) => void }).set("rechercheResultat", f);
+  if (!f.naissance) return next();
+  await essaisDateAdresse(c, async () => { await essaisDateCandidat(c, next); });
+}, async (c) => repondreResultat(c, rechercheDe(c)!));
+
+async function repondreResultat(c: Context, f: z.infer<typeof RECHERCHE_RESULTAT>) {
   const autorite = AUTORITE_EXAMEN[f.examen].libelle;
   const [session] = await base().select().from(schema.examensSessions)
     .where(and(eq(schema.examensSessions.examen, f.examen), eq(schema.examensSessions.session, f.session)));
@@ -401,4 +425,4 @@ examens.get("/public/resultats", limiteDebitPartage("resultats", 60, 60_000), as
   await journaliser({ id: "public", nomAffiche: "Consultation publique des résultats" }, "Recherche de résultat d'examen", `${f.examen} ${f.session} · ${f.table} · ${r.statut}${f.naissance ? " · 2e facteur" : ""}`, "controle", true, null);
   c.header("Cache-Control", "no-store");
   return c.json(r);
-});
+}

@@ -23,7 +23,7 @@ export function PaletteCommandes({ onFermer }: { onFermer: () => void }) {
     const liste: Commande[] = [];
     const peutDemander = roles.some((r) => ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"].includes(r));
     if (q.length > 3 && peutDemander) {
-      liste.push({ id: "ask", libelle: `Demander à Ask Education : « ${saisie.trim()} »`, detail: "Requête contrôlée, aucun chiffre inventé", icone: Sparkles, action: () => router.push(`/ask?q=${encodeURIComponent(saisie.trim())}`) });
+      liste.push({ id: "ask", libelle: `Demander à Ask Education : « ${saisie.trim()} »`, detail: "Requête contrôlée, aucun chiffre inventé", icone: Sparkles, action: () => { try { sessionStorage.setItem("beile.ask.lancer", saisie.trim()); } catch { /* stockage indisponible */ } router.push(`/ask?q=${encodeURIComponent(saisie.trim())}`); } });
     }
     for (const n of navigationPour(profil, contexte)) {
       if (!q || n.libelle.toLowerCase().includes(q)) liste.push({ id: n.href, libelle: n.libelle, detail: n.processus ? `Processus ${n.processus}` : undefined, icone: n.icone, action: () => router.push(n.href) });

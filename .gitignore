@@ -16,3 +16,9 @@ next-env.d.ts
 
 # Identifiants de comptes générés localement (jamais commités)
 *.local.md
+
+# Secrets et scripts d'exploitation locaux
+COMPTES*.md
+*.pem
+*.key
+.claude/

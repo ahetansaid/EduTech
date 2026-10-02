@@ -1,7 +1,8 @@
 import type { Profil } from "@beile/contracts";
 import type { MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { adresseIp, ErreurCodee } from "./commun";
+import { sql } from "drizzle-orm";
+import { adresseIp, base, ErreurCodee } from "./commun";
 import { lireEnv } from "./env";
 
 /**
@@ -30,14 +31,41 @@ const NOMS: Record<Portail, string> = { unique: "unique", public: "public", usag
 /** Routes du portail public : lecture seule, sans session. */
 const ROUTES_PUBLIQUES = /^\/api\/v1\/(sante$|public\/|certificats\/[^/]+\/verification$|actes\/[^/]+\/verification$|dictionnaire(\/[^/]+)?$|referentiels\/[a-z]+$|auth\/etat$)/;
 
+/**
+ * Contrôle, une fois par instance, du rôle PostgreSQL réellement utilisé : jamais un superutilisateur ni un
+ * rôle qui contourne la sécurité des lignes ; et le portail public n'a que les droits du rôle public (une
+ * fuite de sa chaîne de connexion ne doit rien ouvrir d'autre).
+ */
+let controleRole: Promise<string | null> | null = null;
+function verifierRoleBase(portail: Portail) {
+  controleRole ??= (async () => {
+    const [r] = (await base().execute(sql`select r.rolsuper, r.rolbypassrls,
+        pg_has_role(current_user, 'beile_app', 'USAGE') as app, pg_has_role(current_user, 'beile_portail_public', 'USAGE') as public
+      from pg_roles r where r.rolname = current_user`)) as unknown as { rolsuper: boolean; rolbypassrls: boolean; app: boolean; public: boolean }[];
+    if (!r) return "rôle de connexion introuvable";
+    if (r.rolsuper || r.rolbypassrls) return "l'API refuse un rôle superutilisateur ou BYPASSRLS";
+    if (portail === "public" && (r.app || !r.public)) return "le portail public exige un rôle membre de beile_portail_public seulement";
+    return null;
+  })().catch(() => null);
+  return controleRole;
+}
+
 /** Filtre réseau et surface exposée, avant toute route. */
 export const filtrePortail: MiddlewareHandler = async (c, next) => {
   const { PORTAIL, IP_AUTORISEES } = lireEnv();
+  const defaut = await verifierRoleBase(PORTAIL);
+  if (defaut) {
+    console.error(JSON.stringify({ niveau: "critique", message: `Configuration de base refusée : ${defaut}` }));
+    throw new HTTPException(503, { message: "Service indisponible (configuration)" });
+  }
   if (IP_AUTORISEES.length) {
     const ip = adresseIp(c);
     if (!IP_AUTORISEES.some((p) => ip === p || (p.endsWith(".") && ip.startsWith(p)))) throw new ErreurCodee(403, "Ce portail n'est accessible que depuis le réseau de l'administration.", "portail_reseau");
   }
-  if (PORTAIL === "public" && (c.req.method !== "GET" || !ROUTES_PUBLIQUES.test(c.req.path))) throw new HTTPException(404, { message: "Introuvable" });
+  // Seule écriture du portail public : la recherche de résultat avec date de naissance (POST, la date hors de l'URL).
+  const lecture = c.req.method === "GET" && ROUTES_PUBLIQUES.test(c.req.path);
+  const recherche = c.req.method === "POST" && c.req.path === "/api/v1/public/resultats";
+  if (PORTAIL === "public" && !lecture && !recherche) throw new HTTPException(404, { message: "Introuvable" });
   if (c.req.path.includes("/interop/") && PORTAIL !== "unique" && PORTAIL !== "national") throw new HTTPException(404, { message: "Introuvable" });
   await next();
 };

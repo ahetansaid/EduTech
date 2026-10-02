@@ -558,6 +558,12 @@ export const comptes = core.table("comptes", {
   /** Dernier pas TOTP accepté : un même code ne sert qu'une fois (anti-rejeu). */
   totpDernierPas: integer("totp_dernier_pas"),
   mfaActive: boolean("mfa_active").notNull().default(false),
+  /**
+   * Échecs du second facteur : compteur PROPRE, que la connexion par mot de passe ne remet pas à zéro (sinon on
+   * enchaîne connexion + 4 codes indéfiniment). Remis à zéro par une vérification réussie seulement.
+   */
+  echecsMfa: integer("echecs_mfa").notNull().default(0),
+  mfaBloqueJusquA: timestamp("mfa_bloque_jusqu_a", { withTimezone: true }),
 }, (t) => [index("comptes_profil_idx").on(t.profilId)]);
 
 /** Sessions : seule l'empreinte SHA-256 du jeton est conservée ; le jeton ne vit que dans un cookie HttpOnly. */
@@ -622,6 +628,22 @@ export const clesFido = core.table("cles_fido", {
   creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
   utiliseeLe: timestamp("utilisee_le", { withTimezone: true }),
 }, (t) => [index("cles_fido_compte_idx").on(t.compteId)]);
+
+/** Lots reçus des systèmes partenaires : un lot signé ne se rejoue pas (PV d'examen, publication). */
+export const lotsInterop = core.table("lots_interop", {
+  partenaire: text("partenaire").notNull(),
+  lot: text("lot").notNull(),
+  message: text("message").notNull(),
+  recuLe: timestamp("recu_le", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.partenaire, t.lot] })]);
+
+/** Défis WebAuthn à usage unique (supprimés à la consommation), liés à une session et à une intention. */
+export const defisWebauthn = core.table("defis_webauthn", {
+  empreinte: text("empreinte").primaryKey(),
+  session: text("session").notNull(),
+  intention: text("intention", { enum: ["enrolement", "verification", "elevation"] }).notNull(),
+  expireLe: timestamp("expire_le", { withTimezone: true }).notNull(),
+});
 
 export const codesSecours = core.table("codes_secours", {
   id: text("id").primaryKey(),

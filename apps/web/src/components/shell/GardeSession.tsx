@@ -18,7 +18,7 @@ export function GardeSession({ children }: { children: ReactNode }) {
   // Étapes imposées, dans l'ordre : mot de passe personnel, puis second facteur (administrateurs de niveau 0 à 2).
   const etape = !session ? null
     : session.compte.doitChangerMotDePasse ? "/mot-de-passe"
-    : session.compte.mfaExige && !session.compte.mfaVerifie ? "/second-facteur"
+    : (session.compte.mfaExige || session.compte.mfaActive) && !session.compte.mfaVerifie ? "/second-facteur"
     : null;
   useEffect(() => {
     if (isPending) return;

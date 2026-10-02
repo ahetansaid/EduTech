@@ -7,7 +7,7 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, comparerFr, corps, journaliser, refuser, type Variables } from "./commun";
+import { authentifie, base, comparerFr, corps, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
 
@@ -348,7 +348,8 @@ etablissement.get("/etablissements/:id/justificatifs", authentifie, async (c) =>
         absenceIds: d.absenceIds ?? [],
         motif: d.motif ?? "",
         classeId: d.classeId ?? null,
-        declarantNpi: d.declarantNpi ?? null,
+        // NPI du parent déclarant masqué : la direction sait qu'un responsable a déclaré, sans son identifiant.
+        declarantNpi: d.declarantNpi ? `••••••${d.declarantNpi.slice(-4)}` : null,
         transmisLe: j.survenuLe,
         statut: dec ? dec.decision : ("en_attente" as const),
         decisionMotif: dec?.motif ?? null,
@@ -450,6 +451,10 @@ etablissement.post("/etablissements/:id/accompagnement", authentifie, async (c) 
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil } = await acces(c, id, true);
   const { apprenantIds, objet } = await corps(c, z.object({ apprenantIds: z.array(z.string().regex(/^APP-\d{6}$/)).min(1).max(80), objet: z.string().trim().min(5).max(200) }).strict());
+  // Seuls des élèves scolarisés dans CET établissement peuvent faire l'objet d'une proposition.
+  const [{ n } = { n: 0 }] = (await base().execute(sql`select count(distinct s.apprenant_id)::int n from core.scolarites s left join core.classes c on c.id = s.classe_id
+    where s.apprenant_id in ${[...new Set(apprenantIds)]} and coalesce(s.etablissement_id, c.etablissement_id) = ${id}`)) as unknown as { n: number }[];
+  if (n !== new Set(apprenantIds).size) throw new HTTPException(422, { message: "Certains apprenants ne sont pas scolarisés dans cet établissement" });
   // Circuit paramétrable : l'étape de validation pédagogique relève de l'inspecteur de la circonscription
   // (rôle réel du référentiel). Upsert auto-correcteur : une base déjà peuplée avec un rôle obsolète est réparée.
   const etapesAccompagnement = [{ ordre: 1, code: "PROPOSITION", role: "chef_etablissement", delaiJours: 0 }, { ordre: 2, code: "VALIDATION_CONSEIL", role: "inspecteur", delaiJours: 7 }, { ordre: 3, code: "INFORMATION_FAMILLES", role: "chef_etablissement", delaiJours: 3 }];
@@ -497,6 +502,21 @@ async function appliquerAffectation(profil: import("@beile/contracts").Profil, e
   await base().update(schema.enseignants).set({ etablissementId: versEtablissementId }).where(eq(schema.enseignants.id, enseignantId));
   await base().update(schema.classes).set({ enseignantPrincipalId: null })
     .where(and(eq(schema.classes.enseignantPrincipalId, enseignantId), eq(schema.classes.etablissementId, ens.etablissementId)));
+  // Les enseignements dans l'ancien établissement prennent fin : sinon l'enseignant muté continuerait de lire
+  // les carnets et de saisir notes et absences dans des classes qui ne sont plus les siennes.
+  await base().execute(sql`delete from core.enseignements e using core.classes c
+    where c.id = e.classe_id and e.enseignant_id = ${enseignantId} and c.etablissement_id = ${ens.etablissementId}`);
+  // Habilitation « enseignant » : elle suit l'affectation (nouvel établissement).
+  if (ens.npi) {
+    const [p] = await base().select().from(schema.profils).where(eq(schema.profils.npi, ens.npi));
+    if (p) {
+      const habs = (p.habilitations as { role: string; perimetre: { niveau: string; etablissementId?: string } }[]).map((h) =>
+        h.role === "enseignant" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === ens.etablissementId ? { ...h, perimetre: { niveau: "etablissement", etablissementId: versEtablissementId } } : h);
+      await base().update(schema.profils).set({ habilitations: habs }).where(eq(schema.profils.id, p.id));
+      const [cpt] = await base().select({ id: schema.comptes.id }).from(schema.comptes).where(eq(schema.comptes.profilId, p.id));
+      if (cpt) await revoquerSessionsDuCompte(cpt.id);
+    }
+  }
   await inscrireAuRegistre([{ type: "AFFECTATION_ENSEIGNANT", auteurId: profil.id, apprenantId: null, enseignantId, etablissementId: versEtablissementId, donnees: { enseignantId, versEtablissementId } }]);
 }
 

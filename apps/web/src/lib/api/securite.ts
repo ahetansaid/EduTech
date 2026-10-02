@@ -36,7 +36,8 @@ export async function enregistrerCle(nom: string) {
 
 /** Présente une clé de sécurité : second facteur de la session, ou élévation juste à temps. */
 export async function presenterCle(elevation = false) {
-  const options = await ecrire<PublicKeyCredentialRequestOptionsJSON>("/auth/mfa/fido/options-verification");
+  // L'intention (second facteur ou élévation) est fixée dans le défi, côté serveur, dès sa création.
+  const options = await ecrire<PublicKeyCredentialRequestOptionsJSON>("/auth/mfa/fido/options-verification", { elevation });
   const reponse = await startAuthentication({ optionsJSON: options });
   return requete<{ ok: true }>("POST", "/auth/mfa/fido/verifier", { reponse, elevation }, { sansElevation: true });
 }

@@ -113,6 +113,8 @@ plateforme.get("/plateforme/qualite/communes/:id", authentifie, async (c) => {
 /** Relance : une demande suivie par établissement (circuit RELANCE_TRANSMISSION), visible par sa direction. */
 plateforme.post("/plateforme/relances", authentifie, async (c) => {
   const profil = c.get("profil");
+  // Une relance engage une autorité hiérarchique : direction départementale, inspection, administration centrale — pas un chercheur.
+  if (!profil.habilitations.some((h) => ["direction_departementale", "inspecteur", "administration_centrale"].includes(h.role))) refuser("Les relances relèvent des autorités de tutelle");
   const perimetre = perimetrePilotage(profil);
   const { etablissementIds } = await corps(c, z.object({ etablissementIds: z.array(z.string().regex(/^ETB-[A-Z0-9-]+$/)).min(1).max(200) }).strict());
   const cibles = await base().select({ id: schema.etablissements.id, communeId: schema.etablissements.communeId, transmis: schema.etablissements.transmis })

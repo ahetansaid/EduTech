@@ -5,18 +5,19 @@ import {
   generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse,
   type AuthenticationResponseJSON, type AuthenticatorTransportFuture, type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
-  authentifie, base, cleUtilisateur, controlerOrigine, corps, ErreurCodee, exigerElevation, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser, type Variables,
+  authentifie, base, cleUtilisateur, controlerOrigine, cookieSecurise, corps, ErreurCodee, exigerElevation, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser,
+  revoquerSessionsDuCompte, type Variables,
 } from "./commun";
-import { chiffrer, codeNumerique, dechiffrer, egalConstant, empreinteSecret, masquer } from "./cryptographie";
+import { chiffrer, cleDerivee, codeNumerique, dechiffrer, egalConstant, empreinteSecret, masquer } from "./cryptographie";
 import { lireEnv } from "./env";
 import { canauxDisponibles, envoyer, type Canal } from "./messagerie";
-import { surEchecsSecondFacteur } from "./vigie";
+import { signaler, surEchecsSecondFacteur } from "./vigie";
 
 /**
  * Sécurité des comptes.
@@ -40,7 +41,15 @@ const REPONSE_GENERIQUE = { ok: true, message: "Si ce compte existe et dispose d
 const CODE_INVALIDE = "Code invalide ou expiré";
 const TELEPHONE = z.string().trim().transform((t) => t.replace(/[\s.-]/g, "")).pipe(z.string().regex(/^\+\d{8,15}$/, "numéro au format international (+229…)"));
 const COURRIEL = z.string().trim().toLowerCase().email().max(120);
-const REGLE_MDP = "12 caractères minimum, avec au moins une minuscule, une majuscule et un chiffre";
+const REGLE_MDP = "12 caractères minimum, avec au moins une minuscule, une majuscule et un chiffre, et pas un mot de passe courant";
+/** Durée minimale de réponse d'une demande de code : identique que le compte existe ou non. */
+const DUREE_REPONSE_CODE_MS = 1500;
+
+/**
+ * Plafond PARTAGÉ (en base, toutes instances) et par COMPTE sur les vérifications de second facteur et
+ * d'élévation : ni une nouvelle connexion, ni une autre instance serverless ne remettent le compteur à zéro.
+ */
+const limiteParCompte = (nom: string) => limiteDebitPartage(nom, 10, 15 * 60_000, (c) => `compte:${(c as Context<{ Variables: Variables }>).get("compte")?.id ?? "anonyme"}`);
 
 async function profilDuCompte(compteId: string) {
   const [l] = await base().select({ id: schema.profils.id, nomAffiche: schema.profils.nomAffiche }).from(schema.comptes)
@@ -71,15 +80,22 @@ async function emettreCode(compteId: string, objet: "activation" | "recuperation
 
 /** Vérifie un code (essais comptés, usage unique) ; renvoie la ligne consommée ou lève « code invalide ». */
 async function consommerCode(compteId: string, objets: ("activation" | "recuperation" | "verification")[], code: string) {
-  const [ligne] = await base().select().from(schema.codesUsageUnique)
-    .where(and(eq(schema.codesUsageUnique.compteId, compteId), isNull(schema.codesUsageUnique.utiliseLe), gt(schema.codesUsageUnique.expireLe, new Date()), sql`${schema.codesUsageUnique.objet} in ${objets}`))
-    .orderBy(desc(schema.codesUsageUnique.creeLe)).limit(1);
-  if (!ligne || ligne.tentatives >= ESSAIS_CODE) throw new ErreurCodee(422, CODE_INVALIDE, "code_invalide");
+  const u = schema.codesUsageUnique;
+  const [dernier] = await base().select({ id: u.id }).from(u)
+    .where(and(eq(u.compteId, compteId), isNull(u.utiliseLe), gt(u.expireLe, new Date()), sql`${u.objet} in ${objets}`))
+    .orderBy(desc(u.creeLe)).limit(1);
+  if (!dernier) throw new ErreurCodee(422, CODE_INVALIDE, "code_invalide");
+  // Essai compté AVANT la comparaison, en une seule écriture atomique : des requêtes simultanées ne lisent
+  // jamais le même compteur (sinon le plafond de 5 essais ne tiendrait pas sous la concurrence).
+  const [ligne] = await base().update(u).set({ tentatives: sql`${u.tentatives} + 1` })
+    .where(and(eq(u.id, dernier.id), isNull(u.utiliseLe), sql`${u.tentatives} < ${ESSAIS_CODE}`)).returning();
+  if (!ligne) throw new ErreurCodee(422, CODE_INVALIDE, "code_invalide");
   if (!egalConstant(ligne.empreinte, empreinteSecret("code-unique", compteId, code))) {
-    await base().update(schema.codesUsageUnique).set({ tentatives: ligne.tentatives + 1, ...(ligne.tentatives + 1 >= ESSAIS_CODE ? { utiliseLe: new Date() } : {}) }).where(eq(schema.codesUsageUnique.id, ligne.id));
+    if (ligne.tentatives >= ESSAIS_CODE) await base().update(u).set({ utiliseLe: new Date() }).where(eq(u.id, ligne.id));
     throw new ErreurCodee(422, CODE_INVALIDE, "code_invalide");
   }
-  await base().update(schema.codesUsageUnique).set({ utiliseLe: new Date() }).where(eq(schema.codesUsageUnique.id, ligne.id));
+  const [consomme] = await base().update(u).set({ utiliseLe: new Date() }).where(and(eq(u.id, ligne.id), isNull(u.utiliseLe))).returning({ id: u.id });
+  if (!consomme) throw new ErreurCodee(422, CODE_INVALIDE, "code_invalide");
   return ligne;
 }
 
@@ -93,16 +109,22 @@ securiteComptes.post("/auth/code/demande", limiteDebitPartage("code-demande", 5,
   const s = await corps(c, z.object({ identifiant: z.string().trim().toLowerCase().min(3).max(80), objet: z.enum(["activation", "recuperation"]), canal: z.enum(["sms", "courriel"]).optional() }).strict());
   const ouverts = canauxDisponibles();
   if (!ouverts.sms && !ouverts.courriel) throw new ErreurCodee(503, "L'envoi de codes n'est pas encore ouvert sur cette plateforme : adressez-vous à votre administrateur.", "canaux_fermes");
-  const [cpt] = await base().select().from(schema.comptes).where(eq(schema.comptes.identifiant, s.identifiant));
-  if (!cpt || !cpt.actif) return c.json(REPONSE_GENERIQUE);
-  if (s.objet === "activation" && !cpt.doitChangerMotDePasse) return c.json(REPONSE_GENERIQUE);
-  const candidats: [Canal, string][] = [];
-  if (cpt.telephone && (s.objet === "activation" || cpt.telephoneVerifie) && ouverts.sms) candidats.push(["sms", cpt.telephone]);
-  if (cpt.courriel && (s.objet === "activation" || cpt.courrielVerifie) && ouverts.courriel) candidats.push(["courriel", cpt.courriel]);
-  const choix = candidats.find(([k]) => k === s.canal) ?? candidats[0];
-  if (!choix) return c.json(REPONSE_GENERIQUE);
-  const parti = await emettreCode(cpt.id, s.objet, choix[0], choix[1]);
-  await journaliser(await profilDuCompte(cpt.id), s.objet === "activation" ? "Envoi d'un code d'activation" : "Envoi d'un code de récupération", `${cpt.identifiant} → ${masquer(choix[1])}`, "gestion", parti, parti ? null : "envoi");
+  // Durée de réponse constante : l'attente d'un envoi réel ne doit pas révéler qu'un compte existe.
+  const debut = Date.now();
+  const traiter = async () => {
+    const [cpt] = await base().select().from(schema.comptes).where(eq(schema.comptes.identifiant, s.identifiant));
+    if (!cpt || !cpt.actif) return;
+    if (s.objet === "activation" && !cpt.doitChangerMotDePasse) return;
+    const candidats: [Canal, string][] = [];
+    if (cpt.telephone && (s.objet === "activation" || cpt.telephoneVerifie) && ouverts.sms) candidats.push(["sms", cpt.telephone]);
+    if (cpt.courriel && (s.objet === "activation" || cpt.courrielVerifie) && ouverts.courriel) candidats.push(["courriel", cpt.courriel]);
+    const choix = candidats.find(([k]) => k === s.canal) ?? candidats[0];
+    if (!choix) return;
+    const parti = await emettreCode(cpt.id, s.objet, choix[0], choix[1]);
+    await journaliser(await profilDuCompte(cpt.id), s.objet === "activation" ? "Envoi d'un code d'activation" : "Envoi d'un code de récupération", `${cpt.identifiant} → ${masquer(choix[1])}`, "gestion", parti, parti ? null : "envoi");
+  };
+  await traiter().catch(() => {});
+  await new Promise((r) => setTimeout(r, Math.max(0, DUREE_REPONSE_CODE_MS - (Date.now() - debut))));
   return c.json(REPONSE_GENERIQUE);
 });
 
@@ -118,7 +140,7 @@ securiteComptes.post("/auth/code/confirmer", limiteDebitPartage("code-confirmer"
     motDePasseHash: await hacherMotDePasse(s.nouveau), doitChangerMotDePasse: false, echecsConsecutifs: 0, verrouilleJusquA: null,
     ...(ligne.canal === "sms" ? { telephoneVerifie: true } : { courrielVerifie: true }),
   }).where(eq(schema.comptes.id, cpt.id));
-  await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.compteId, cpt.id));
+  await revoquerSessionsDuCompte(cpt.id);
   await journaliser(await profilDuCompte(cpt.id), ligne.objet === "activation" ? "Activation du compte par code" : "Récupération du compte par code", cpt.identifiant, "gestion", true, null);
   return c.json({ ok: true });
 });
@@ -135,6 +157,9 @@ securiteComptes.get("/moi/coordonnees", authentifie, async (c) => {
 
 /** Nouvelle coordonnée : adoptée seulement quand le code qui y est envoyé revient (preuve de possession). */
 securiteComptes.post("/moi/coordonnees/demande", authentifie, limiteDebit(5, 15 * 60_000, cleUtilisateur), async (c) => {
+  // Une coordonnée de récupération ouvre le compte : la changer exige de reconfirmer son identité
+  // (sinon une session volée devient une prise de contrôle durable, via « mot de passe oublié »).
+  exigerElevation(c);
   const s = await corps(c, z.discriminatedUnion("canal", [
     z.object({ canal: z.literal("sms"), destination: TELEPHONE }).strict(),
     z.object({ canal: z.literal("courriel"), destination: COURRIEL }).strict(),
@@ -152,7 +177,14 @@ securiteComptes.post("/moi/coordonnees/confirmer", authentifie, limiteDebit(10, 
   const ligne = await consommerCode(compte.id, ["verification"], code);
   const destination = ligne.destinationChiffree ? dechiffrer(ligne.destinationChiffree, "coordonnees") : null;
   if (!destination) throw new ErreurCodee(422, CODE_INVALIDE, "code_invalide");
+  const [avant] = await base().select({ telephone: schema.comptes.telephone, tv: schema.comptes.telephoneVerifie, courriel: schema.comptes.courriel, cv: schema.comptes.courrielVerifie }).from(schema.comptes).where(eq(schema.comptes.id, compte.id));
   await base().update(schema.comptes).set(ligne.canal === "sms" ? { telephone: destination, telephoneVerifie: true } : { courriel: destination, courrielVerifie: true }).where(eq(schema.comptes.id, compte.id));
+  // L'ancienne coordonnée vérifiée est prévenue : si ce n'est pas la personne, elle le sait aussitôt.
+  const ancienne = ligne.canal === "sms" ? (avant?.tv ? avant.telephone : null) : (avant?.cv ? avant.courriel : null);
+  if (ancienne && ancienne !== destination) {
+    await envoyer({ canal: ligne.canal, destinataire: ancienne, compteId: compte.id, objet: "Coordonnée de votre compte BEILE modifiée",
+      texte: `BEILE : la coordonnée de récupération du compte ${compte.identifiant} vient d'être remplacée. Si ce n'est pas vous, contactez sans délai l'administrateur de votre établissement.` }).catch(() => false);
+  }
   await journaliser(c.get("profil"), "Coordonnée vérifiée", `${ligne.canal} → ${masquer(destination)}`, "gestion", true, null);
   return c.json({ ok: true });
 });
@@ -167,23 +199,36 @@ async function marquerSession(c: Ctx, champs: { mfaVerifie?: boolean; eleveJusqu
   oublierSession(empreinte);
 }
 
-/** Échec du second facteur : compté sur le compte ; au 5e, la session est coupée et une alerte levée. */
+/**
+ * Second facteur bloqué ? Le compteur d'échecs est PROPRE au second facteur : une nouvelle connexion par
+ * mot de passe ne le remet pas à zéro (sinon : connexion, 4 codes, connexion… sans fin).
+ */
+async function exigerSecondFacteurOuvert(c: Ctx) {
+  const [cpt] = await base().select({ b: schema.comptes.mfaBloqueJusquA }).from(schema.comptes).where(eq(schema.comptes.id, c.get("compte").id));
+  if (cpt?.b && cpt.b > new Date()) {
+    const minutes = Math.ceil((cpt.b.getTime() - Date.now()) / 60_000);
+    throw new ErreurCodee(429, `Second facteur bloqué après des échecs répétés : réessayez dans ${minutes} minute(s).`, "mfa_bloque");
+  }
+}
+
+/** Échec du second facteur : tous les 5 échecs, blocage croissant (15 min, 30 min, 1 h…), sessions coupées, alerte. */
 async function echecSecondFacteur(c: Ctx) {
   const compte = c.get("compte");
-  const [maj] = await base().update(schema.comptes).set({ echecsConsecutifs: sql`${schema.comptes.echecsConsecutifs} + 1` }).where(eq(schema.comptes.id, compte.id)).returning({ n: schema.comptes.echecsConsecutifs });
+  const [maj] = await base().update(schema.comptes).set({ echecsMfa: sql`${schema.comptes.echecsMfa} + 1` }).where(eq(schema.comptes.id, compte.id)).returning({ n: schema.comptes.echecsMfa });
   await journaliser(c.get("profil"), "Second facteur refusé", compte.identifiant, "gestion", false, "second_facteur");
-  if ((maj?.n ?? 0) >= ECHECS_MFA_MAX) {
-    await base().update(schema.comptes).set({ verrouilleJusquA: new Date(Date.now() + 15 * 60_000) }).where(eq(schema.comptes.id, compte.id));
-    await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.compteId, compte.id));
-    oublierSession(compte.empreinteSession);
+  const n = maj?.n ?? 0;
+  if (n % ECHECS_MFA_MAX === 0) {
+    const minutes = 15 * 2 ** Math.min(6, n / ECHECS_MFA_MAX - 1);
+    await base().update(schema.comptes).set({ mfaBloqueJusquA: new Date(Date.now() + minutes * 60_000) }).where(eq(schema.comptes.id, compte.id));
+    await revoquerSessionsDuCompte(compte.id);
     await surEchecsSecondFacteur(c.get("profil").id, compte.identifiant);
-    throw new ErreurCodee(401, "Trop d'échecs du second facteur : session coupée, compte verrouillé 15 minutes.", "mfa_verrouille");
+    throw new ErreurCodee(401, `Trop d'échecs du second facteur : session coupée, second facteur bloqué ${minutes} minutes.`, "mfa_verrouille");
   }
   throw new ErreurCodee(422, "Code incorrect", "code_invalide");
 }
 
 async function reussiteSecondFacteur(c: Ctx, elevation: boolean) {
-  await base().update(schema.comptes).set({ echecsConsecutifs: 0 }).where(eq(schema.comptes.id, c.get("compte").id));
+  await base().update(schema.comptes).set({ echecsMfa: 0, mfaBloqueJusquA: null }).where(eq(schema.comptes.id, c.get("compte").id));
   await marquerSession(c, { mfaVerifie: true, ...(elevation ? { eleveJusquA: new Date(Date.now() + DUREE_ELEVATION_MS) } : {}) });
   await journaliser(c.get("profil"), elevation ? "Élévation par second facteur" : "Second facteur présenté", c.get("compte").identifiant, "gestion", true, null);
 }
@@ -193,11 +238,15 @@ async function verifierCodeMfa(compteId: string, code: string, secoursPermis: bo
   const [cpt] = await base().select().from(schema.comptes).where(eq(schema.comptes.id, compteId));
   if (!cpt) return false;
   const propre = code.replace(/[\s-]/g, "");
-  if (/^\d{6}$/.test(propre) && cpt.totpChiffre && cpt.mfaActive) {
+  // Un TOTP n'est un facteur que s'il a été CONFIRMÉ (totpDernierPas posé à la confirmation) : un secret tiré
+  // puis abandonné ne doit jamais devenir une porte d'entrée.
+  if (/^\d{6}$/.test(propre) && cpt.totpChiffre && cpt.mfaActive && cpt.totpDernierPas !== null) {
     const pas = verifierTotp(dechiffrer(cpt.totpChiffre, "totp"), propre);
-    if (pas === null || (cpt.totpDernierPas !== null && pas <= cpt.totpDernierPas)) return false;
-    await base().update(schema.comptes).set({ totpDernierPas: pas }).where(eq(schema.comptes.id, compteId));
-    return true;
+    if (pas === null) return false;
+    // Anti-rejeu atomique : deux requêtes simultanées avec le même code, une seule passe.
+    const [ok] = await base().update(schema.comptes).set({ totpDernierPas: pas })
+      .where(and(eq(schema.comptes.id, compteId), sql`${schema.comptes.totpDernierPas} < ${pas}`)).returning({ id: schema.comptes.id });
+    return !!ok;
   }
   if (secoursPermis && /^[a-z0-9]{10}$/i.test(propre)) {
     const [ok] = await base().update(schema.codesSecours).set({ utiliseLe: new Date() })
@@ -227,7 +276,7 @@ securiteComptes.get("/auth/mfa/etat", authentifie, async (c) => {
   const [cpt] = await base().select({ totp: schema.comptes.totpChiffre, actif: schema.comptes.mfaActive }).from(schema.comptes).where(eq(schema.comptes.id, compte.id));
   const cles = await base().select({ id: schema.clesFido.id, nom: schema.clesFido.nom, creeLe: schema.clesFido.creeLe, utiliseeLe: schema.clesFido.utiliseeLe }).from(schema.clesFido).where(eq(schema.clesFido.compteId, compte.id));
   const [secours] = (await base().execute(sql`select count(*)::int n from core.codes_secours where compte_id = ${compte.id} and utilise_le is null`)) as unknown as { n: number }[];
-  return c.json({ exige: compte.mfaExige, actif: !!cpt?.actif, verifie: compte.mfaVerifie, totp: !!(cpt?.actif && cpt.totp), cles, codesSecoursRestants: secours?.n ?? 0, rpConfigure: !!rpId(c) });
+  return c.json({ exige: compte.mfaExige, actif: !!cpt?.actif, verifie: compte.mfaVerifie, totp: !!(cpt?.actif && cpt.totp), cles, codesSecoursRestants: secours?.n ?? 0, rpConfigure: !!rpId() });
 });
 
 /** Enrôlement TOTP, étape 1 : un secret est tiré et gardé chiffré, inactif tant qu'un code n'a pas été confirmé. */
@@ -235,9 +284,9 @@ securiteComptes.post("/auth/mfa/totp/debut", authentifie, limiteDebit(10, 15 * 6
   exigerFacteurPresente(c);
   const compte = c.get("compte");
   const secret = nouveauSecretTotp();
-  await base().update(schema.comptes).set(compte.mfaActive ? {} : { totpChiffre: chiffrer(secret, "totp") }).where(eq(schema.comptes.id, compte.id));
-  // Compte déjà protégé (ajout d'un TOTP à une clé FIDO2) : le secret provisoire vit dans un cookie chiffré, jamais en base avant confirmation.
-  if (compte.mfaActive) setCookie(c, "beile_totp_provisoire", chiffrer(`${compte.id}|${secret}`, "totp-provisoire"), { httpOnly: true, secure: c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https", sameSite: "Strict", path: "/", maxAge: 600 });
+  // Le secret provisoire vit dans un cookie chiffré et lié au compte, JAMAIS en base avant confirmation : un
+  // secret tiré puis abandonné ne peut pas devenir un facteur valide.
+  setCookie(c, "beile_totp_provisoire", chiffrer(`${compte.id}|${secret}`, "totp-provisoire"), { httpOnly: true, secure: cookieSecurise(c), sameSite: "Strict", path: "/", maxAge: 600 });
   const emetteur = "BEILE";
   const uri = `otpauth://totp/${encodeURIComponent(`${emetteur}:${compte.identifiant}`)}?secret=${secret}&issuer=${emetteur}&algorithm=SHA1&digits=6&period=30`;
   return c.json({ secret, uri });
@@ -251,25 +300,26 @@ securiteComptes.post("/auth/mfa/totp/confirmer", authentifie, limiteDebit(10, 15
   let secret: string | null = null;
   const provisoire = getCookie(c, "beile_totp_provisoire");
   if (provisoire) {
-    const [id, s] = dechiffrer(provisoire, "totp-provisoire").split("|");
-    if (id === compte.id) secret = s ?? null;
-  } else {
-    const [cpt] = await base().select({ t: schema.comptes.totpChiffre }).from(schema.comptes).where(eq(schema.comptes.id, compte.id));
-    secret = cpt?.t ? dechiffrer(cpt.t, "totp") : null;
+    try {
+      const [id, s] = dechiffrer(provisoire, "totp-provisoire").split("|");
+      if (id === compte.id) secret = s ?? null;
+    } catch { secret = null; }
   }
   if (!secret) throw new ErreurCodee(422, "Commencez l'enregistrement de l'application d'authentification", "totp_absent");
   const pas = verifierTotp(secret, code);
   if (pas === null) throw new ErreurCodee(422, "Code incorrect : vérifiez l'heure de votre téléphone et réessayez", "code_invalide");
   await base().update(schema.comptes).set({ totpChiffre: chiffrer(secret, "totp"), totpDernierPas: pas, mfaActive: true }).where(eq(schema.comptes.id, compte.id));
   deleteCookie(c, "beile_totp_provisoire", { path: "/" });
-  const codes = await nouveauxCodesSecours(compte.id);
+  // Codes de secours remis au PREMIER facteur seulement ; ensuite, leur renouvellement exige une élévation.
+  const codes = compte.mfaActive ? null : await nouveauxCodesSecours(compte.id);
   await marquerSession(c, { mfaVerifie: true });
   await journaliser(c.get("profil"), "Second facteur enregistré (application)", compte.identifiant, "gestion", true, null);
   return c.json({ ok: true, codesSecours: codes });
 });
 
 /** Présenter le second facteur (code de l'application ou code de secours) après le mot de passe. */
-securiteComptes.post("/auth/mfa/verifier", authentifie, limiteDebit(20, 15 * 60_000, cleUtilisateur), async (c) => {
+securiteComptes.post("/auth/mfa/verifier", authentifie, limiteParCompte("mfa-verifier"), async (c) => {
+  await exigerSecondFacteurOuvert(c);
   const { code } = await corps(c, z.object({ code: z.string().trim().min(6).max(12) }).strict());
   if (!(await verifierCodeMfa(c.get("compte").id, code, true))) return echecSecondFacteur(c);
   await reussiteSecondFacteur(c, false);
@@ -284,39 +334,42 @@ securiteComptes.post("/auth/mfa/codes-secours", authentifie, async (c) => {
 
 /* ------------------------------------------------------------------ FIDO2 / WebAuthn */
 
-/** Domaine du portail (Relying Party) : configuré, sinon celui de l'origine de la requête (le portail web). */
-function rpId(c: Ctx): string | null {
+/**
+ * Domaine du portail (Relying Party) et origines admises : tirés de la CONFIGURATION du serveur
+ * (BEILE_WEBAUTHN_RP_ID, sinon la première origine autorisée), jamais d'un en-tête fourni par le client.
+ */
+function rpId(): string | null {
   const configure = lireEnv().RP_ID;
   if (configure) return configure;
-  const origine = c.req.header("origin");
-  return origine ? new URL(origine).hostname : null;
+  try { return new URL(lireEnv().ORIGINES[0]!).hostname; } catch { return null; }
 }
-function originesAttendues(c: Ctx) {
-  const origine = c.req.header("origin");
-  return [...new Set([...lireEnv().ORIGINES, ...(origine ? [origine] : [])])].filter((o) => {
-    try { return new URL(o).hostname === rpId(c) || new URL(o).hostname.endsWith(`.${rpId(c)}`); } catch { return false; }
+function originesAttendues() {
+  const rp = rpId();
+  return lireEnv().ORIGINES.filter((o) => {
+    try { const h = new URL(o).hostname; return h === rp || h.endsWith(`.${rp}`); } catch { return false; }
   });
 }
 
-/** Défi WebAuthn lié à la session, porté par un cookie signé (aucun état serveur entre deux instances). */
-function poserDefi(c: Ctx, defi: string) {
-  const exp = Date.now() + 5 * 60_000;
-  const sig = createHmac("sha256", Buffer.from(lireEnv().CLE_SEAU ?? lireEnv().DATABASE_URL_API)).update(`${defi}|${exp}|${c.get("compte").empreinteSession}`).digest("base64url");
-  setCookie(c, "beile_defi", `${defi}.${exp}.${sig}`, { httpOnly: true, secure: c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https", sameSite: "Strict", path: "/", maxAge: 300 });
+/** Défi WebAuthn : enregistré en base (empreinte), à usage unique, lié à la session ET à l'intention. */
+const empreinteDefi = (defi: string) => createHmac("sha256", cleDerivee("defi-webauthn")).update(defi).digest("hex");
+async function poserDefi(c: Ctx, defi: string, intention: "enrolement" | "verification" | "elevation") {
+  await base().delete(schema.defisWebauthn).where(lt(schema.defisWebauthn.expireLe, new Date())).catch(() => {});
+  await base().insert(schema.defisWebauthn).values({ empreinte: empreinteDefi(defi), session: c.get("compte").empreinteSession, intention, expireLe: new Date(Date.now() + 5 * 60_000) });
 }
-function lireDefi(c: Ctx): string {
-  const [defi, exp, sig] = (getCookie(c, "beile_defi") ?? "").split(".");
-  deleteCookie(c, "beile_defi", { path: "/" });
-  if (!defi || !exp || !sig || Number(exp) < Date.now()) throw new ErreurCodee(422, "Défi expiré : recommencez", "defi_expire");
-  const attendu = createHmac("sha256", Buffer.from(lireEnv().CLE_SEAU ?? lireEnv().DATABASE_URL_API)).update(`${defi}|${exp}|${c.get("compte").empreinteSession}`).digest("base64url");
-  if (!egalConstant(sig, attendu)) throw new ErreurCodee(422, "Défi invalide", "defi_invalide");
-  return defi;
+/** Consomme le défi de la réponse (supprimé : jamais rejouable) et vérifie session et intention. */
+async function consommerDefi(c: Ctx, reponse: { response?: { clientDataJSON?: string } }, intentions: string[]): Promise<{ defi: string; intention: string }> {
+  let defi = "";
+  try { defi = String(JSON.parse(Buffer.from(String(reponse.response?.clientDataJSON ?? ""), "base64url").toString("utf8")).challenge ?? ""); } catch { /* défi illisible */ }
+  if (!defi) throw new ErreurCodee(422, "Défi invalide", "defi_invalide");
+  const [d] = await base().delete(schema.defisWebauthn).where(eq(schema.defisWebauthn.empreinte, empreinteDefi(defi))).returning();
+  if (!d || d.expireLe < new Date() || d.session !== c.get("compte").empreinteSession || !intentions.includes(d.intention)) throw new ErreurCodee(422, "Défi expiré ou invalide : recommencez", "defi_invalide");
+  return { defi, intention: d.intention };
 }
 
 securiteComptes.post("/auth/mfa/fido/options-enrolement", authentifie, async (c) => {
   exigerFacteurPresente(c);
-  const rp = rpId(c);
-  if (!rp) throw new ErreurCodee(422, "Portail non identifié (origine absente)", "rp_absent");
+  const rp = rpId();
+  if (!rp) throw new ErreurCodee(422, "Portail non configuré (BEILE_WEBAUTHN_RP_ID)", "rp_absent");
   const compte = c.get("compte");
   const existantes = await base().select({ id: schema.clesFido.id, transports: schema.clesFido.transports }).from(schema.clesFido).where(eq(schema.clesFido.compteId, compte.id));
   const options = await generateRegistrationOptions({
@@ -324,15 +377,15 @@ securiteComptes.post("/auth/mfa/fido/options-enrolement", authentifie, async (c)
     attestationType: "none", excludeCredentials: existantes.map((k) => ({ id: k.id, transports: k.transports as AuthenticatorTransportFuture[] })),
     authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
   });
-  poserDefi(c, options.challenge);
+  await poserDefi(c, options.challenge, "enrolement");
   return c.json(options);
 });
 
 securiteComptes.post("/auth/mfa/fido/enroler", authentifie, async (c) => {
   exigerFacteurPresente(c);
   const s = await corps(c, z.object({ reponse: z.record(z.string(), z.unknown()), nom: z.string().trim().min(2).max(40) }).strict());
-  const defi = lireDefi(c);
-  const v = await verifyRegistrationResponse({ response: s.reponse as unknown as RegistrationResponseJSON, expectedChallenge: defi, expectedOrigin: originesAttendues(c), expectedRPID: rpId(c)!, requireUserVerification: false })
+  const { defi } = await consommerDefi(c, s.reponse as { response?: { clientDataJSON?: string } }, ["enrolement"]);
+  const v = await verifyRegistrationResponse({ response: s.reponse as unknown as RegistrationResponseJSON, expectedChallenge: defi, expectedOrigin: originesAttendues(), expectedRPID: rpId()!, requireUserVerification: false })
     .catch((e: Error) => { throw new ErreurCodee(422, `Clé refusée : ${e.message}`, "fido_refuse"); });
   if (!v.verified || !v.registrationInfo) throw new ErreurCodee(422, "Clé refusée", "fido_refuse");
   const { credential } = v.registrationInfo;
@@ -347,29 +400,35 @@ securiteComptes.post("/auth/mfa/fido/enroler", authentifie, async (c) => {
 });
 
 securiteComptes.post("/auth/mfa/fido/options-verification", authentifie, async (c) => {
-  const rp = rpId(c);
-  if (!rp) throw new ErreurCodee(422, "Portail non identifié (origine absente)", "rp_absent");
+  const elevation = z.object({ elevation: z.boolean().optional() }).catch({}).parse(await c.req.json().catch(() => ({}))).elevation === true;
+  const rp = rpId();
+  if (!rp) throw new ErreurCodee(422, "Portail non configuré (BEILE_WEBAUTHN_RP_ID)", "rp_absent");
   const cles = await base().select({ id: schema.clesFido.id, transports: schema.clesFido.transports }).from(schema.clesFido).where(eq(schema.clesFido.compteId, c.get("compte").id));
   if (!cles.length) throw new ErreurCodee(422, "Aucune clé de sécurité enregistrée", "fido_absent");
   const options = await generateAuthenticationOptions({ rpID: rp, allowCredentials: cles.map((k) => ({ id: k.id, transports: k.transports as AuthenticatorTransportFuture[] })), userVerification: "preferred" });
-  poserDefi(c, options.challenge);
+  await poserDefi(c, options.challenge, elevation ? "elevation" : "verification");
   return c.json(options);
 });
 
-/** Présentation d'une clé FIDO2 : second facteur de la session, ou élévation (« elevation: true »). */
-securiteComptes.post("/auth/mfa/fido/verifier", authentifie, limiteDebit(20, 15 * 60_000, cleUtilisateur), async (c) => {
+/**
+ * Présentation d'une clé FIDO2 : second facteur de la session, ou élévation. L'intention est celle du DÉFI
+ * (fixée côté serveur à sa création), pas un drapeau de la requête : une assertion capturée ne se rejoue pas
+ * en élévation.
+ */
+securiteComptes.post("/auth/mfa/fido/verifier", authentifie, limiteParCompte("mfa-fido"), async (c) => {
+  await exigerSecondFacteurOuvert(c);
   const s = await corps(c, z.object({ reponse: z.record(z.string(), z.unknown()), elevation: z.boolean().optional() }).strict());
-  const defi = lireDefi(c);
+  const { defi, intention } = await consommerDefi(c, s.reponse as { response?: { clientDataJSON?: string } }, ["verification", "elevation"]);
   const reponse = s.reponse as unknown as AuthenticationResponseJSON;
   const [cle] = await base().select().from(schema.clesFido).where(and(eq(schema.clesFido.id, String(reponse.id ?? "")), eq(schema.clesFido.compteId, c.get("compte").id)));
   if (!cle) return echecSecondFacteur(c);
   const v = await verifyAuthenticationResponse({
-    response: reponse, expectedChallenge: defi, expectedOrigin: originesAttendues(c), expectedRPID: rpId(c)!, requireUserVerification: false,
+    response: reponse, expectedChallenge: defi, expectedOrigin: originesAttendues(), expectedRPID: rpId()!, requireUserVerification: false,
     credential: { id: cle.id, publicKey: Buffer.from(cle.clePublique, "base64url"), counter: cle.compteur, transports: cle.transports as AuthenticatorTransportFuture[] },
   }).catch(() => null);
   if (!v?.verified) return echecSecondFacteur(c);
   await base().update(schema.clesFido).set({ compteur: v.authenticationInfo.newCounter, utiliseeLe: new Date() }).where(eq(schema.clesFido.id, cle.id));
-  await reussiteSecondFacteur(c, !!s.elevation);
+  await reussiteSecondFacteur(c, intention === "elevation");
   return c.json({ ok: true });
 });
 
@@ -394,19 +453,28 @@ securiteComptes.post("/auth/mfa/cles/:id/retirer", authentifie, async (c) => {
  * code de l'application (pas de code de secours), ou clé FIDO2 via /auth/mfa/fido/verifier. Autres
  * administrateurs délégués : mot de passe.
  */
-securiteComptes.post("/auth/elevation", authentifie, limiteDebit(10, 15 * 60_000, cleUtilisateur), async (c) => {
+securiteComptes.post("/auth/elevation", authentifie, limiteParCompte("elevation"), async (c) => {
   const s = await corps(c, z.object({ motDePasse: z.string().min(1).max(200).optional(), code: z.string().regex(/^\d{6}$/).optional() }).strict());
   const compte = c.get("compte");
-  if (compte.mfaExige) {
+  if (compte.mfaExige || compte.mfaActive) {
+    await exigerSecondFacteurOuvert(c);
     if (!s.code) throw new ErreurCodee(422, "Code de votre application d'authentification requis (ou clé de sécurité)", "code_requis");
     if (!(await verifierCodeMfa(compte.id, s.code, false))) return echecSecondFacteur(c);
     await reussiteSecondFacteur(c, true);
   } else {
     const [cpt] = await base().select({ h: schema.comptes.motDePasseHash }).from(schema.comptes).where(eq(schema.comptes.id, compte.id));
     if (!s.motDePasse || !cpt || !(await verifierMotDePasse(s.motDePasse, cpt.h))) {
+      // Même compteur que la connexion : une session volée ne sert pas à deviner le mot de passe sans verrou.
+      const [maj] = await base().update(schema.comptes).set({ echecsConsecutifs: sql`${schema.comptes.echecsConsecutifs} + 1` }).where(eq(schema.comptes.id, compte.id)).returning({ n: schema.comptes.echecsConsecutifs });
       await journaliser(c.get("profil"), "Élévation refusée", compte.identifiant, "gestion", false, "mot_de_passe");
+      if ((maj?.n ?? 0) >= 5) {
+        await base().update(schema.comptes).set({ verrouilleJusquA: new Date(Date.now() + 15 * 60_000) }).where(eq(schema.comptes.id, compte.id));
+        await revoquerSessionsDuCompte(compte.id);
+        throw new ErreurCodee(401, "Trop d'échecs : session coupée, compte verrouillé 15 minutes.", "verrouille");
+      }
       throw new ErreurCodee(422, "Mot de passe incorrect", "mot_de_passe_invalide");
     }
+    await base().update(schema.comptes).set({ echecsConsecutifs: 0 }).where(eq(schema.comptes.id, compte.id));
     await marquerSession(c, { eleveJusquA: new Date(Date.now() + DUREE_ELEVATION_MS) });
     await journaliser(c.get("profil"), "Élévation par mot de passe", compte.identifiant, "gestion", true, null);
   }
@@ -420,12 +488,13 @@ securiteComptes.post("/admin/comptes/:id/reinitialiser-mfa", authentifie, async 
   const id = z.string().regex(/^CPT-[a-z0-9-]+$/).parse(c.req.param("id"));
   if (id === c.get("compte").id) refuser("Nul ne réinitialise son propre second facteur");
   const { motif } = await corps(c, z.object({ motif: z.string().trim().min(5).max(200) }).strict());
-  const [maj] = await base().update(schema.comptes).set({ mfaActive: false, totpChiffre: null, totpDernierPas: null }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });
+  const [maj] = await base().update(schema.comptes).set({ mfaActive: false, totpChiffre: null, totpDernierPas: null, echecsMfa: 0, mfaBloqueJusquA: null }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });
   if (!maj) throw new HTTPException(404, { message: "Compte introuvable" });
   await base().execute(sql`delete from core.cles_fido where compte_id = ${id}`);
   await base().update(schema.codesSecours).set({ utiliseLe: new Date() }).where(and(eq(schema.codesSecours.compteId, id), isNull(schema.codesSecours.utiliseLe)));
-  await base().update(schema.sessions).set({ revoquee: true }).where(eq(schema.sessions.compteId, id));
+  await revoquerSessionsDuCompte(id);
   await journaliser(c.get("profil"), "Réinitialisation du second facteur", `${id} · ${motif}`, "gestion", true, null);
+  await signaler("reinitialisation_mfa", "haute", c.get("profil").id, id, `${c.get("profil").nomAffiche} a réinitialisé le second facteur du compte ${id} (${motif}).`);
   return c.json({ ok: true });
 });
 
