@@ -341,7 +341,9 @@ securiteComptes.post("/auth/mfa/codes-secours", authentifie, async (c) => {
 function rpId(): string | null {
   const configure = lireEnv().RP_ID;
   if (configure) return configure;
-  try { return new URL(lireEnv().ORIGINES[0]!).hostname; } catch { return null; }
+  // Première origine HTTPS déclarée (le portail public), sinon la première (développement local).
+  const origines = lireEnv().ORIGINES;
+  try { return new URL(origines.find((o) => o.startsWith("https://")) ?? origines[0]!).hostname; } catch { return null; }
 }
 function originesAttendues() {
   const rp = rpId();
