@@ -86,15 +86,55 @@ au moindre écart), parcours navigateur (14 contrôles, clé FIDO2 comprise), sc
 test de charge (100 utilisateurs, aucune erreur). Contrôle réel : l'en-tête `X-Forwarded-For` usurpé ne contourne
 pas les plafonds sur Vercel (mesuré).
 
-## 7. Risques résiduels assumés (décisions à prendre)
+## 7. Accès aux portails et comptes de test
 
-| Risque | Pourquoi il reste | Prochaine étape |
+> Tous les portails sont aujourd'hui servis depuis une seule adresse : **https://edu-tech-api-rho.vercel.app**.
+> Connexion : https://edu-tech-api-rho.vercel.app/connexion ; chaque profil arrive ensuite sur son espace.
+> Les **mots de passe** et les **clés de second facteur** ne figurent pas ici (fichier versionné) : ils sont dans
+> `GUIDE-TESTS.local.md`, à la racine du projet. 🔐 = second facteur demandé après le mot de passe.
+
+### Portail public (sans compte)
+
+| Service | Lien |
+|---|---|
+| Accueil | https://edu-tech-api-rho.vercel.app/ |
+| Annuaire des établissements | https://edu-tech-api-rho.vercel.app/etablissements |
+| Résultats d'examens | https://edu-tech-api-rho.vercel.app/resultats |
+| Vérification de diplômes et d'actes | https://edu-tech-api-rho.vercel.app/verifier |
+| Calendrier scolaire | https://edu-tech-api-rho.vercel.app/calendrier |
+| Données publiques | https://edu-tech-api-rho.vercel.app/donnees |
+| Activer mon compte | https://edu-tech-api-rho.vercel.app/activation |
+| Mot de passe oublié | https://edu-tech-api-rho.vercel.app/mot-de-passe-oublie |
+
+### Portail des usagers
+
+| Profil | Identifiant | Espace |
 |---|---|---|
-| Comptes de test en production (dont l'autorité N0) | Décision : conservés pour la démonstration | Les supprimer avant l'ouverture réelle ; créer l'autorité par activation |
-| Envois SMS et courriel fermés | Pas de fournisseur | Convention opérateur national ; domaine d'envoi SPF/DKIM/DMARC |
-| Un seul administrateur de la plateforme | Confiance dans la racine ; tout est journalisé et alerté | Double validation (quatre yeux) dès qu'un second administrateur existe |
-| Pas de RLS sur les tables nominatives ; droits `beile_app` larges sur `core` | L'ABAC de l'API est la barrière principale | RLS par contexte de session ; droits table par table |
-| Données personnelles en clair en base (NPI, téléphones) | Chiffrement de colonne non encore en place | HMAC du NPI pour les jointures, AES-GCM pour les coordonnées |
-| Portails non séparés en production | DNS et hébergement | Sous-domaines, VPN de la console nationale, rôle de connexion du portail public |
-| Clés hors HSM, hébergement hors ASIN | Institutionnel | Voir le lot E de SECURITE_COMPTES.md |
-| `npm audit` : 4 vulnérabilités modérées | Outil de développement (drizzle-kit → esbuild), absent de la production | Mise à jour de drizzle-kit |
+| Apprenante (5e, CEG Les Rôniers) | `aicha.zannou` | https://edu-tech-api-rho.vercel.app/apprenant |
+| Parent (2 enfants, 2 établissements) | `chantal.dossou` | https://edu-tech-api-rho.vercel.app/famille |
+| Enseignant (mathématiques) | `idrissou.sanni` | https://edu-tech-api-rho.vercel.app/enseignant |
+| Étudiant (L3 Informatique, IFRI) | `etudiant.ifri` | https://edu-tech-api-rho.vercel.app/apprenant |
+
+### Portail de gestion
+
+| Profil | Identifiant | Espace |
+|---|---|---|
+| Cheffe d'établissement (CEG Les Rôniers) | `hortense.guera` | https://edu-tech-api-rho.vercel.app/etablissement |
+| Inspecteur (circonscription de Parakou) | `nestor.orou` | https://edu-tech-api-rho.vercel.app/aujourd-hui |
+| Direction départementale (Borgou) 🔐 | `bertrand.chabi` | https://edu-tech-api-rho.vercel.app/territoire |
+| Direction de l'IFRI (supérieur) | `prosper.ahouandjinou` | https://edu-tech-api-rho.vercel.app/enseignement-superieur |
+| Enseignante du supérieur (IFRI) | `sena.hounkpatin` | https://edu-tech-api-rho.vercel.app/enseignant |
+
+### Console nationale
+
+| Profil | Identifiant | Espace |
+|---|---|---|
+| Cabinet du ministre 🔐 | `felicite.akakpo` | https://edu-tech-api-rho.vercel.app/cockpit |
+| Chercheur | `landry.kouton` | https://edu-tech-api-rho.vercel.app/jeux-de-donnees |
+| Déléguée à la protection des données | `laure.zannou` | https://edu-tech-api-rho.vercel.app/audit |
+| Administrateur de la plateforme (autorité N0) 🔐 | `admin.beile` | https://edu-tech-api-rho.vercel.app/administration |
+
+Pages communes :
+- **Administration déléguée** (directrice, direction départementale, cabinet, administrateur) : https://edu-tech-api-rho.vercel.app/delegation
+- **Alertes de sécurité** (DPO, administrateur) : https://edu-tech-api-rho.vercel.app/securite
+- **Mon compte** (tous) : https://edu-tech-api-rho.vercel.app/mon-compte
