@@ -110,6 +110,16 @@ async function lotUnique(p: { id: string; lot: string }, message: string) {
   if (!neuf) throw new HTTPException(409, { message: "Lot déjà reçu : un PV ou une publication ne se rejoue pas" });
 }
 
+/**
+ * Trace d'un lot conforme, sans bloquer le rejeu. Ces trois messages (absences, PV de diplôme, allocations)
+ * sont idempotents par leur `idSaisie` : rejouer un lot y répond « déjà enregistré », et non par un conflit.
+ * Le lot est malgré tout écrit dans `core.lots_interop` pour que l'écran d'interopérabilité compte tous les
+ * partenaires sur le même registre, au lieu de n'en montrer deux.
+ */
+async function lotRecu(p: { id: string; lot: string }, message: string) {
+  await base().insert(schema.lotsInterop).values({ partenaire: p.id, lot: p.lot, message }).onConflictDoNothing();
+}
+
 /* ------------------------------------------------------------------ EducMaster : vie scolaire */
 
 interop.post("/interop/educmaster/absences", async (c) => {
@@ -118,6 +128,7 @@ interop.post("/interop/educmaster/absences", async (c) => {
     etablissementId: z.string().regex(/^ETB-[A-Za-z0-9-]+$/), classeId: z.string().regex(/^CLS-[A-Za-z0-9-]+$/),
     date: DATE, absents: z.array(NPI).min(1).max(120),
   }).strict(), p.json);
+  await lotRecu(p, "absences");
   const idSaisie = `LOT-${p.lot}`;
   const deja = await dejaSaisi(idSaisie, "ABSENCE");
   if (deja) return c.json({ lot: p.lot, deja: true, enregistres: deja.length });
@@ -182,6 +193,7 @@ interop.post("/interop/uac/pv-diplome", async (c) => {
       npi: NPI, decision: z.enum(["admis", "ajourne"]), creditsValides: z.number().int().min(0).max(600), moyenne: z.number().min(0).max(20).nullable(),
     }).strict()).min(1).max(500),
   }).strict(), p.json);
+  await lotRecu(p, "pv-diplome");
   const idSaisie = `LOT-${p.lot}`;
   const deja = await dejaSaisi(idSaisie, "CERTIFICATION");
   if (deja) return c.json({ lot: p.lot, deja: true, certifies: deja.length });
@@ -249,6 +261,7 @@ interop.post("/interop/dbau/allocations", async (c) => {
       referenceActe: z.string().trim().min(3).max(120), decideLe: DATE,
     }).strict()).min(1).max(2000),
   }).strict(), p.json);
+  await lotRecu(p, "allocations");
   const idSaisie = `LOT-${p.lot}`;
   const deja = await dejaSaisi(idSaisie, "ALLOCATION_DECIDEE");
   if (deja) return c.json({ lot: p.lot, deja: true, enregistres: deja.length });

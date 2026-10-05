@@ -153,10 +153,10 @@ plateforme.post("/plateforme/relances", authentifie, async (c) => {
   return c.json({ relances: nouvelles.length, dejaOuvertes: ouvertes.size, dejaTransmis: cibles.filter((x) => x.transmis).length }, 201);
 });
 
-/** Interopérabilité : volume et dernière réception par source raccordée, lus dans le registre. */
+/** Interopérabilité : volume et dernière réception par source raccordée, lots par partenaire, lus en base. */
 plateforme.get("/plateforme/interoperabilite", authentifie, async (c) => {
   exploitant(c);
-  const [sources, [registre], verifications] = await Promise.all([
+  const [sources, [registre], verifications, lots] = await Promise.all([
     base().execute<{ source: string; total: number; jour: number; derniere: string | null; types: string[] }>(sql`
       select source, count(*)::int as total, count(*) filter (where survenu_le >= date_trunc('day', now()))::int as jour,
              max(survenu_le) as derniere, array_agg(distinct type) as types
@@ -167,13 +167,19 @@ plateforme.get("/plateforme/interoperabilite", authentifie, async (c) => {
     base().execute<{ jour: string; n: number }>(sql`
       select to_char(date_trunc('day', horodatage), 'YYYY-MM-DD') as jour, count(*)::int as n from audit.journal
       where action = 'Vérification de diplôme' and horodatage >= now() - interval '30 days' group by 1 order by 1`),
+    base().execute<{ partenaire: string; message: string; lots: number; jour: number; dernier: string | null }>(sql`
+      select partenaire, message, count(*)::int as lots,
+             count(*) filter (where recu_le >= date_trunc('day', now()))::int as jour, max(recu_le) as dernier
+      from core.lots_interop group by 1, 2 order by 1, 2`),
   ]);
   // Partenaires du connecteur : habilitations déclarées, connecteur ouvert (secret provisionné) ou fermé,
   // et ce qui a réellement été reçu d'eux (registre, par source). Aucun secret ne sort d'ici.
   const secrets = lireEnv().PARTENAIRES;
   const partenaires = Object.entries(PARTENAIRES).map(([id, p]) => {
     const recu = sources.find((s) => s.source === p.source);
-    return { id, nom: p.nom, source: p.source, messages: p.messages, ouvert: !!secrets[id], recus: recu?.total ?? 0, dernier: recu?.derniere ?? null };
+    const parMessage = lots.filter((l) => l.partenaire === id);
+    return { id, nom: p.nom, source: p.source, messages: p.messages, ouvert: !!secrets[id], recus: recu?.total ?? 0, dernier: recu?.derniere ?? null,
+      lots: parMessage.reduce((s, l) => s + l.lots, 0), parMessage };
   });
   return c.json({ sources, registreNational: registre, verificationsDiplomes: verifications, partenaires });
 });
