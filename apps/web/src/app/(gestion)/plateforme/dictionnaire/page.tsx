@@ -1,8 +1,8 @@
 "use client";
 
 import type { DefinitionIndicateur, MoteurCalcul } from "@beile/contracts";
-import { DIMENSION_LIBELLE, MOTEUR_LIBELLE } from "@beile/contracts";
-import { BookMarked, Calculator, Database, FileStack, FileClock, History, Lock, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import { DIMENSION_LIBELLE, LIBELLE_RATTACHEMENT_ODD, MOTEUR_LIBELLE } from "@beile/contracts";
+import { BookMarked, Calculator, Database, FileStack, FileClock, Globe, History, Lock, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
@@ -117,11 +117,14 @@ export default function DictionnairePage() {
       (unite === "toutes" || d.unite === unite) &&
       (moteur === "tous" || d.moteur === moteur) &&
       (proprietaire === "tous" || d.proprietaire === proprietaire) &&
-      (!q || [d.nom, d.code, d.definition, d.formule, d.proprietaire, MOTEUR_LIBELLE[d.moteur]].some((t) => normaliser(t).includes(q))),
+      (!q || [d.nom, d.code, d.definition, d.formule, d.proprietaire, MOTEUR_LIBELLE[d.moteur], d.rattachementOdd.code ?? "", d.rattachementOdd.intitule ?? ""].some((t) => normaliser(t).includes(q))),
     );
   }, [indicateurs, recherche, unite, moteur, proprietaire]);
 
   const rendusParLeRegistre = indicateurs.filter((d) => d.moteur === "registre").length;
+  const oddExacts = indicateurs.filter((d) => d.rattachementOdd.degre === "exact").length;
+  const oddAnalogiques = indicateurs.filter((d) => d.rattachementOdd.degre === "analogique").length;
+  const oddSansEquivalence = indicateurs.length - oddExacts - oddAnalogiques;
 
   const seuilMax = indicateurs.length ? Math.max(...indicateurs.map((d) => d.effectifMinimalPublication)) : 0;
   const pret = !!dictionnaire.data;
@@ -154,6 +157,7 @@ export default function DictionnairePage() {
               <li><strong className="text-ink">Une version publiée n'est jamais modifiée : elle est remplacée.</strong> Chaque chiffre affiché renvoie à la version exacte de sa définition, et les chiffres anciens restent reproductibles.</li>
               <li><strong className="text-ink">Les petites cellules sont masquées.</strong> Sous le seuil de publication, la valeur n'est pas affichée, pour éviter qu'on reconnaisse une personne.</li>
               <li><strong className="text-ink">Chaque définition nomme le moteur qui la rend.</strong> {entier(rendusParLeRegistre)} indicateur{rendusParLeRegistre > 1 ? "s" : ""} de cette page {rendusParLeRegistre > 1 ? "sont calculés" : "est calculé"} par le registre du supérieur : leur chiffre n'est pas interrogeable par Ask Education, qui ne connaît que la couche statistique nationale. Publier une définition sans dire d'où sort le nombre, ce serait promettre un chiffre que personne ne rend.</li>
+              <li><strong className="text-ink">Le rattachement au cadre mondial se déclare, il ne se suggère pas.</strong> {entier(oddExacts)} indicateur{oddExacts > 1 ? "s" : ""} de cette page mesure{oddExacts > 1 ? "nt" : ""} la même quantité qu'un indicateur ODD 4 publié, {entier(oddAnalogiques)} l'approchent sans le reproduire, {entier(oddSansEquivalence)} n'y ont pas d'équivalent. La fiche écrit lequel, et pourquoi : un rapprochement implicite deviendrait dans un rapport une citation que personne ne peut défendre à la source.</li>
             </ul>
           </div>
         </div>
@@ -170,7 +174,7 @@ export default function DictionnairePage() {
                 type="search"
                 value={recherche}
                 onChange={(e) => setRecherche(e.target.value)}
-                placeholder="Nom, code, formule, direction…"
+                placeholder="Nom, code, formule, direction, code ODD…"
                 className="h-10 w-full rounded-sm border border-line bg-surface pl-9 pr-3 text-[14px] text-ink placeholder:text-ink-muted"
               />
             </div>
@@ -329,6 +333,24 @@ function FicheIndicateur({ d }: { d: DefinitionIndicateur }) {
         />
         <div className="sm:col-span-2"><Champ libelle="Source" valeur={d.source} /></div>
       </dl>
+
+      <div className={cn("mt-3 rounded-md border px-3 py-2.5", d.rattachementOdd.degre === "absent" ? "border-line/60" : "border-line bg-surface-2/50")}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            ton={d.rattachementOdd.degre === "exact" ? "info" : d.rattachementOdd.degre === "analogique" ? "avertissement" : "neutre"}
+            icone={Globe}
+          >
+            {d.rattachementOdd.code ? `ODD ${d.rattachementOdd.code}` : "ODD 4 · aucun équivalent"}
+          </Badge>
+          <Etiquette>{LIBELLE_RATTACHEMENT_ODD[d.rattachementOdd.degre]}</Etiquette>
+        </div>
+        {d.rattachementOdd.intitule && (
+          <p className="mt-1.5 text-[12px] leading-relaxed text-ink-muted">
+            <span className="italic">« {d.rattachementOdd.intitule} »</span> — intitulé officiel du répertoire des métadonnées de l'ONU, en sa langue de publication.
+          </p>
+        )}
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">{d.rattachementOdd.reserve}</p>
+      </div>
 
       <div className="mt-3">
         <Etiquette>Dimensions autorisées</Etiquette>

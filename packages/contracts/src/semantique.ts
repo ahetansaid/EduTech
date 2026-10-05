@@ -153,6 +153,46 @@ export const Illustration = z.object({
 });
 export type Illustration = z.infer<typeof Illustration>;
 
+/**
+ * Les douze indicateurs que le répertoire des métadonnées des Nations Unies publie sous l'objectif 4
+ * (unstats.un.org/sdgs/metadata, relu le 05/10/2026). La liste est close : un code hors de cette
+ * énumération ne peut pas s'écrire, donc pas s'inventer. Le cadre mondial ne couvre pas tout ce qu'une
+ * administration scolaire mesure — un indicateur non rattaché n'est pas un indicateur de second ordre,
+ * c'est une quantité que le cadre ne définit pas, et le dire est une réponse.
+ */
+export const CODES_ODD_4 = ["4.1.1", "4.1.2", "4.2.1", "4.2.2", "4.3.1", "4.4.1", "4.5.1", "4.6.1", "4.7.1", "4.a.1", "4.b.1", "4.c.1"] as const;
+export type CodeOdd = (typeof CODES_ODD_4)[number];
+
+/**
+ * Le rattachement d'un indicateur BEILE à un indicateur ODD 4. Trois degrés, pas deux étiquettes :
+ * déclarer une équivalence officielle là où le construit mesuré ne fait que ressembler au nôtre donnerait
+ * à un décideur une citation qu'il ne peut pas défendre. Le degré est donc écrit, et l'écart avec lui.
+ */
+export const RattachementOdd = z
+  .object({
+    /** Le code publié, ou `null` quand aucune définition du cadre ne mesure cette quantité. */
+    code: z.enum(CODES_ODD_4).nullable(),
+    /** `exact` : le même construit. `analogique` : on s'en approche — et `reserve` dit de combien. */
+    degre: z.enum(["exact", "analogique", "absent"]),
+    /** Intitulé officiel recopié dans la langue du répertoire, plutôt que traduit de notre main. */
+    intitule: z.string().nullable(),
+    /** Ce que le décideur doit savoir avant de citer le code : écart d'assiette, de niveau ou de nomenclature. */
+    reserve: z.string(),
+  })
+  .refine((r) => (r.degre === "absent") === (r.code === null), {
+    message: "un rattachement « absent » ne porte pas de code, et un code ne se déclare pas sans degré",
+  })
+  .refine((r) => r.degre === "absent" || r.intitule !== null, {
+    message: "un code cité sans son intitulé officiel ne peut pas être contrôlé à la source",
+  });
+export type RattachementOdd = z.infer<typeof RattachementOdd>;
+
+export const LIBELLE_RATTACHEMENT_ODD: Record<RattachementOdd["degre"], string> = {
+  exact: "Rattachement exact",
+  analogique: "Analogie assumée",
+  absent: "Aucun équivalent dans le cadre ODD 4",
+};
+
 export const DefinitionIndicateur = z.object({
   code: CodeIndicateur,
   nom: z.string(),
@@ -176,6 +216,11 @@ export const DefinitionIndicateur = z.object({
   libelleNumerateur: z.string().nullable(),
   libelleDenominateur: z.string().nullable(),
   illustration: Illustration,
+  /**
+   * Ce que cette mesure doit au cadre mondial, et ce qu'elle ne lui doit pas. Obligatoire : un indicateur
+   * qui ne déclare pas son rattachement laisse le décideur deviner s'il n'en a pas — ou s'il n'est pas écrit.
+   */
+  rattachementOdd: RattachementOdd,
 });
 export type DefinitionIndicateur = z.infer<typeof DefinitionIndicateur>;
 

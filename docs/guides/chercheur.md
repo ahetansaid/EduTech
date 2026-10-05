@@ -69,6 +69,7 @@
 
 - Formule, source, unité, direction propriétaire et moteur de calcul.
 - Deux moteurs publiés : la couche statistique nationale, et le registre des écritures du supérieur (crédits ECTS).
+- Rattachement ODD 4 sur chaque fiche : le code publié quand la quantité est bien la même, l'écart écrit quand elle ne l'est pas, « aucun équivalent » quand le cadre mondial ne mesure pas cette quantité.
 - Historique des versions : un chiffre publié se recalcule avec la définition de son année.
 
 ## Tâches pas à pas
