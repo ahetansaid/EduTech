@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { schema } from "@beile/db";
-import { and, desc, eq, gte, inArray, like, ne, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -126,15 +126,24 @@ droits.get("/droits/mes-consultations", authentifie, limiteDebit(30, 60_000, cle
     ? eq(schema.journal.ressource, compte.id)
     : or(eq(schema.journal.ressource, sujet), like(schema.journal.ressource, `${sujet} %`))!;
 
+  // La famille n'est pas un « tiers » : l'enfant et ses responsables légaux sont retirés de la trace. Sinon un
+  // parent lirait les consultations de l'autre parent (séparation, conflit) ou celles de l'enfant lui-même.
+  const famille = sujet === "compte" ? sql`select ${profil.id}::text` : sql`
+    select p.id from core.profils p where p.npi in (
+      select a.npi from core.apprenants a where a.id = ${sujet} and a.npi is not null
+      union select l.responsable_npi from core.liens_familiaux l where l.apprenant_id = ${sujet})`;
   const lignes = await base().select({
     horodatage: schema.journal.horodatage,
-    agent: schema.journal.profilNom,
+    // L'agent est désigné par sa FONCTION (« Professeur de mathématiques », « Directrice »), pas par son nom :
+    // la personne sait quel métier a accédé, sans que la plateforme expose nominativement son personnel.
+    agent: sql<string>`coalesce(${schema.profils.fonction}, ${schema.journal.profilNom})`,
     action: schema.journal.action,
     finalite: schema.journal.finalite,
     autorise: schema.journal.autorise,
     motifRefus: schema.journal.critereManquant,
   }).from(schema.journal)
-    .where(and(cible, gte(schema.journal.horodatage, depuis), ne(schema.journal.profilId, profil.id)))
+    .leftJoin(schema.profils, eq(schema.profils.id, schema.journal.profilId))
+    .where(and(cible, gte(schema.journal.horodatage, depuis), ne(schema.journal.profilId, profil.id), sql`${schema.journal.profilId} not in (${famille})`))
     .orderBy(desc(schema.journal.horodatage))
     .limit(LIGNES_TRACE);
 
