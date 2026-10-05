@@ -683,7 +683,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["latrines", "electricite", "internet", "point d eau", "eau potable", "bibliotheque", "equipement", "connectivite", "acces a l eau", "taux d equipement"],
     definition: {
       code: "taux_acces_infrastructure", nom: "Taux d'accès à un équipement",
-      rattachementOdd: { code: "4.a.1", degre: "exact", intitule: "Proportion of schools offering basic services, by type of service", reserve: "Même construit, nomenclature différente : le service ODD énumère électricité, internet, eau potable, assainissement amélioré et accès pour les élèves en situation de handicap ; BEILE observe cinq équipements — dont la bibliothèque, qui n'y figure pas — sans distinguer l'eau potable du simple point d'eau." },
+      rattachementOdd: { code: "4.a.1", degre: "analogique", intitule: "Proportion of schools offering basic services, by type of service", reserve: "Construit voisin, nomenclature différente : le service ODD énumère électricité, internet, eau potable, assainissement amélioré et accès pour les élèves en situation de handicap ; BEILE observe cinq équipements — dont la bibliothèque, qui n'y figure pas — sans distinguer l'eau potable du simple point d'eau." },
       definition: "Part des établissements du périmètre réellement dotés de l'équipement demandé. Cinq équipements sont observés — point d'eau, raccordement électrique, accès internet, latrines, bibliothèque — et aucune moyenne n'est faite entre eux : un réseau doté à 80 % en latrines et à 5 % en internet n'est pas « doté à 42 % ».",
       formule: "établissements disposant de l'équipement ÷ établissements observés × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "etablissement",

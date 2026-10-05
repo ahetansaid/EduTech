@@ -7,7 +7,7 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, comparerFr, corps, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
+import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
 
@@ -59,7 +59,8 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
       nombreDeMembres: sql<number>`coalesce(jsonb_array_length(${schema.evenements.donnees}->'membres'), 0)::int`,
     }).from(schema.evenements)
       .where(and(eq(schema.evenements.type, "CONSEIL_DE_CLASSE"), eq(schema.evenements.etablissementId, id)))
-      .orderBy(schema.evenements.survenuLe),
+      // Le « dernier conseil » est celui de la séance la plus récente, pas le dernier enregistré (saisie antidatée).
+      .orderBy(sql`${schema.evenements.donnees}->>'dateSeance'`, schema.evenements.survenuLe),
   ]);
   const b = await bilans(eleves.map((e) => e.id), TRIMESTRE_COURANT);
   const nom = new Map(eleves.map((a) => [a.id, `${a.prenoms} ${a.nom}`]));
@@ -229,7 +230,7 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
     anneeScolaire: z.string().regex(/^\d{4}-\d{4}$/, "format attendu : AAAA-AAAA"),
     capaciteNouvelleDivision: z.coerce.number().int().min(1).max(2000).default(60),
     seance: z.object({
-      dateSeance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "format attendu : AAAA-MM-JJ"),
+      dateSeance: z.string().refine(dateCalendaire, "date du calendrier attendue (AAAA-MM-JJ)"),
       membres: z.array(z.string().trim().min(2).max(80)).min(1).max(20),
       referencePv: z.string().trim().max(40).nullable().default(null),
     }).strict(),
@@ -242,6 +243,9 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
   if (!classe || classe.etablissementId !== id) throw new HTTPException(404, { message: "Classe inconnue ou hors de votre établissement" });
   if (saisie.anneeScolaire === classe.anneeScolaire) throw new HTTPException(422, { message: "L'année cible doit différer de l'année en cours" });
   if (saisie.seance.dateSeance > aujourdhui()) throw new HTTPException(422, { message: `Le conseil ne peut pas être tenu après aujourd'hui (${aujourdhui()})` });
+  // Le conseil de passage se tient pendant l'année scolaire de la classe (rentrée de septembre au plus tôt).
+  const rentree = `${classe.anneeScolaire.slice(0, 4)}-09-01`;
+  if (saisie.seance.dateSeance < rentree) throw new HTTPException(422, { message: `La séance doit dater de l'année scolaire ${classe.anneeScolaire} (au plus tôt le ${rentree})` });
   const idxNiveau = NIVEAUX.indexOf(classe.niveau as Niveau);
   if (idxNiveau < 0) throw new HTTPException(422, { message: "Niveau de classe non reconnu dans le référentiel national" });
   const niveauSuivant = NIVEAUX[idxNiveau + 1] as Niveau | undefined;
@@ -286,7 +290,15 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
     faits.push({ type: "PASSAGE", auteurId: profil.id, etablissementId: id, apprenantId: d.apprenantId, donnees: { apprenantId: d.apprenantId, deNiveau: classe.niveau, versNiveau, decision: d.decision, anneeScolaire: saisie.anneeScolaire } });
     faits.push({ type: "REPRISE", auteurId: profil.id, etablissementId: id, apprenantId: d.apprenantId, donnees: { apprenantId: d.apprenantId, classeId: cible.id, anneeScolaire: saisie.anneeScolaire } });
   }
-  await inscrireAuRegistre(faits, nouvellesClasses.length ? async (tx) => { await tx.insert(schema.classes).values(nouvellesClasses); } : undefined);
+  // Deux soumissions simultanées (deux onglets, un rejeu réseau) : verrou sur la classe, puis on relit DANS la
+  // transaction que chaque apprenant y est encore. Sinon : deux séances, deux passages par élève, deux divisions.
+  const ids = saisie.decisions.map((d) => d.apprenantId);
+  await inscrireAuRegistre(faits, async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`conseil:${classeId}`}))`);
+    const [{ n } = { n: 0 }] = (await tx.execute(sql`select count(*)::int n from core.scolarites where classe_id = ${classeId} and apprenant_id in ${ids}`)) as unknown as { n: number }[];
+    if (n !== ids.length) throw new HTTPException(409, { message: "Ce conseil vient d'être enregistré : la classe a déjà changé" });
+    if (nouvellesClasses.length) await tx.insert(schema.classes).values(nouvellesClasses);
+  });
   const admis = admisses.length, maintenus = saisie.decisions.length - admis;
   await journaliser(profil, "Conseil de passage", `${classeId} (${classe.libelle}) · séance du ${saisie.seance.dateSeance}, ${saisie.seance.membres.length} membre(s) · ${admis} admis, ${maintenus} maintenus`, "gestion", true, null);
   return c.json({ classeId, anneeScolaire: saisie.anneeScolaire, dateSeance: saisie.seance.dateSeance, nombreDeMembres: saisie.seance.membres.length, admis, maintenus, divisionsCrees }, 201);

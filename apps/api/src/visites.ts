@@ -7,7 +7,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, refuser, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, refuser, type Variables } from "./commun";
 import { dejaSaisi, inscrireAuRegistre } from "./ecriture";
 import { perimetrePilotage } from "./pilotage";
 
@@ -40,11 +40,7 @@ function habilitation(profil: Profil): Perimetre {
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RE_ETB = /^ETB-[A-Za-z0-9-]+$/;
 /** Date du CALENDRIER (le 31 février est refusé) : une date impossible inscrite au registre, où rien ne s'efface, casserait toute lecture. */
-const dateValide = (d: string) => {
-  if (!RE_DATE.test(d) || d < "2000-01-01" || d > "2100-12-31") return false;
-  const t = new Date(`${d}T00:00:00Z`);
-  return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d; // « 2026-02-31 » deviendrait le 3 mars : refusé
-};
+const dateValide = dateCalendaire;
 const DATE = z.string().refine(dateValide, "date du calendrier attendue (AAAA-MM-JJ)");
 const ETB = z.string().regex(RE_ETB);
 
