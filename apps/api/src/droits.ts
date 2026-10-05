@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { schema } from "@beile/db";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, ne, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -94,4 +94,50 @@ droits.get("/droits/mes-demandes", authentifie, async (c) => {
       reponse: reponse ? { decision: reponse.decision, texte: reponse.motif, le: reponse.horodatage.toISOString() } : null,
     };
   }));
+});
+
+const FENETRE_TRACE_MS = 365 * 86_400_000;
+const LIGNES_TRACE = 200;
+
+/**
+ * « Qui a consulté mes données ? » — la trace lue par la personne concernée, et non par l'administration.
+ *
+ * Le journal enregistre l'agent, la porte et la décision prise côté serveur ; la ressource des portes
+ * individuelles est le numéro du dossier concerné (`APP-…`, nuancé d'un suffixe quand la porte porte un
+ * détail) ou l'identifiant du compte pour ce qui se fait sur le compte. Aucune nouvelle donnée n'est produite
+ * ici : c'est la même table, filtrée au seul sujet que la relation vérifiée autorise à voir.
+ *
+ * Deux bornes assument ce que le journal ne promet pas : douze mois glissants, 200 lignes, et les propres
+ * consultations du demandeur retirées (elles ne sont pas un accès d'un tiers). Le droit affiché à l'écran
+ * est donc exercé sur la fenêtre bornée, dite telle quelle.
+ */
+droits.get("/droits/mes-consultations", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
+  const profil = c.get("profil");
+  const compte = c.get("compte");
+  const sujet = z.union([z.literal("compte"), z.string().regex(/^APP-\d{6}$/)]).catch("compte").parse(c.req.query("sujet") ?? "compte");
+
+  if (sujet !== "compte" && !(await sujetsAutorises(profil)).has(sujet)) {
+    await journaliser(profil, "Trace des consultations — lecture refusée", sujet, "consultation_personnelle", false, "relation");
+    refuser("Vous ne pouvez demander qui a consulté que vos propres données ou le dossier d'un enfant dont vous êtes responsable : lecture refusée et journalisée");
+  }
+
+  const depuis = new Date(Date.now() - FENETRE_TRACE_MS);
+  const cible = sujet === "compte"
+    ? eq(schema.journal.ressource, compte.id)
+    : or(eq(schema.journal.ressource, sujet), like(schema.journal.ressource, `${sujet} %`))!;
+
+  const lignes = await base().select({
+    horodatage: schema.journal.horodatage,
+    agent: schema.journal.profilNom,
+    action: schema.journal.action,
+    finalite: schema.journal.finalite,
+    autorise: schema.journal.autorise,
+    motifRefus: schema.journal.critereManquant,
+  }).from(schema.journal)
+    .where(and(cible, gte(schema.journal.horodatage, depuis), ne(schema.journal.profilId, profil.id)))
+    .orderBy(desc(schema.journal.horodatage))
+    .limit(LIGNES_TRACE);
+
+  await journaliser(profil, "Consultation de la trace de ses propres accès", sujet, "consultation_personnelle", true, null);
+  return c.json({ depuis: depuis.toISOString(), tronque: lignes.length === LIGNES_TRACE, lignes });
 });

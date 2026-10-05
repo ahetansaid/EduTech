@@ -1,11 +1,12 @@
 "use client";
 
-import { CircleCheck, Clock, FileSearch, PenLine, Send, ShieldCheck, ShieldOff, X } from "lucide-react";
+import { FINALITE_LIBELLE } from "@beile/contracts";
+import { CircleCheck, Clock, Eye, FileSearch, PenLine, Send, ShieldCheck, ShieldOff, X } from "lucide-react";
 import { useState } from "react";
 import { Cascade, Element } from "@/components/motion";
 import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
-import { useDeposerDemandeDroit, useMesDemandesDroits, type Droit } from "@/lib/api/droits";
+import { useDeposerDemandeDroit, useMesConsultations, useMesDemandesDroits, type Droit } from "@/lib/api/droits";
 import { cn } from "@/lib/cn";
 import { ErreurApi } from "@/lib/http";
 
@@ -22,7 +23,9 @@ const DROITS: { valeur: Droit; titre: string; texte: string; icone: typeof FileS
   { valeur: "opposition", titre: "Opposition", texte: "Refuser un traitement qui n'est pas obligatoire.", icone: X },
 ];
 const LIBELLE: Record<Droit, string> = { acces: "Accès", rectification: "Rectification", limitation: "Limitation", opposition: "Opposition" };
+const CRITERE: Record<string, string> = { role: "rôle", perimetre: "périmètre", relation: "relation", finalite: "finalité" };
 const date = (iso: string) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+const moment = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 export function MesDroits({ sujets }: { sujets: { valeur: string; libelle: string }[] }) {
   const q = useMesDemandesDroits();
@@ -111,6 +114,62 @@ export function MesDroits({ sujets }: { sujets: { valeur: string; libelle: strin
             </Cascade>
           )}
       </section>
+
+      <section aria-labelledby="mes-consultations">
+        <h2 id="mes-consultations" className="mb-3 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Consultations de ces données</h2>
+        <BlocConsultations sujet={sujet} />
+      </section>
     </div>
+  );
+}
+
+/**
+ * Le droit d'accès tel qu'il est annoncé ci-dessus (« savoir qui les a consultées ») porte ici sur la seule
+ * trace que le service tienne : les décisions prises côté serveur à une porte nommée. Deux bornes sont dites
+ * à l'utilisateur plutôt que cachées derrière un écran vide — douze mois, deux cents lignes — et ses propres
+ * lectures sont retirées, puisque ce ne sont pas des accès d'un tiers.
+ */
+function BlocConsultations({ sujet }: { sujet: string }) {
+  const q = useMesConsultations(sujet);
+  const trace = q.data;
+  if (q.isPending) return <Squelette className="h-28 rounded-2xl" />;
+  // Ni en cours, ni lue : la trace a manqué, et le texte rendu est celui du service, pas un message générique.
+  if (!trace) {
+    const message = q.error instanceof ErreurApi ? q.error.message : "Lecture de la trace impossible pour le moment.";
+    return <Card><p role="alert" className="text-[13.5px] text-critical">{message}</p><Button variante="secondaire" taille="sm" className="mt-3" onClick={() => q.refetch()}>Réessayer</Button></Card>;
+  }
+
+  const refus = trace.lignes.filter((l) => !l.autorise).length;
+  return (
+    <Card className="min-w-0">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[13.5px] font-semibold text-ink">
+          {trace.lignes.length} accès enregistré{trace.lignes.length > 1 ? "s" : ""} depuis le {date(trace.depuis)}
+        </p>
+        {refus > 0 && <Badge ton="critique" icone={ShieldOff}>{refus} refusé{refus > 1 ? "s" : ""}</Badge>}
+      </div>
+      <p className="mt-1 text-[12.5px] leading-snug text-ink-muted">
+        Vos propres consultations ne sont pas listées. Certaines lectures répétées sont regroupées : la trace dit
+        quelles portes ont été franchies, pas chaque rafraîchissement d'écran.{trace.tronque && " Seuls les 200 accès les plus récents sont affichés."}
+      </p>
+
+      {!trace.lignes.length ? (
+        <EtatVide icone={Eye} titre="Aucun accès d'un tiers sur cette période" texte="Rien n'a été consulté à votre sujet depuis douze mois. Le service n'affiche que cette fenêtre : pour une trace plus ancienne, adressez une demande d'accès ci-dessus." />
+      ) : (
+        <Cascade className="mt-4 space-y-2.5">
+          {trace.lignes.map((l, i) => (
+            <Element key={`${l.horodatage}-${i}`} className="flex flex-wrap items-start gap-x-3 gap-y-1 rounded-lg border border-line/60 px-3 py-2.5">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-medium text-ink">{l.action}</span>
+                <span className="mt-0.5 block text-[12.5px] text-ink-muted">{moment(l.horodatage)} · {FINALITE_LIBELLE[l.finalite] ?? l.finalite}</span>
+              </span>
+              {l.autorise
+                ? <Badge ton="succes" icone={CircleCheck}>Accordé · {l.agent}</Badge>
+                : <Badge ton="critique" icone={ShieldOff}>Refusé · {CRITERE[l.motifRefus ?? ""] ?? "critère non précisé"}</Badge>}
+            </Element>
+          ))}
+        </Cascade>
+      )}
+    </Card>
   );
 }

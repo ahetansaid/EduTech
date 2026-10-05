@@ -1,5 +1,6 @@
 "use client";
 
+import type { Critere, Finalite } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
 
@@ -29,5 +30,30 @@ export function useDeposerDemandeDroit() {
   return useMutation({
     mutationFn: (d: { droit: Droit; sujet: string; precision: string }) => ecrire<{ id: string; echeance: string }>("/droits/demandes", d),
     onSuccess: () => client.invalidateQueries({ queryKey: CLE }),
+  });
+}
+
+/** Une ligne du journal d'audit qui parle du sujet demandé : l'agent, la porte, la décision. */
+export interface ConsultationSubie {
+  horodatage: string;
+  agent: string;
+  action: string;
+  finalite: Finalite;
+  autorise: boolean;
+  motifRefus: Critere | null;
+}
+
+export interface TraceDesConsultations {
+  depuis: string;
+  tronque: boolean;
+  lignes: ConsultationSubie[];
+}
+
+/** « Qui a consulté ces données ? » — lecture bornée à douze mois, sur le seul sujet autorisé côté serveur. */
+export function useMesConsultations(sujet: string) {
+  return useQuery({
+    queryKey: ["droits", "mes-consultations", sujet],
+    queryFn: ({ signal }) => lire<TraceDesConsultations>(`/droits/mes-consultations?sujet=${encodeURIComponent(sujet)}`, signal),
+    staleTime: 30_000,
   });
 }

@@ -114,7 +114,7 @@ export const EN_CAS_DE_PROBLEME: string[] = [
 export const FAQ_GENERALE: QuestionReponse[] = [
   { q: "BEILE fonctionne-t-il sur un téléphone ?", r: "Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone." },
   { q: "Pourquoi je ne vois pas certains écrans ?", r: "Le menu n'affiche que les écrans permis par votre habilitation (rôle et périmètre). C'est le serveur qui décide de chaque accès." },
-  { q: "Qui voit mes données ?", r: "Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle." },
+  { q: "Qui voit mes données ?", r: "Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle — et vous la voyez aussi : dans « Mes données », la liste des accès enregistrés à votre sujet sur les douze derniers mois." },
   { q: "Les chiffres sont-ils fiables ?", r: "Chaque indicateur suit la définition du dictionnaire national et porte un indice de confiance. Une donnée incomplète est signalée comme telle, jamais présentée comme complète." },
 ];
 
