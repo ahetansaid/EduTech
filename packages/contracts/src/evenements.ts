@@ -178,6 +178,28 @@ export const Evenement = z.discriminatedUnion("type", [
     statut: z.enum(["inscrit", "validee"]),
   }),
 
+  /* -------------------------------------------------- Visites d'inspection.
+   * Un fait sur un établissement, jamais sur une personne : la visite rend compte de ce qui s'est vu dans
+   * l'école, pas du dossier d'un apprenant. La colonne `type` de `ledger.evenements` est un `text` libre —
+   * ajouter ce membre ne demande aucune migration, et aucune projection : l'écran relit le registre.
+   *
+   * Aucune nomenclature n'est simulée : `objet` et `constats` restent du texte d'agent. Les textes
+   * réglementaires consultés sur les inspections béninoises ne publient pas de typologie des motifs de
+   * visite ; inventer une liste à trois cases et l'appeler « officielle » serait exactement ce que BEILE
+   * refuse de faire.
+   */
+  Base.extend({
+    type: z.literal("VISITE_D_INSPECTION"),
+    etablissementId: z.string(),
+    dateVisite: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    objet: z.string().trim().min(5).max(200),
+    constats: z.string().trim().min(10).max(4000),
+    recommandations: z.string().trim().max(4000).nullable(),
+    /** Référence de l'acte papier ou du rapport signé, pour retrouver la pièce — pas pour la redondance. */
+    referenceRapport: z.string().trim().max(80).nullable(),
+    prochaineVisiteLe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  }),
+
   /* -------------------------------------------------- Enseignement supérieur (LMD + EFTP)
    * Mêmes faits, autre régime : un étudiant du supérieur n'est pas un élève de plus. La colonne
    * `type` de `ledger.evenements` est un `text` libre — ajouter ces membres à l'union ne demande

@@ -1,0 +1,194 @@
+import type { Perimetre, Profil } from "@beile/contracts";
+import { schema } from "@beile/db";
+import { communesDuPerimetre } from "@beile/simulation/semantique";
+import { aujourdhui } from "@beile/simulation/scolarite";
+import { communeById, departementById } from "@beile/simulation/territoire";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { z } from "zod";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, refuser, type Variables } from "./commun";
+import { dejaSaisi, inscrireAuRegistre } from "./ecriture";
+import { perimetrePilotage } from "./pilotage";
+
+/**
+ * Visites d'inspection : ce que l'agent de tutelle a vu, dans quelle école, ce qu'il recommande, et si la
+ * visite annoncée a bien eu lieu. L'objet manquait aux deux métiers qui en vivent — l'inspecteur rend
+ * compte, la direction départementale mesure la couverture de son territoire — et rien au registre ne le
+ * portait : les faits du K-12 décrivent un apprenant, ceux du supérieur une scolarité.
+ *
+ * Un fait sur un établissement, jamais sur une personne. Pas de projection, pas de table nouvelle :
+ * `ledger.evenements` est en ajout seul et l'écran relit les faits, comme la console territoriale relit les
+ * absences du jour. Une visite ne se modifie pas : une correction est une nouvelle visite qui cite la
+ * précédente dans ses constats, sinon le registre ne dirait plus ce que l'agent a vu sur le moment.
+ */
+export const visites = new Hono<{ Variables: Variables }>();
+
+const ROLES_VISITE = ["inspecteur", "direction_departementale", "administration_centrale"] as const;
+
+/** Périmètre de pilotage, réservé aux agents de tutelle : un chercheur ne lit pas les constats d'une visite. */
+function habilitation(profil: Profil): Perimetre {
+  if (!profil.habilitations.some((h) => (ROLES_VISITE as readonly string[]).includes(h.role))) {
+    refuser("Les visites d'inspection s'écrivent et se lisent entre agents de tutelle");
+  }
+  return perimetrePilotage(profil);
+}
+
+const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const RE_ETB = /^ETB-[A-Za-z0-9-]+$/;
+const DATE = z.string().regex(RE_DATE);
+const ETB = z.string().regex(RE_ETB);
+
+/**
+ * « Les établissements du périmètre », rendus comme une sous-requête : une liste de communes ne devient
+ * jamais une liste d'identifiants collée dans la requête, et le même filtre s'applique au fait et à sa source.
+ */
+function etablissementsDuPerimetre(perimetre: Perimetre) {
+  const autorisees = communesDuPerimetre(perimetre);
+  if (!autorisees) return null;
+  return sql`select id from core.etablissements where commune_id in (select jsonb_array_elements_text(${JSON.stringify([...autorisees])}::jsonb))`;
+}
+
+visites.post("/visites", authentifie, limiteDebit(20, 60_000, cleUtilisateur), async (c) => {
+  const profil = c.get("profil");
+  const perimetre = habilitation(profil);
+  const m = await corps(c, z.object({
+    etablissementId: ETB,
+    dateVisite: DATE,
+    objet: z.string().trim().min(5).max(200),
+    constats: z.string().trim().min(10).max(4000),
+    recommandations: z.string().trim().max(4000).nullish(),
+    referenceRapport: z.string().trim().max(80).nullish(),
+    prochaineVisiteLe: DATE.nullish(),
+    /** Clé d'idempotence produite par le formulaire : un double-clic ou une réponse perdue ne double pas la visite. */
+    cle: z.string().regex(/^[0-9a-f-]{16,48}$/),
+  }).strict());
+  if (m.dateVisite > aujourdhui()) throw new HTTPException(422, { message: "Une visite se consigne le jour même ou après : une date future n'est pas un fait" });
+  if (m.prochaineVisiteLe && m.prochaineVisiteLe <= m.dateVisite) throw new HTTPException(422, { message: "La visite annoncée doit suivre la visite consignée" });
+
+  const [etab] = await base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom, communeId: schema.etablissements.communeId })
+    .from(schema.etablissements).where(eq(schema.etablissements.id, m.etablissementId));
+  if (!etab) throw new HTTPException(404, { message: "Établissement inconnu du registre" });
+  const autorisees = communesDuPerimetre(perimetre);
+  if (autorisees && !autorisees.has(etab.communeId)) {
+    await journaliser(profil, "Visite refusée — établissement hors périmètre", etab.id, "controle", false, "perimetre");
+    refuser("Cet établissement n'est pas dans votre périmètre d'inspection");
+  }
+
+  const idSaisie = `VISITE-${m.cle}`;
+  const deja = await dejaSaisi(idSaisie, "VISITE_D_INSPECTION");
+  if (deja) return c.json({ id: deja[0], etablissement: etab.nom, deja: true });
+
+  const [id] = await inscrireAuRegistre([{
+    type: "VISITE_D_INSPECTION", auteurId: profil.id, etablissementId: etab.id, apprenantId: null, source: "beile",
+    donnees: {
+      etablissementId: etab.id, dateVisite: m.dateVisite, objet: m.objet, constats: m.constats,
+      recommandations: m.recommandations ?? null, referenceRapport: m.referenceRapport ?? null,
+      prochaineVisiteLe: m.prochaineVisiteLe ?? null, idSaisie,
+    },
+  }]);
+  await journaliser(profil, "Visite d'inspection consignée", `${etab.id} · ${m.dateVisite}`, "controle", true, null);
+  return c.json({ id, etablissement: etab.nom, deja: false }, 201);
+});
+
+/**
+ * Visites du périmètre, filtrables par établissement, par date et par agent. Le texte des constats ne sort
+ * que pour un agent de tutelle : c'est une pièce administrative, pas une publication.
+ */
+visites.get("/visites", authentifie, async (c) => {
+  const profil = c.get("profil");
+  const perimetre = habilitation(profil);
+  const etablissementId = c.req.query("etablissementId");
+  const depuis = c.req.query("depuis");
+  const miennes = c.req.query("miennes") === "1";
+  const limite = z.coerce.number().int().min(1).max(200).catch(60).parse(c.req.query("limite"));
+  if (etablissementId && !RE_ETB.test(etablissementId)) refuser("Identifiant d'établissement non conforme");
+  if (depuis && !RE_DATE.test(depuis)) refuser("Date de départ non conforme");
+  const dansPerimetre = etablissementsDuPerimetre(perimetre);
+
+  const lignes = await base()
+    .select({
+      id: schema.evenements.id, enregistreLe: schema.evenements.survenuLe, agent: schema.profils.nomAffiche,
+      etablissementId: schema.etablissements.id, etablissement: schema.etablissements.nom,
+      communeId: schema.etablissements.communeId, cycle: schema.etablissements.cycle, statut: schema.etablissements.statut,
+      donnees: schema.evenements.donnees,
+    })
+    .from(schema.evenements)
+    .innerJoin(schema.etablissements, eq(schema.etablissements.id, schema.evenements.etablissementId))
+    .innerJoin(schema.profils, eq(schema.profils.id, schema.evenements.auteurId))
+    .where(and(
+      eq(schema.evenements.type, "VISITE_D_INSPECTION"),
+      etablissementId ? eq(schema.etablissements.id, etablissementId) : undefined,
+      depuis ? gte(schema.evenements.survenuLe, new Date(`${depuis}T00:00:00Z`)) : undefined,
+      miennes ? eq(schema.evenements.auteurId, profil.id) : undefined,
+      dansPerimetre ? sql`${schema.evenements.etablissementId} in (${dansPerimetre})` : undefined,
+    ))
+    .orderBy(desc(schema.evenements.survenuLe))
+    .limit(limite);
+  return c.json({
+    perimetre,
+    lignes: lignes.map((l) => ({
+      id: l.id, enregistreLe: l.enregistreLe.toISOString(), agent: l.agent,
+      etablissementId: l.etablissementId, etablissement: l.etablissement, communeId: l.communeId, cycle: l.cycle, statut: l.statut,
+      ...(l.donnees as Record<string, unknown>),
+    })),
+  });
+});
+
+/**
+ * Couverture d'inspection : quelles écoles du périmètre ont reçu une visite, depuis quand, et lesquelles
+ * attendent. Un taux de visite n'est pas un indicateur national — c'est le travail de l'agent, mesuré sur
+ * son territoire ; la question qui compte, « qui n'a jamais été visité », se pose école par école.
+ */
+visites.get("/visites/couverture", authentifie, async (c) => {
+  const perimetre = habilitation(c.get("profil"));
+  const dansPerimetre = etablissementsDuPerimetre(perimetre);
+  const cycle = z.enum(["tous", "primaire", "secondaire", "superieur"]).catch("tous").parse(c.req.query("cycle"));
+  const limite = z.coerce.number().int().min(1).max(500).catch(200).parse(c.req.query("limite"));
+
+  const lignes = await base().execute<{
+    id: string; nom: string; commune: string | null; commune_id: string; circonscription: string; cycle: string; statut: string;
+    visites: number; derniere: string | null; prochaine: string | null;
+  }>(sql`
+    with etabs as (
+      select e.id, e.nom, e.commune_id, e.circonscription, e.cycle, e.statut, c.nom as commune
+      from core.etablissements e
+      left join core.communes c on c.id = e.commune_id
+      where ${cycle === "tous" ? sql`true` : sql`cycle = ${cycle}`}
+        ${dansPerimetre ? sql`and e.id in (${dansPerimetre})` : sql``}
+    ), v as (
+      select e.etablissement_id, count(*)::int as visites,
+             max(case when e.donnees->>'dateVisite' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then (e.donnees->>'dateVisite')::date end) as derniere,
+             max((e.donnees->>'prochaineVisiteLe')::date) as prochaine
+      from ledger.evenements e
+      where e.type = 'VISITE_D_INSPECTION' and e.etablissement_id in (select id from etabs)
+      group by 1
+    )
+    select t.id, t.nom, t.commune, t.commune_id, t.circonscription, t.cycle, t.statut, coalesce(v.visites, 0)::int as visites,
+           to_char(v.derniere, 'YYYY-MM-DD') as derniere, v.prochaine::text as prochaine
+    from etabs t left join v on v.etablissement_id = t.id`);
+
+  const parDepartement = new Map<string, { attendus: number; couverts: number }>();
+  for (const x of lignes) {
+    const cle = communeById.get(x.commune_id)?.departementId ?? "hors carte";
+    const d = parDepartement.get(cle) ?? { attendus: 0, couverts: 0 };
+    d.attendus += 1;
+    if (x.visites > 0) d.couverts += 1;
+    parDepartement.set(cle, d);
+  }
+  const triees = [...lignes].sort((a, b) => (a.derniere ?? "").localeCompare(b.derniere ?? "") || b.visites - a.visites || a.nom.localeCompare(b.nom, "fr"));
+  return c.json({
+    perimetre,
+    attendus: lignes.length,
+    couverts: lignes.filter((x) => x.visites > 0).length,
+    visites: lignes.reduce((s, x) => s + x.visites, 0),
+    parDepartement: [...parDepartement.entries()]
+      .map(([id, d]) => ({ id, departement: departementById.get(id)?.nom ?? id, ...d }))
+      .sort((a, b) => (b.attendus - b.couverts) - (a.attendus - a.couverts) || a.departement.localeCompare(b.departement, "fr")),
+    tronque: triees.length > limite,
+    etablissements: triees.slice(0, limite).map((x) => ({
+      id: x.id, nom: x.nom, commune: x.commune, communeId: x.commune_id, circonscription: x.circonscription, cycle: x.cycle, statut: x.statut,
+      visites: x.visites, derniereLe: x.derniere, prochaineVisiteLe: x.prochaine,
+    })),
+  });
+});
