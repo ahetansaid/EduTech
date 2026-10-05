@@ -221,13 +221,15 @@
 
 ### Faire tenir un conseil de passage
 
-> Le conseil décide du passage de chaque élève ; l'application respecte les capacités et ouvre une division si nécessaire.
+> Le conseil décide du passage de chaque élève ; l'application respecte les capacités et ouvre une division si nécessaire. La séance est enregistrée elle aussi : sa date, les membres qui y siègent, la référence du procès-verbal.
 
 1. Dans le tableau des classes, touchez « Passage » sur la classe (hors niveau terminal).
-2. Indiquez l'« Année scolaire de réinscription » au format AAAA-AAAA.
-3. Pour chaque élève, touchez le statut pour basculer entre « Admis » (passage au niveau supérieur) et « Maintien » (réinscription dans la classe).
-4. Relisez le compteur « admis · maintenus », puis « Enregistrer ».
-5. Les admis changent de niveau, les maintenus sont réinscrits ; une nouvelle division est créée si une classe dépasse sa capacité.
+2. Datez la séance — jamais future — et nommez les membres qui y ont siégé : professeur principal, parents délégués, représentant de la tutelle. Ils n'ont pas besoin d'un compte sur la plateforme.
+3. Portez la référence du procès-verbal si vous en tenez un dans votre registre papier.
+4. Indiquez l'« Année scolaire de réinscription » au format AAAA-AAAA.
+5. Pour chaque élève, touchez le statut pour basculer entre « Admis » (passage au niveau supérieur) et « Maintien » (réinscription dans la classe).
+6. Relisez le compteur « admis · maintenus », puis « Enregistrer » : sans date ni membre, l'enregistrement reste refusé — le registre saurait ce qu'un conseil a décidé sans avoir su qu'il s'est réuni.
+7. Les admis changent de niveau, les maintenus sont réinscrits ; une nouvelle division est créée si une classe dépasse sa capacité. La ligne « Dernier conseil attesté » de la classe reprend la séance enregistrée.
 
 ### Transférer un élève ou déclarer un abandon
 
@@ -334,7 +336,7 @@ Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinate
 Le menu n'affiche que les écrans permis par votre habilitation (rôle et périmètre). C'est le serveur qui décide de chaque accès.
 
 **Qui voit mes données ?**  
-Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle.
+Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle — et vous la voyez aussi : dans « Mes données », la liste des accès enregistrés à votre sujet sur les douze derniers mois.
 
 **Les chiffres sont-ils fiables ?**  
 Chaque indicateur suit la définition du dictionnaire national et porte un indice de confiance. Une donnée incomplète est signalée comme telle, jamais présentée comme complète.
@@ -344,6 +346,7 @@ Chaque indicateur suit la définition du dictionnaire national et porte un indic
 - Consultez les absences du jour chaque matin : la famille est déjà prévenue, vous pouvez agir vite.
 - Le conseil de passage est irréversible : statuez chaque élève, relisez, puis confirmez.
 - En fin de cycle (CM2, 3e, Terminale), la suite relève de l'examen national et de l'affectation : seul le maintien se décide en conseil.
+- Le procès-verbal signé reste le document qui fait foi : la plateforme atteste la séance, elle ne remplace pas la signature.
 - **Votre identifiant est personnel.** Ne le prêtez jamais, même à un collègue ou à un supérieur. Tout ce qui est fait avec votre compte est inscrit à votre nom.
 - **Un mot de passe solide et secret.** 12 caractères au moins, avec majuscule, minuscule et chiffre. Ne l'écrivez pas sur un papier visible, ne le dites à personne.
 - **Personne ne vous demandera votre mot de passe.** Ni l'administrateur, ni l'assistance, ni le ministère. Un message qui le demande est une tentative de fraude : signalez-le.

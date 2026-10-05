@@ -74,6 +74,14 @@
 - Classement des communes et établissements n'ayant pas transmis.
 - « Statistiques du département » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, position percentile de chaque établissement, couverture en infrastructures — le tout exportable en CSV.
 
+### Visites d'inspection
+
+`/visites` — La couverture du département par la tutelle, école par école.
+
+- Établissements déjà visités et jamais visités, par cycle ; répartition par département quand le périmètre en compte plusieurs.
+- Le compte rendu des agents — constats et recommandations — se lit entre agents de tutelle ; un chercheur n'y a pas accès.
+- Une visite décrit un établissement, jamais une personne ; chacune est filtrable par agent et par date.
+
 ### Où agir ?
 
 `/cockpit/carte` — Descendre jusqu'aux établissements d'une commune.
@@ -143,7 +151,7 @@ Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinate
 Le menu n'affiche que les écrans permis par votre habilitation (rôle et périmètre). C'est le serveur qui décide de chaque accès.
 
 **Qui voit mes données ?**  
-Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle.
+Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle — et vous la voyez aussi : dans « Mes données », la liste des accès enregistrés à votre sujet sur les douze derniers mois.
 
 **Les chiffres sont-ils fiables ?**  
 Chaque indicateur suit la définition du dictionnaire national et porte un indice de confiance. Une donnée incomplète est signalée comme telle, jamais présentée comme complète.

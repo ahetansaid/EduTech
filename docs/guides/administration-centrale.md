@@ -82,6 +82,13 @@
 - Facteurs objectivés : croissance, occupation, encadrement, absentéisme, résultats.
 - Liste des établissements d'une commune, avec « Relancer » pour ceux qui n'ont pas transmis.
 
+### Visites d'inspection
+
+`/visites` — Couverture du pays par les visites de la tutelle.
+
+- Le même écran que les directions départementales, sous périmètre national : part des établissements déjà visités, répartition par département.
+- Comptes rendus filtrables par établissement, par agent et par date.
+
 ### Ask Education
 
 `/ask` — Poser une question en français, obtenir un chiffre prouvé.
@@ -94,6 +101,7 @@
 `/plateforme/qualite` — Qualité des données, dictionnaire national, interopérabilité, état du service.
 
 - Qui a transmis, depuis quand, avec quelle confiance.
+- Recoupement : le chiffre de votre périmètre contre la somme des départements ou des communes, avec l'écart imputable à l'arrondi et celui à vérifier.
 - Définition officielle de chaque indicateur et de ses versions.
 
 ### Enseignement supérieur
@@ -283,7 +291,7 @@ Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinate
 Le menu n'affiche que les écrans permis par votre habilitation (rôle et périmètre). C'est le serveur qui décide de chaque accès.
 
 **Qui voit mes données ?**  
-Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle.
+Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle — et vous la voyez aussi : dans « Mes données », la liste des accès enregistrés à votre sujet sur les douze derniers mois.
 
 **Les chiffres sont-ils fiables ?**  
 Chaque indicateur suit la définition du dictionnaire national et porte un indice de confiance. Une donnée incomplète est signalée comme telle, jamais présentée comme complète.

@@ -69,6 +69,7 @@ export const LIBELLE_FAIT: Record<string, string> = {
   CORRECTION_EVALUATION: "Correction de note",
   ABSENCE: "Absence",
   PASSAGE: "Passage",
+  CONSEIL_DE_CLASSE: "Conseil de classe",
   TRANSFERT: "Transfert",
   ABANDON: "Abandon",
   REPRISE: "Reprise",

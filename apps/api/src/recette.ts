@@ -311,9 +311,25 @@ if (ECRITURES) {
   // Édition de classe par le chef : capacité relevée puis visible au tableau de bord.
   const edition = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S`, { capacite: 47, enseignantPrincipalId: null });
   verifier("Directrice : édition de la capacité d'une classe", edition.statut, 200, `capacité ${edition.json.capacite}`);
-  // Conseil de passage : l'admis est réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
-  const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] });
+  // Conseil de passage : la séance est attestée au registre (fait CONSEIL_DE_CLASSE), puis l'admis est
+  // réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
+  const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2027-2028",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Professeur principal de 5e A", "Chef de l'établissement"], referencePv: "PV-REC-01" },
+    decisions: [{ apprenantId: "APP-000001", decision: "admis" }],
+  });
   verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
+  verifier("Directrice : la séance du conseil est au registre avec ses membres", passage.statut !== 201 || passage.json?.nombreDeMembres === 2, true, `membres ${passage.json?.nombreDeMembres}`);
+  verifier("Directrice : une séance future est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: "2099-01-01", membres: ["Chef de l'établissement"], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
+  verifier("Directrice : une séance sans membre est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: [], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
   // Révocation d'un diplôme par l'autorité de certification, puis vérification publique qui rend « révoqué ».
   // Le motif est un FAIT du registre (REVOCATION_CERTIFICAT), consultable par un agent habilité : il nomme
   // l'autorité qui a rendu le verdict — la DEC du MEMP pour un CEP. « ONEC » est ivoirien et n'organise

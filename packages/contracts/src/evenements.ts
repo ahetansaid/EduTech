@@ -96,6 +96,24 @@ export const Evenement = z.discriminatedUnion("type", [
     decision: z.enum(["admis", "redouble"]),
     anneeScolaire: z.string(),
   }),
+  /**
+   * La séance qui statue, distincte des décisions qu'elle prend. Les faits PASSAGE disent ce qui a été
+   * décidé pour chaque apprenant ; rien n'enregistrait jamais que le conseil s'était réuni, ce jour-là,
+   * avec ces membres. Le procès-verbal signé restait seul hors du registre.
+   *
+   * Les membres sont nommés en texte libre : un parent délégué, un élu local ou l'inspecteur de la
+   * circonscription siègent sans compte sur la plateforme, et aucun texte béninois ne publie de liste
+   * close des personnes convoquées à un conseil de classe.
+   */
+  Base.extend({
+    type: z.literal("CONSEIL_DE_CLASSE"),
+    etablissementId: z.string(),
+    classeId: z.string(),
+    anneeScolaire: z.string(),
+    dateSeance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    membres: z.array(z.string().trim().min(2).max(80)).min(1).max(20),
+    referencePv: z.string().trim().max(40).nullable(),
+  }),
   Base.extend({
     type: z.literal("TRANSFERT"),
     apprenantId: z.string(),
