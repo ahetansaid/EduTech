@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { schema } from "@beile/db";
 import { ANNEE_COURANTE } from "@beile/simulation/macro";
-import { communesDuPerimetre } from "@beile/simulation/semantique";
+import { communesDuPerimetre, recoupement } from "@beile/simulation/semantique";
 import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { authentifie, base, corps, journaliser, refuser, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, refuser, type Variables } from "./commun";
 import { perimetrePilotage } from "./pilotage";
+import { chargerCouches, memo } from "./donnees";
 import { lireEnv } from "./env";
 import { PARTENAIRES } from "./interop";
 
@@ -108,6 +109,25 @@ plateforme.get("/plateforme/qualite/communes/:id", authentifie, async (c) => {
     .where(and(eq(schema.demandes.modele, "RELANCE_TRANSMISSION"), inArray(schema.demandes.ressource, manquants.map((m) => m.id)))) : [];
   const derniere = new Map(relances.map((r) => [r.ressource, r.creeeLe]));
   return c.json(manquants.map((m) => ({ ...m, relanceLe: derniere.get(m.id) ?? null })));
+});
+
+/**
+ * Recoupement national ↔ mailles : pour chaque indicateur additif du dictionnaire, le chiffre du
+ * périmètre et la somme des départements (ou des communes) sont-ils le même nombre ?
+ *
+ * Contrôle de cohérence interne, aucune donnée individuelle : la réponse nomme les indicateurs dont
+ * l'écart dépasse l'arrondi possible, et dit pourquoi les autres ne sont pas contrôlables — un ratio ne
+ * se somme pas, une maille sous le seuil de publication ne livre pas sa valeur, donc on ne reconstitue
+ * pas une somme pour rendre le contrôle content.
+ */
+plateforme.get("/plateforme/recoupement", authentifie, limiteDebit(10, 60_000, cleUtilisateur), async (c) => {
+  const profil = c.get("profil");
+  const perimetre = perimetrePilotage(profil);
+  const maille = z.enum(["departement", "commune"]).catch("departement").parse(c.req.query("maille"));
+  const couches = await chargerCouches(base());
+  const reponse = memo(couches, `recoupement:${JSON.stringify(perimetre)}:${maille}`, () => recoupement(couches, perimetre, maille));
+  await journaliser(profil, "Contrôle de recoupement national ↔ mailles", maille, "controle", true, null);
+  return c.json({ perimetre, ...reponse });
 });
 
 /** Relance : une demande suivie par établissement (circuit RELANCE_TRANSMISSION), visible par sa direction. */

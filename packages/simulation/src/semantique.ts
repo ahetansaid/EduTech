@@ -1,4 +1,5 @@
 import type {
+  CodeIndicateur,
   Dimension,
   IndiceConfiance,
   LigneResultat,
@@ -335,3 +336,97 @@ export const couvertureRegistre = () => {
     renduesParUnService: entrees.filter((e) => e.rend.sorte === "service-metier").length,
   };
 };
+
+/* ---------------------------------------------------------------------------- Recoupement de la ventilation. */
+
+/**
+ * Un national et une ventilation sont-ils le même chiffre ? Le contrôle existe parce que la statistique
+ * officielle béninoise pose le problème en vrai : la ventilation départementale recoupe le national sur les
+ * établissements (17 141) et les enseignants (63 314), rate de 178 apprenants, et une série somme à 4 094
+ * pendant que son propre chiffre-titre affiche 4 287. Les deux chiffres sont officiels. Un outil qui ne
+ * saurait pas le rendre visible légitimerait un écart au lieu de le montrer.
+ *
+ * Trois choses bornent le contrôle, et chacune est dite à l'écran plutôt que compensée en silence :
+ * - une part, un ratio ou une moyenne ne se somment pas : `non_additif`, et la ligne n'est pas contrôlée ;
+ * - une maille sous le seuil de publication ne livre pas sa valeur (règle des petits effectifs) : la somme
+ *   est alors indigne d'être comparée, et le contrôle le déclare au lieu de la reconstituer — reconstituer
+ *   ce que la règle cache serait défaire la protection ;
+ * - chaque maille publie un entier arrondi : l'écart attendu n'est pas zéro mais ±0,5 par maille, borné et
+ *   affiché. Un écart au-delà de la borne est le seul qu'un agent ait à vérifier.
+ */
+export type CasRecoupement = "controle" | "non_additif" | "mailles_masquees" | "rendu_par_un_service";
+export type VerdictRecoupement = "coherent" | "coherent_arondi" | "ecart_a_verifier";
+
+export interface ControleRecoupement {
+  indicateur: CodeIndicateur;
+  nom: string;
+  unite: string;
+  cas: CasRecoupement;
+  national: number | null;
+  somme: number | null;
+  ecart: number | null;
+  /** Borne de l'écart imputable seul à l'arrondi des mailles publiées : 0,5 par maille. */
+  toleranceArrondi: number;
+  mailles: number;
+  maillesMasquees: number;
+  verdict: VerdictRecoupement | null;
+  motif: string;
+}
+
+export function recoupement(
+  couches: CouchesNationales,
+  perimetre: Perimetre | null = null,
+  maille: "departement" | "commune" = "departement",
+): { maille: "departement" | "commune"; controles: ControleRecoupement[] } {
+  const controles: ControleRecoupement[] = [];
+  const nomMaille = maille === "departement" ? "département" : "commune";
+
+  for (const [code, entree] of Object.entries(REGISTRE) as [CodeIndicateur, (typeof REGISTRE)[CodeIndicateur]][]) {
+    const def = entree.definition;
+    const ligne = { indicateur: code, nom: def.nom, unite: def.unite };
+
+    if (entree.rend.sorte !== "couche-statistique") {
+      controles.push({ ...ligne, cas: "rendu_par_un_service", national: null, somme: null, ecart: null, toleranceArrondi: 0, mailles: 0, maillesMasquees: 0, verdict: null,
+        motif: "Rendu par le registre du supérieur, hors de la couche statistique : ce contrôle ne le concerne pas." });
+      continue;
+    }
+    if (def.unite !== "nombre") {
+      controles.push({ ...ligne, cas: "non_additif", national: null, somme: null, ecart: null, toleranceArrondi: 0, mailles: 0, maillesMasquees: 0, verdict: null,
+        motif: `Un ${def.unite} ne se somme pas : additionner les ${nomMaille}s n'est pas un contrôle.` });
+      continue;
+    }
+
+    const national = calculer(couches, { indicateur: code, filtres: {}, ventilation: [] }, perimetre).valeur;
+    const ventile = calculer(couches, { indicateur: code, filtres: {}, ventilation: [maille] }, perimetre);
+    const masquees = ventile.lignes.filter((l) => l.masquee);
+    const publiees = ventile.lignes.filter((l) => !l.masquee && l.valeur !== null);
+
+    // Pas de second terme : le contrôle est muet et le dit, au lieu de rendre un écart de principe.
+    if (!ventile.lignes.length || national === null) {
+      controles.push({ ...ligne, cas: "non_additif", national, somme: null, ecart: null, toleranceArrondi: 0, mailles: ventile.lignes.length, maillesMasquees: masquees.length, verdict: null,
+        motif: "Pas de maille publiée sur ce périmètre : la comparaison n'a pas de second terme." });
+      continue;
+    }
+    // La règle des petits effectifs prime : on ne reconstitue pas une valeur qu'elle cache pour faire un contrôle.
+    if (masquees.length) {
+      controles.push({ ...ligne, cas: "mailles_masquees", national, somme: null, ecart: null, toleranceArrondi: 0, mailles: ventile.lignes.length, maillesMasquees: masquees.length, verdict: null,
+        motif: `${masquees.length} ${nomMaille} sous le seuil de publication : leur valeur n'est pas livrée, la somme ne peut donc pas être comparée au national.` });
+      continue;
+    }
+
+    const somme = publiees.reduce((s, l) => s + (l.valeur ?? 0), 0);
+    const ecart = national - somme;
+    const toleranceArrondi = publiees.length / 2;
+    const verdict: VerdictRecoupement = ecart === 0 ? "coherent" : Math.abs(ecart) <= toleranceArrondi ? "coherent_arondi" : "ecart_a_verifier";
+    controles.push({
+      ...ligne, cas: "controle", national, somme, ecart, toleranceArrondi, mailles: ventile.lignes.length, maillesMasquees: 0, verdict,
+      motif: verdict === "coherent"
+        ? "Le national et la somme des mailles sont le même nombre."
+        : verdict === "coherent_arondi"
+          ? `Écart explicable par l'arrondi des ${publiees.length} mailles (±${fr(toleranceArrondi)} au plus).`
+          : `Écart de ${ecart > 0 ? "+" : ""}${fr(ecart, 0)} au-delà de l'arrondi possible : à vérifier dans les écritures.`,
+    });
+  }
+
+  return { maille, controles };
+}

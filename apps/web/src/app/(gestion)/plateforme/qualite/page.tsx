@@ -1,13 +1,13 @@
 "use client";
 
 import type { IndiceConfiance } from "@beile/contracts";
-import { ArrowDown, ArrowUp, ArrowUpDown, BellRing, CheckCircle2, Clock, Gauge, Hourglass, RefreshCw, School, Send, ShieldX, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, BellRing, CheckCircle2, Clock, Gauge, Hourglass, RefreshCw, Scale, School, Send, ShieldX, TriangleAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { BadgeConfiance, TuileIndicateur, tonConfiance } from "@/components/ui/donnees";
 import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Squelette, type Ton } from "@/components/ui/primitives";
-import { useEtablissementsManquants, useQualite, useRelancerMutation, useRelances, type Qualite, type Relance } from "@/lib/api/gouvernance";
+import { useEtablissementsManquants, useQualite, useRecoupement, useRelancerMutation, useRelances, type MailleRecoupement, type Qualite, type Relance, type VerdictRecoupement } from "@/lib/api/gouvernance";
 import { cn } from "@/lib/cn";
 import { entier, nombre, pourcent } from "@/lib/format";
 import { ErreurApi } from "@/lib/http";
@@ -162,6 +162,7 @@ export default function QualitePage() {
             </div>
 
             <SuiviRelances />
+            <SectionRecoupement />
           </>
         )}
 
@@ -318,6 +319,129 @@ function SuiviRelances() {
           </table>
         </div>
       )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ Recoupement national ↔ mailles */
+
+const VERDICT: Record<VerdictRecoupement, { libelle: string; ton: Ton }> = {
+  coherent: { libelle: "Même nombre", ton: "succes" },
+  coherent_arondi: { libelle: "Écart d'arrondi", ton: "info" },
+  ecart_a_verifier: { libelle: "À vérifier", ton: "critique" },
+};
+
+const rang = (v: VerdictRecoupement) => (v === "ecart_a_verifier" ? 0 : v === "coherent_arondi" ? 1 : 2);
+const signe = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${entier(v)}`);
+
+function SectionRecoupement() {
+  const [maille, setMaille] = useState<MailleRecoupement>("departement");
+  const req = useRecoupement(maille);
+  const nomMaille = maille === "departement" ? "département" : "commune";
+  const controles = req.data?.controles ?? [];
+  const lignes = controles.filter((c) => c.cas === "controle").sort((a, b) => rang(a.verdict ?? "coherent") - rang(b.verdict ?? "coherent") || Math.abs(b.ecart ?? 0) - Math.abs(a.ecart ?? 0));
+  const aVerifier = lignes.filter((c) => c.verdict === "ecart_a_verifier").length;
+  const nonControles = controles.filter((c) => c.cas !== "controle");
+
+  return (
+    <Card data-guide="qualite-recoupement" className="min-w-0 overflow-hidden p-0">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Scale size={16} className="text-ink-muted" aria-hidden />Recoupement avec le national</h2>
+          <p className="text-xs text-ink-muted">
+            Le chiffre de votre périmètre est-il le même que la somme des {nomMaille}s ? Un indicateur additif y répond ;
+            un ratio, une part ou une moyenne non : la ligne est écartée du contrôle, et le motif est dit.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {req.data && (
+            <div className="hidden flex-wrap gap-1.5 sm:flex">
+              <Badge ton="neutre">{lignes.length} contrôlé{lignes.length > 1 ? "s" : ""}</Badge>
+              {aVerifier > 0 ? <Badge ton="critique" icone={TriangleAlert}>{aVerifier} à vérifier</Badge> : lignes.length > 0 ? <Badge ton="succes" icone={CheckCircle2}>aucun écart à vérifier</Badge> : null}
+              <Badge ton="info">{nonControles.length} hors contrôle</Badge>
+            </div>
+          )}
+          <div role="group" aria-label="Maille du contrôle" className="flex gap-1.5">
+            {(["departement", "commune"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={maille === m}
+                onClick={() => setMaille(m)}
+                className={cn("h-9 rounded-md border px-3 text-sm transition", maille === m ? "border-blue bg-blue-soft font-semibold text-ink" : "border-line bg-surface text-ink-2 hover:text-ink")}
+              >
+                {m === "departement" ? "Par département" : "Par commune"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {req.isPending ? (
+        <div className="space-y-2 p-5">{[0, 1, 2, 3].map((i) => <Squelette key={i} className="h-10 w-full" />)}</div>
+      ) : req.isError ? (
+        <EtatVide
+          icone={req.error instanceof ErreurApi && req.error.refus ? ShieldX : RefreshCw}
+          titre={req.error instanceof ErreurApi && req.error.refus ? "Contrôle hors de votre portée" : "Contrôle indisponible"}
+          texte={req.error.message}
+          action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => req.refetch()}>Réessayer</Button>}
+        />
+      ) : lignes.length === 0 ? (
+        <EtatVide icone={Scale} titre="Aucun indicateur contrôlable sur ce périmètre" texte="Aucun effectif additif n'y est publiable, ou ses mailles tombent sous le seuil de publication : le contrôle reste muet au lieu de reconstituer une valeur cachée." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm tabular-nums">
+            <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-ink-muted">
+              <tr>
+                <th scope="col" className="px-5 py-2.5 font-semibold">Indicateur</th>
+                <th scope="col" className="px-5 py-2.5 text-right font-semibold">Périmètre</th>
+                <th scope="col" className="px-5 py-2.5 text-right font-semibold">Somme des {nomMaille}s</th>
+                <th scope="col" className="px-5 py-2.5 text-right font-semibold">Écart</th>
+                <th scope="col" className="hidden px-5 py-2.5 text-right font-semibold lg:table-cell">Arrondi toléré</th>
+                <th scope="col" className="px-5 py-2.5 font-semibold">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              <AnimatePresence initial={false}>
+                {lignes.map((c, i) => (
+                  <motion.tr key={c.indicateur} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: Math.min(i, 12) * 0.035 }} className="border-t border-line/60">
+                    <td className="max-w-0 px-5 py-3">
+                      <p className="truncate font-medium text-ink">{c.nom}</p>
+                      <p className="truncate text-xs text-ink-muted">{c.mailles} {nomMaille}{c.mailles > 1 ? "s" : ""} publié{c.mailles > 1 ? "s" : ""} · {c.unite}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-ink">{entier(c.national)}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right text-ink-2">{entier(c.somme)}</td>
+                    <td className={cn("whitespace-nowrap px-5 py-3 text-right font-semibold", c.verdict === "ecart_a_verifier" ? "text-critical" : "text-ink")}>{signe(c.ecart)}</td>
+                    <td className="hidden whitespace-nowrap px-5 py-3 text-right text-ink-muted lg:table-cell">±{nombre(c.toleranceArrondi, 1)}</td>
+                    <td className="px-5 py-3">
+                      {c.verdict && <Badge ton={VERDICT[c.verdict].ton}>{VERDICT[c.verdict].libelle}</Badge>}
+                      <p className="mt-1 max-w-[46ch] text-xs text-ink-muted">{c.motif}</p>
+                    </td>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {req.data && nonControles.length > 0 && (
+        <div className="border-t border-line/60 px-5 py-4">
+          <Etiquette>Écartées du contrôle</Etiquette>
+          <ul className="mt-2 grid gap-1.5 md:grid-cols-2">
+            {nonControles.map((c) => (
+              <li key={c.indicateur} className="rounded-md bg-surface-2/60 px-3 py-2">
+                <span className="block truncate text-[13px] font-medium text-ink">{c.nom}</span>
+                <span className="block text-xs text-ink-muted">{c.motif}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <p className="border-t border-line/60 px-5 py-3 text-xs text-ink-muted">
+        Chaque {nomMaille} publie un entier arrondi : l'écart attendu n'est pas zéro mais ±0,5 par maille, borne affichée. Une maille sous le seuil de
+        publication ne livre pas sa valeur — la somme n'est alors pas comparée, parce que reconstituer ce que la règle cache défait la protection.
+      </p>
     </Card>
   );
 }
