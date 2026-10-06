@@ -46,7 +46,12 @@ function verifierRoleBase(portail: Portail) {
     if (r.rolsuper || r.rolbypassrls) return "l'API refuse un rôle superutilisateur ou BYPASSRLS";
     if (portail === "public" && (r.app || !r.public)) return "le portail public exige un rôle membre de beile_portail_public seulement";
     return null;
-  })().catch(() => null);
+  })().catch(() => {
+    // Un incident de base n'est pas une absence de défaut : le contrôle repart à la requête suivante au lieu
+    // de rester mémoïsé en « conforme » pour toute la durée de l'instance.
+    controleRole = null;
+    return "le contrôle du rôle de base n'a pas pu être rendu";
+  });
   return controleRole;
 }
 

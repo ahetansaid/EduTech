@@ -7,6 +7,11 @@ import { z } from "zod";
 
 const Schema = z.object({
   DATABASE_URL_API: z.string().url().refine((u) => !u.includes("neondb_owner"), "L'API ne doit pas utiliser le rôle propriétaire (BYPASSRLS)"),
+  /**
+   * Origines du front, admises au CORS avec cookies ET au contrôle d'origine des écritures. Le défaut sert au
+   * développement local ; il est REFUSÉ en production (voir plus bas) : laissé tel quel, une page chargée sur
+   * `localhost:3000` du poste de la victime obtiendrait des réponses authentifiées de l'API réelle.
+   */
   BEILE_ORIGINES_AUTORISEES: z.string().default("http://localhost:3000"),
   /**
    * Clef du sceau d'acte. Optionnelle à dessein : son absence ne casse aucune lecture, le condensé
@@ -60,6 +65,11 @@ const Schema = z.object({
 }).superRefine((v, ctx) => {
   if (estProduction(v) && !v.BEILE_CLE_SEAU) {
     ctx.addIssue({ code: "custom", path: ["BEILE_CLE_SEAU"], message: "obligatoire en production et en prévisualisation (diplômes et actes scellés par MAC, secrets dérivés)" });
+  }
+  // Le défaut de développement ne survit pas au déploiement réel : une origine locale admise en production
+  // vaut CORS avec credentials pour toute page servie en localhost sur le poste de la victime.
+  if (estProduction(v) && (v.BEILE_ORIGINES_AUTORISEES.trim() === "" || /(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)/.test(v.BEILE_ORIGINES_AUTORISEES))) {
+    ctx.addIssue({ code: "custom", path: ["BEILE_ORIGINES_AUTORISEES"], message: "obligatoire en production et sans origine locale : les URL(s) réelles du front (ex. https://beile.bj)" });
   }
   if (v.BEILE_SMS_URL && !v.BEILE_SMS_CLE) ctx.addIssue({ code: "custom", path: ["BEILE_SMS_CLE"], message: "requise avec BEILE_SMS_URL" });
   if (v.BEILE_SMTP_URL && !v.BEILE_COURRIEL_EXPEDITEUR) ctx.addIssue({ code: "custom", path: ["BEILE_COURRIEL_EXPEDITEUR"], message: "requis avec BEILE_SMTP_URL (adresse du domaine de la plateforme)" });

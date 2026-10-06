@@ -2,8 +2,8 @@ import type { Perimetre, Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { communesDuPerimetre } from "@beile/simulation/semantique";
 import { aujourdhui } from "@beile/simulation/scolarite";
-import { communeById, departementById } from "@beile/simulation/territoire";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { departementById } from "@beile/simulation/territoire";
+import { and, desc, eq, gte, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -168,6 +168,25 @@ visites.get("/visites", authentifie, limiteDebit(60, 60_000, cleUtilisateur), as
   });
 });
 
+/** Fragment commun des deux lectures de la couverture : les écoles du périmètre, avec leur maille administrative. */
+function ecolesDuPerimetre(perimetre: Perimetre, cycle: string, dansPerimetre: SQL<unknown> | null) {
+  return sql`
+    select e.id, e.nom, e.commune_id, e.circonscription, e.cycle, e.statut, c.nom as commune, c.departement_id
+    from core.etablissements e
+    left join core.communes c on c.id = e.commune_id
+    where ${cycle === "tous" ? sql`true` : sql`cycle = ${cycle}`}
+      ${dansPerimetre ? sql`and e.id in (${dansPerimetre})` : sql``}`;
+}
+
+/** Les visites déjà consignées, école par école — date lue défensivement, le registre ne s'efface pas. */
+const VISITES_PAR_ECOLE = sql`
+  select e.etablissement_id, count(*)::int as visites,
+         max(case when pg_input_is_valid(e.donnees->>'dateVisite', 'date') then (e.donnees->>'dateVisite')::date end) as derniere,
+         max(case when pg_input_is_valid(e.donnees->>'prochaineVisiteLe', 'date') then (e.donnees->>'prochaineVisiteLe')::date end) as prochaine
+  from ledger.evenements e
+  where e.type = 'VISITE_D_INSPECTION' and e.etablissement_id in (select id from etabs)
+  group by 1`;
+
 /**
  * Couverture d'inspection : quelles écoles du périmètre ont reçu une visite, depuis quand, et lesquelles
  * attendent. Un taux de visite n'est pas un indicateur national — c'est le travail de l'agent, mesuré sur
@@ -178,49 +197,45 @@ visites.get("/visites/couverture", authentifie, limiteDebit(10, 60_000, cleUtili
   const dansPerimetre = etablissementsDuPerimetre(perimetre);
   const cycle = z.enum(["tous", "primaire", "secondaire", "superieur"]).catch("tous").parse(c.req.query("cycle"));
   const limite = z.coerce.number().int().min(1).max(500).catch(200).parse(c.req.query("limite"));
+  const avec = sql`with etabs as (${ecolesDuPerimetre(perimetre, cycle, dansPerimetre)}), v as (${VISITES_PAR_ECOLE})`;
 
+  // Tri et plafond rendus PAR la base : une couverture nationale comptait jusqu'ici l'intégralité des écoles
+  // en mémoire pour n'en afficher que 200. Les totaux viennent des fenêtres (`count(*) over ()`), calculées
+  // avant le LIMIT — la fraction affichée ne change donc pas le décompte, et `tronque` reste honnête.
   const lignes = await base().execute<{
     id: string; nom: string; commune: string | null; commune_id: string; circonscription: string; cycle: string; statut: string;
     visites: number; derniere: string | null; prochaine: string | null;
+    attendus: number; couverts: number; consignees: number;
   }>(sql`
-    with etabs as (
-      select e.id, e.nom, e.commune_id, e.circonscription, e.cycle, e.statut, c.nom as commune
-      from core.etablissements e
-      left join core.communes c on c.id = e.commune_id
-      where ${cycle === "tous" ? sql`true` : sql`cycle = ${cycle}`}
-        ${dansPerimetre ? sql`and e.id in (${dansPerimetre})` : sql``}
-    ), v as (
-      select e.etablissement_id, count(*)::int as visites,
-             -- Lecture défensive : une date illisible ne casse jamais la couverture (le registre ne s'efface pas).
-             max(case when pg_input_is_valid(e.donnees->>'dateVisite', 'date') then (e.donnees->>'dateVisite')::date end) as derniere,
-             max(case when pg_input_is_valid(e.donnees->>'prochaineVisiteLe', 'date') then (e.donnees->>'prochaineVisiteLe')::date end) as prochaine
-      from ledger.evenements e
-      where e.type = 'VISITE_D_INSPECTION' and e.etablissement_id in (select id from etabs)
-      group by 1
-    )
+    ${avec}
     select t.id, t.nom, t.commune, t.commune_id, t.circonscription, t.cycle, t.statut, coalesce(v.visites, 0)::int as visites,
-           to_char(v.derniere, 'YYYY-MM-DD') as derniere, v.prochaine::text as prochaine
-    from etabs t left join v on v.etablissement_id = t.id`);
+           to_char(v.derniere, 'YYYY-MM-DD') as derniere, v.prochaine::text as prochaine,
+           count(*) over ()::int as attendus,
+           count(*) filter (where coalesce(v.visites, 0) > 0) over ()::int as couverts,
+           coalesce(sum(v.visites) over (), 0)::int as consignees
+    from etabs t left join v on v.etablissement_id = t.id
+    -- Jamais visitées en tête : c'est la question que l'agent pose, pas la liste de ce qu'il a déjà fait.
+    order by v.derniere nulls first, coalesce(v.visites, 0) desc, t.nom
+    limit ${limite + 1}`);
 
-  const parDepartement = new Map<string, { attendus: number; couverts: number }>();
-  for (const x of lignes) {
-    const cle = communeById.get(x.commune_id)?.departementId ?? "hors carte";
-    const d = parDepartement.get(cle) ?? { attendus: 0, couverts: 0 };
-    d.attendus += 1;
-    if (x.visites > 0) d.couverts += 1;
-    parDepartement.set(cle, d);
-  }
-  const triees = [...lignes].sort((a, b) => (a.derniere ?? "").localeCompare(b.derniere ?? "") || b.visites - a.visites || a.nom.localeCompare(b.nom, "fr"));
+  const parDepartement = await base().execute<{ departement: string; attendus: number; couverts: number }>(sql`
+    ${avec}
+    select coalesce(t.departement_id, 'hors carte') as departement, count(*)::int as attendus,
+           count(*) filter (where coalesce(v.visites, 0) > 0)::int as couverts
+    from etabs t left join v on v.etablissement_id = t.id
+    group by 1`);
+
+  const tete = lignes[0];
   return c.json({
     perimetre,
-    attendus: lignes.length,
-    couverts: lignes.filter((x) => x.visites > 0).length,
-    visites: lignes.reduce((s, x) => s + x.visites, 0),
-    parDepartement: [...parDepartement.entries()]
-      .map(([id, d]) => ({ id, departement: departementById.get(id)?.nom ?? id, ...d }))
+    attendus: tete?.attendus ?? 0,
+    couverts: tete?.couverts ?? 0,
+    visites: tete?.consignees ?? 0,
+    parDepartement: parDepartement
+      .map((d) => ({ id: d.departement, departement: departementById.get(d.departement)?.nom ?? d.departement, attendus: d.attendus, couverts: d.couverts }))
       .sort((a, b) => (b.attendus - b.couverts) - (a.attendus - a.couverts) || a.departement.localeCompare(b.departement, "fr")),
-    tronque: triees.length > limite,
-    etablissements: triees.slice(0, limite).map((x) => ({
+    tronque: lignes.length > limite,
+    etablissements: lignes.slice(0, limite).map((x) => ({
       id: x.id, nom: x.nom, commune: x.commune, communeId: x.commune_id, circonscription: x.circonscription, cycle: x.cycle, statut: x.statut,
       visites: x.visites, derniereLe: x.derniere, prochaineVisiteLe: x.prochaine,
     })),

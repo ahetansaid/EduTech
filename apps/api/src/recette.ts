@@ -234,6 +234,13 @@ verifier("Inspecteur → date impossible (31 février)", (await inspecteur!.appe
 verifier("Inspecteur → visite annoncée avant la visite consignée", (await inspecteur!.appel("POST", "/visites", feuille({ prochaineVisiteLe: AUJOURDHUI }))).statut, 422);
 verifier("Inspecteur → établissement hors de sa circonscription", (await inspecteur!.appel("POST", "/visites", feuille({ etablissementId: "ETB-COT-PILOTE-CEG" }))).statut, 403);
 verifier("Inspecteur → lecture des visites de sa circonscription", (await inspecteur!.appel("GET", "/visites")).statut, 200);
+// La couverture est comptée et triée PAR la base : le plafond de la réponse ne doit rien changer au décompte,
+// sinon l'agent lirait « 200 écoles attendues » là où son territoire en compte mille.
+const couverture = await inspecteur!.appel("GET", "/visites/couverture?cycle=secondaire&limite=5");
+verifier("Inspecteur → couverture d'inspection (cycle et plafond)", couverture.statut, 200,
+  `${couverture.json?.attendus ?? "?"} écoles · ${couverture.json?.couverts ?? "?"} visitées · ${String(couverture.json?.tronque)} · ${liste(couverture.json?.etablissements).length} rendues`);
+verifier("Inspecteur → le plafond borne la liste, jamais le décompte",
+  (couverture.json?.couverts ?? 1) <= (couverture.json?.attendus ?? 0) && liste(couverture.json?.etablissements).length <= 5, true);
 // « Qui a consulté mes données ? » : la fenêtre bornée du sujet, jamais celle d'un tiers.
 verifier("Sans session → trace de ses consultations", (await anonyme.appel("GET", "/droits/mes-consultations")).statut, 401);
 verifier("Apprenante → trace des consultations d'un autre dossier", (await apprenante!.appel("GET", "/droits/mes-consultations?sujet=APP-000002")).statut, 403);
