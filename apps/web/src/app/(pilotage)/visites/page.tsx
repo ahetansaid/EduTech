@@ -322,7 +322,7 @@ function LigneVisite({ v, ouverte, onBasculer }: { v: Visite; ouverte: boolean; 
 function FeuilleVisite({ ouvert, onFermer, etablissements, initiale }: { ouvert: boolean; onFermer: () => void; etablissements: EtablissementCouvert[]; initiale: string | null }) {
   const consigner = useConsignerVisite();
   /** Clé d'idempotence de la session de saisie : renvoyer le formulaire après une réponse perdue ne double pas le fait. */
-  const [cle, setCle] = useState(crypto.randomUUID);
+  const [cle, setCle] = useState(() => crypto.randomUUID());
   const [choix, setChoix] = useState<string | null | undefined>(undefined);
   const [q, setQ] = useState("");
   const [dateVisite, setDateVisite] = useState(aujourdhuiIso);
