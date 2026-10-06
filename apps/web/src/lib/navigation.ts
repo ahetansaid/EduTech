@@ -1,6 +1,6 @@
 import type { Profil, Role } from "@beile/contracts";
 import {
-  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Database, Download, FileSearch, GraduationCap,
+  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Compass, Database, Download, FileSearch, GraduationCap,
   Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Siren, Sparkles, UsersRound, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
@@ -32,6 +32,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/cockpit/carte", libelle: "Où agir ?", icone: Map, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/alertes", libelle: "Alertes", icone: Siren, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/territoire", libelle: "Console territoriale", icone: Landmark, roles: ["direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
+  { href: "/visites", libelle: "Visites d'inspection", icone: Compass, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
   { href: "/ask", libelle: "Ask Education", icone: Sparkles, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"], groupe: "Pilotage", processus: "P3" },
   { href: "/demandes", libelle: "Demandes à traiter", icone: Inbox, roles: ["inspecteur", "direction_departementale", "administration_centrale", "dpo"], groupe: "Pilotage", processus: "P9" },
   { href: "/enseignement-superieur", libelle: "Enseignement supérieur", icone: School, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chef_etablissement", "enseignant"], groupe: "Pilotage", cycles: ["superieur"] },

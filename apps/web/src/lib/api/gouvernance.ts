@@ -79,13 +79,32 @@ export interface Relance {
   statut: "ouverte" | "en_cours" | "acceptee" | "refusee" | "close"; etape: string; creeeLe: string; echeance: string | null; transmis: boolean;
 }
 
+export type MailleRecoupement = "departement" | "commune";
+/** Pourquoi une ligne n'est pas contrôlée, ou l'est : `non_additif` = un ratio ne se somme pas ;
+ * `mailles_masquees` = une maille sous le seuil de publication, donc la somme n'est pas reconstituée. */
+export type CasRecoupement = "controle" | "non_additif" | "mailles_masquees" | "rendu_par_un_service";
+export type VerdictRecoupement = "coherent" | "coherent_arondi" | "ecart_a_verifier";
+export interface ControleRecoupement {
+  indicateur: string; nom: string; unite: string; cas: CasRecoupement;
+  national: number | null; somme: number | null; ecart: number | null;
+  /** Borne de l'écart imputable seul à l'arrondi des mailles publiées (0,5 par maille). */
+  toleranceArrondi: number; mailles: number; maillesMasquees: number;
+  verdict: VerdictRecoupement | null; motif: string;
+}
+export interface Recoupement { perimetre: Perimetre; maille: MailleRecoupement; controles: ControleRecoupement[] }
+
 export interface Interoperabilite {
   /** `derniere` est l'horodatage PostgreSQL brut (« 2026-09-25 11:04:54.528+00 »). */
   sources: { source: SourceDonnee; total: number; jour: number; derniere: string | null; types: string[] }[];
   registreNational: { personnes: number; apprenants: number; lies: number };
   verificationsDiplomes: { jour: string; n: number }[];
   /** Connecteurs partenaires : ouverts (secret provisionné) ou fermés, et volume réellement reçu. */
-  partenaires: { id: string; nom: string; source: SourceDonnee; messages: string[]; ouvert: boolean; recus: number; dernier: string | null }[];
+  partenaires: {
+    id: string; nom: string; source: SourceDonnee; messages: string[]; ouvert: boolean; recus: number; dernier: string | null;
+    /** Lots tracés dans core.lots_interop — un lot authentifié et conforme, par type de message. `dernier` est un horodatage PostgreSQL brut. */
+    lots: number;
+    parMessage: { partenaire: string; message: string; lots: number; jour: number; dernier: string | null }[];
+  }[];
 }
 
 export interface CompteAdmin {
@@ -103,6 +122,7 @@ export const CLES = {
   etat: ["gouvernance", "plateforme", "etat"] as const,
   qualite: ["gouvernance", "plateforme", "qualite"] as const,
   manquants: (communeId: string) => ["gouvernance", "plateforme", "qualite", "commune", communeId] as const,
+  recoupement: (maille: string) => ["gouvernance", "plateforme", "recoupement", maille] as const,
   relances: ["gouvernance", "plateforme", "relances"] as const,
   interop: ["gouvernance", "plateforme", "interoperabilite"] as const,
   comptes: ["gouvernance", "admin", "comptes"] as const,
@@ -169,6 +189,16 @@ export function useEtablissementsManquants(communeId: string | null) {
     queryKey: CLES.manquants(communeId ?? ""),
     queryFn: ({ signal }) => lire<EtablissementManquant[]>(`/plateforme/qualite/communes/${encodeURIComponent(communeId!)}`, signal),
     enabled: !!communeId,
+  });
+}
+
+/** Recoupement national ↔ mailles : le calcul est mémoïsé côté serveur par cube, périmètre et maille. */
+export function useRecoupement(maille: MailleRecoupement) {
+  return useQuery({
+    queryKey: CLES.recoupement(maille),
+    queryFn: ({ signal }) => lire<Recoupement>(`/plateforme/recoupement?maille=${maille}`, signal),
+    staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 

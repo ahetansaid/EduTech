@@ -216,6 +216,7 @@ const REGISTRE_VERIFIE = {
     garde: (q) => !/\bnon scolarises\b|hors ecole\b|exclusion\b/.test(q),
     definition: {
       code: "effectif_apprenants", nom: "Effectif des apprenants",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Le cadre mondial ne publie pas d'indicateur de volume d'effectifs, seulement des taux et des indices : cette population sert d'assiette aux indicateurs rattachés, elle ne se cite pas seule comme une réalisation ODD." },
       definition: "Nombre d'apprenants inscrits et non sortis (abandon ou transfert hors système) à la date d'observation.",
       formule: "Σ inscriptions + reprises + transferts entrants − abandons − transferts sortants",
       unite: "nombre", moteur: "simulation", perimetre: "k12", assiette: "cellule",
@@ -238,6 +239,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["croissance", "augmentation des effectifs", "pression demographique", "densification", "afflux"],
     definition: {
       code: "croissance_effectifs", nom: "Croissance des effectifs",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Variation annuelle des effectifs scolarisés : une donnée de programmation nationale, sans équivalent parmi les douze indicateurs publiés de l'objectif 4." },
       definition: "Variation relative de l'effectif scolarisé entre l'année observée et l'avant-dernière année close de la série. Une croissance forte sans capacité ni enseignants ajoutés est le signal le plus fiable d'une rentrée sous tension.",
       formule: "(effectif de l'année − effectif d'il y a deux ans) ÷ effectif d'il y a deux ans × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -272,6 +274,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["projection", "2030", "effectif previsible", "a horizon", "anticiper les besoins", "combien dans"],
     definition: {
       code: "effectif_projete_2030", nom: "Effectif scolarisable projeté à 2030",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Une projection démographique n'est pas une réalisation : les indicateurs ODD constatent ce qui s'est produit, pas ce qui est attendu en 2030." },
       definition: "Population d'âge scolaire attendue en 2030 pour la commune, extrapolée de la croissance observée de la population scolarisable. C'est une projection démographique, pas un engagement de construction.",
       formule: "population scolarisable de l'année courante × (1 + croissance annualisée ÷ 2)^4",
       unite: "nombre", moteur: "simulation", perimetre: "pilotage", assiette: "commune",
@@ -300,6 +303,7 @@ const REGISTRE_VERIFIE = {
     garde: (q, f) => f.seuil !== undefined && /moyenne|note|\/\s*20|au moins|superieure?/.test(q),
     definition: {
       code: "taux_seuil_moyenne", nom: "Proportion d'apprenants atteignant un seuil de moyenne",
+      rattachementOdd: { code: "4.1.1", degre: "analogique", intitule: "Proportion of children and young people (a) in grades 2/3; (b) at the end of primary; and (c) at the end of lower secondary achieving at least a minimum proficiency level in (i) reading and (ii) mathematics, by sex", reserve: "4.1.1 repose sur un instrument d'évaluation commun à trois paliers fixés (fin de 2e/3e année, fin du primaire, fin du premier cycle secondaire). BEILE rapporte la part des moyennes annuelles d'une matière au-dessus d'un seuil choisi par l'utilisateur : même idée de seuil minimal, aucun instrument commun, aucun palier identique." },
       definition: "Part des apprenants évalués dont la moyenne annuelle dans la matière est supérieure ou égale au seuil.",
       formule: "apprenants évalués avec moyenne ≥ seuil ÷ apprenants évalués × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "cellule",
@@ -329,6 +333,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["moyenne", "note moyenne", "niveau moyen", "de combien"],
     definition: {
       code: "moyenne_generale", nom: "Moyenne des apprenants",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Une moyenne scolaire agrégée n'existe pas dans le cadre ODD, qui mesure une maîtrise minimale par instrument d'évaluation (4.1.1) et non une note." },
       definition: "Moyenne arithmétique des moyennes annuelles des apprenants évalués dans la matière.",
       formule: "Σ moyennes des apprenants évalués ÷ apprenants évalués",
       unite: "note", moteur: "simulation", perimetre: "k12", assiette: "cellule",
@@ -354,6 +359,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["dispersion", "heterogeneite", "ecart type", "injustice scolaire", "regulier"],
     definition: {
       code: "dispersion_moyennes", nom: "Dispersion relative des moyennes",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "4.5.1 compare des groupes entre eux (parité, milieux, quintiles) ; la dispersion des niveaux à l'intérieur d'un même groupe n'a pas d'équivalent publié." },
       definition: "Écart-type des moyennes rapporté à la moyenne elle-même, pondéré par les effectifs : la dispersion des niveaux à l'intérieur d'un même groupe, exprimée en pourcentage de la moyenne. Elle croît quand un groupe étire ses extrêmes, même si sa moyenne ne bouge pas.",
       formule: "Σ (effectif de la cellule × écart-type ÷ moyenne de la cellule) ÷ Σ effectifs évalués × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "cellule",
@@ -381,6 +387,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["absent", "absenteisme", "taux d absence", "manquent", "presence en classe"],
     definition: {
       code: "taux_absenteisme", nom: "Taux d'absentéisme",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "L'assiduité n'est pas un indicateur ODD 4 : elle nourrit l'achèvement (4.1.2) sans s'y réduire, un élève absent pouvant achever son niveau." },
       definition: "Part des demi-journées de classe manquées, justifiées ou non, sur les demi-journées dues.",
       formule: "demi-journées d'absence ÷ demi-journées dues × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -403,6 +410,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["abandon*", "abandonne*", "decroch*", "quittent l ecole", "quitte* l ecole", "descolaris*", "sortie anticip*", "demission*"],
     definition: {
       code: "taux_abandon", nom: "Taux d'abandon",
+      rattachementOdd: { code: "4.1.2", degre: "analogique", intitule: "Completion rate (primary education, lower secondary education, upper secondary education)", reserve: "4.1.2 mesure un achèvement de niveau en fin de parcours d'après les séries d'effectifs ; BEILE mesure un retrait en cours d'année. Les deux se ressemblent sans se compléter : un taux d'abandon n'est pas le complément d'un taux d'achèvement." },
       definition: "Part des apprenants inscrits en début d'année ayant quitté le système sans transfert au cours de l'année.",
       formule: "abandons de l'année ÷ inscrits en début d'année × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -427,6 +435,7 @@ const REGISTRE_VERIFIE = {
     garde: (q) => !/declaration|donnees|transmis/.test(q),
     definition: {
       code: "taux_surage", nom: "Taux de surâge",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Le cadre s'appuie sur des taux nets et bruts qui corrèlent implicitement l'adéquation âge-niveau, mais ne publie pas de part d'élèves surâgés." },
       definition: "Part des apprenants ayant au moins deux ans de plus que l'âge théorique du niveau fréquenté (âge retenu au 31 décembre de l'année d'observation). Mesure de la répétition et des entrées tardives, pas de l'âge lui-même.",
       formule: "apprenants en retard d'au moins deux ans ÷ apprenants du niveau (et de la bande d'âge demandée) × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "cellule",
@@ -456,6 +465,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["parite", "equite filles", "disparite filles", "filles avantagees", "indice de parite"],
     definition: {
       code: "indice_parite", nom: "Indice de parité filles-garçons",
+      rattachementOdd: { code: "4.5.1", degre: "exact", intitule: "Parity indices (female/male, rural/urban, bottom/top wealth quintile and others such as disability status, for all education indicators on this list that can be disaggregated)", reserve: "Même construit, famille d'indices restreinte : 4.5.1 couvre parité filles/garçons, urbain/rural, quintiles de richesse et handicap, appliqués à tout indicateur disagrégable ; BEILE ne rend que la parité filles/garçons sur les effectifs scolarisés." },
       definition: "Nombre de filles scolarisées pour un garçon, dans le périmètre observé. Un indice de 1,00 est la parité ; en dessous, les filles sont sous-représentées ; au-dessus, elles le sont davantage que les garçons.",
       formule: "effectif des filles ÷ effectif des garçons",
       unite: "indice", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -495,6 +505,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["reussite", "admis", "cep", "bepc", "bac", "examen", "deliberation"],
     definition: {
       code: "taux_reussite_examen", nom: "Taux de réussite à l'examen",
+      rattachementOdd: { code: "4.1.2", degre: "analogique", intitule: "Completion rate (primary education, lower secondary education, upper secondary education)", reserve: "Réussir le BEPC ou le baccalauréat tient lieu d'achèvement dans les rapports nationaux, mais 4.1.2 se calcule sur une cohorte d'âge et non sur une session : le taux de réussite laisse hors du champ les candidats qui ne se sont jamais présentés." },
       definition: "Nombre de candidats admis rapporté au nombre de candidats effectivement évalués (présents).",
       formule: "candidats admis ÷ candidats présents × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "examen",
@@ -520,6 +531,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["presence a l examen", "presence aux epreuves", "candidats presents", "defaillants", "abstention", "qui ne vient pas"],
     definition: {
       code: "taux_presence_examen", nom: "Taux de présence aux épreuves",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "La présentation aux épreuves est une étape administrative d'un examen national, que le cadre ODD n'a pas définie en indicateur." },
       definition: "Part des candidats inscrits à un examen national qui se sont effectivement présentés aux épreuves.",
       formule: "candidats présents ÷ candidats inscrits × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "examen",
@@ -546,6 +558,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["par enseignant", "ratio", "encadrement", "maitre", "professeur", "nombre d eleves par maitre"],
     definition: {
       code: "ratio_apprenants_enseignant", nom: "Ratio apprenants par enseignant",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Le nombre d'élèves par enseignant est une statistique courante des instituts, mais aucun des douze indicateurs ne le définit : 4.c.1 mesure la qualification des enseignants, pas leur densité." },
       definition: "Nombre d'apprenants pour un enseignant en poste, tous statuts confondus.",
       formule: "effectif des apprenants ÷ enseignants en poste",
       unite: "ratio", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -568,6 +581,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["enseignant qualifie", "qualification des enseignants", "maitres qualifies", "personnel qualifie", "non qualifies", "formation des maitres"],
     definition: {
       code: "part_enseignants_qualifies", nom: "Part des enseignants qualifiés",
+      rattachementOdd: { code: "4.c.1", degre: "exact", intitule: "Proportion of teachers with the minimum required qualifications, by education level", reserve: "Même construit : la part des enseignants réunissant la qualification minimale exigée, par niveau d'enseignement. Le référentiel reste national — 4.c.1 ne dit pas quel diplôme béninois satisfait à l'exigence." },
       definition: "Part des enseignants en poste dont la qualification attestée répond au référentiel du niveau enseigné. Un enseignant contracté sans formation initiale est compté dans le ratio d'encadrement mais pas ici.",
       formule: "enseignants qualifiés ÷ enseignants en poste × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -593,6 +607,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["occupation", "capacite d accueil", "surcharg", "sature", "taux d accueil", "effectif par etablissement"],
     definition: {
       code: "taux_occupation", nom: "Taux d'occupation des établissements",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Le taux d'occupation des capacités d'accueil déclarées n'est pas un indicateur ODD 4." },
       definition: "Rapport entre l'effectif accueilli et la capacité d'accueil déclarée des établissements.",
       formule: "effectif ÷ capacité d'accueil × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -615,6 +630,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["places", "capacite restante", "places libres", "deficit de places", "nouvelles places", "ou construire"],
     definition: {
       code: "places_disponibles", nom: "Places d'accueil disponibles",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Un déficit de places relève de la programmation des infrastructures ; l'ODD 4 mesure les services rendus par l'école (4.a.1), pas son dimensionnement." },
       definition: "Capacité d'accueil déclarée moins l'effectif réellement accueilli. Une valeur négative est un déficit : autant d'apprenants accueillis au-delà de la capacité, et donc le nombre de places à créer pour revenir à la norme.",
       formule: "capacité d'accueil − effectif accueilli",
       unite: "nombre", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -637,6 +653,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["par salle", "densite", "nombre d eleves par classe", "effectif par classe", "taille de classe", "salles de classe"],
     definition: {
       code: "ratio_apprenants_salle", nom: "Densité d'apprenants par salle",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "La taille des classes n'est pas un indicateur ODD 4 : 4.a.1 s'attache aux services offerts, non au nombre d'élèves par salle." },
       definition: "Nombre d'apprenants pour une salle de classe dans le parc d'établissements observé. La salle, et non l'enseignant : c'est l'infrastructure qui borne l'effectif d'une classe quand les postes manquent.",
       formule: "Σ effectifs des établissements ÷ Σ salles de classe",
       unite: "ratio", moteur: "simulation", perimetre: "k12", assiette: "etablissement",
@@ -666,6 +683,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["latrines", "electricite", "internet", "point d eau", "eau potable", "bibliotheque", "equipement", "connectivite", "acces a l eau", "taux d equipement"],
     definition: {
       code: "taux_acces_infrastructure", nom: "Taux d'accès à un équipement",
+      rattachementOdd: { code: "4.a.1", degre: "analogique", intitule: "Proportion of schools offering basic services, by type of service", reserve: "Construit voisin, nomenclature différente : le service ODD énumère électricité, internet, eau potable, assainissement amélioré et accès pour les élèves en situation de handicap ; BEILE observe cinq équipements — dont la bibliothèque, qui n'y figure pas — sans distinguer l'eau potable du simple point d'eau." },
       definition: "Part des établissements du périmètre réellement dotés de l'équipement demandé. Cinq équipements sont observés — point d'eau, raccordement électrique, accès internet, latrines, bibliothèque — et aucune moyenne n'est faite entre eux : un réseau doté à 80 % en latrines et à 5 % en internet n'est pas « doté à 42 % ».",
       formule: "établissements disposant de l'équipement ÷ établissements observés × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "etablissement",
@@ -699,6 +717,7 @@ const REGISTRE_VERIFIE = {
     garde: (q) => !/\btaux\b|\bproportion\b|\bpart\b/.test(q) && /\bcombien\b|\bpopulation\b|\beffectif\b|\bnombre\b/.test(q),
     definition: {
       code: "population_scolarisable", nom: "Population d'âge scolaire",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Un dénominateur démographique n'est pas un indicateur en soi ; il entre dans les taux de scolarisation que le cadre construit." },
       definition: "Enfants résidant dans le périmètre et ayant atteint l'âge théorique de la scolarité obligatoire au 31 décembre de l'année observée. C'est le dénominateur du taux brut de scolarisation : il est estimé à partir des effectifs déclarés et du taux de scolarisation retenu pour la commune, non d'un recensement indépendant.",
       formule: "effectif scolarisé ÷ taux brut de scolarisation retenu pour la commune",
       unite: "nombre", moteur: "simulation", perimetre: "pilotage", assiette: "commune",
@@ -726,6 +745,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["scolarisation", "taux de scolarisation", "acces a l ecole", "population scolarisable", "non scolarises", "enfants hors ecole", "exclusion scolaire"],
     definition: {
       code: "taux_scolarisation_brut", nom: "Taux brut de scolarisation",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Aucun des douze indicateurs ne publie de taux brut de scolarisation : la participation se mesure en 4.3.1, sur les jeunes et adultes déclarés par enquête, non sur une population d'âge scolaire estimée à partir des effectifs." },
       definition: "Effectif réellement scolarisé rapporté à la population d'âge scolaire théorique de la commune. Il est dit « brut » parce qu'il compte les élèves de tout âge au numérateur, y compris ceux qui ne sont pas d'âge scolaire ; à ce titre il peut dépasser 100 % dans une commune qui accueille au-delà de son bassin.",
       formule: "effectif scolarisé ÷ population scolarisable × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "k12", assiette: "commune",
@@ -752,6 +772,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["transmis", "transmission des donnees", "depot", "couverture des donnees", "donnees manquantes", "reliquet", "donnees pas jour", "declaration"],
     definition: {
       code: "taux_depot_donnees", nom: "Taux de transmission des données",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "La complétude du flux de déclaration regarde le système d'information lui-même, que les douze indicateurs de l'objectif 4 ne mesurent pas." },
       definition: "Part des établissements attendus ayant effectivement transmis leur déclaration pour l'année en cours. Les années closes sont réputées entièrement transmises : une année archivée et validée ne peut plus être en attente.",
       formule: "établissements ayant transmis ÷ établissements attendus × 100",
       unite: "pourcentage", moteur: "simulation", perimetre: "pilotage", assiette: "etablissement",
@@ -781,6 +802,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["fraicheur", "anciennete des donnees", "derniere mise a jour", "donnee a jour", "retard de declaration", "depuis quand"],
     definition: {
       code: "fraicheur_donnees", nom: "Fraîcheur moyenne des données",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Le délai depuis le dernier dépôt est une propriété de la diffusion de la donnée, pas un résultat éducatif." },
       definition: "Nombre de jours écoulés depuis le dernier dépôt, moyen sur le périmètre et pondéré par les effectifs : une commune dont le seul grand établissement a déposé il y a trois semaines n'est pas à jour.",
       formule: "Σ (effectif de la commune × jours depuis le dépôt) ÷ Σ effectifs",
       unite: "jours", moteur: "simulation", perimetre: "pilotage", assiette: "commune",
@@ -804,6 +826,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["ects", "credit", "credits capitalises", "validation d ue", "semestre valide"],
     definition: {
       code: "credits_ects_acquis", nom: "Crédits ECTS acquis",
+      rattachementOdd: { code: null, degre: "absent", intitule: null, reserve: "Un volume de crédits accumulés n'est pas un taux : le cadre ODD ne publie pas de mesure du volume de crédits, seulement la participation (4.3.1) et l'achèvement (4.1.2)." },
       definition: "Somme des crédits ECTS attachés aux acquisitions d'unité d'enseignement encore en cours de validité, pour la population et la période observées. Une UE s'acquiert en bloc, jamais au prorata : le crédit entier est compté à la date d'acquisition, et un acquis périmé selon la règle de validité sort du compte sans disparaître du registre.",
       formule: "Σ crédits acquis des validations d'UE dont l'acquis est en cours de validité",
       unite: "nombre", moteur: "registre", perimetre: "superieur", assiette: "commune",
@@ -833,6 +856,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["capitalisation", "taux de capitalisation", "credits attendus", "progression du parcours", "retard lmd", "valider son annee"],
     definition: {
       code: "taux_capitalisation_ects", nom: "Taux de capitalisation des crédits ECTS",
+      rattachementOdd: { code: "4.3.1", degre: "analogique", intitule: "Participation rate of youth and adults in formal and non-formal education and training in the previous 12 months, by sex", reserve: "4.3.1 constate une participation — suivre une formation au cours des douze derniers mois, d'après enquête — et non une progression. Un étudiant inscrit qui ne valide rien participe au sens de l'ODD et échoue au sens de BEILE." },
       definition: "Part, en pourcentage, des crédits attendus sur la période qui ont été réellement acquis par les étudiants sous contrat signé. C'est la mesure du parcours LMD : un étudiant qui valide sa période a capitalisé 30 crédits sur 30. Le dénominateur est la population contractée, pas la population inscrite : un étudiant sans contrat signé n'a rien eu à valider, et le compter ferait baisser le taux pour une raison administrative.",
       formule: "crédits ECTS acquis ÷ (crédits attendus de la période × étudiants sous contrat signé) × 100",
       unite: "pourcentage", moteur: "registre", perimetre: "superieur", assiette: "commune",

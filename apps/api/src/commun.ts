@@ -262,6 +262,17 @@ export async function journaliser(profil: Pick<Profil, "id" | "nomAffiche">, act
   if (!autorise && profil.id !== "inconnu") await (await import("./vigie")).surRefus(profil.id, profil.nomAffiche).catch(() => {});
 }
 
+/**
+ * Date du CALENDRIER (AAAA-MM-JJ, entre 2000 et 2100) : « 2026-02-31 » passe une regex mais n'existe pas —
+ * JavaScript la reporterait au 3 mars, PostgreSQL refuserait de la lire. Une date impossible inscrite au
+ * registre, où rien ne s'efface, casserait toute lecture future.
+ */
+export function dateCalendaire(d: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < "2000-01-01" || d > "2100-12-31") return false;
+  const t = new Date(`${d}T00:00:00Z`);
+  return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
+}
+
 /** Révoque toutes les sessions d'un compte ET les retire du cache de cette instance (effet immédiat). */
 export async function revoquerSessionsDuCompte(compteId: string) {
   const r = await base().update(schema.sessions).set({ revoquee: true }).where(and(eq(schema.sessions.compteId, compteId), eq(schema.sessions.revoquee, false))).returning({ e: schema.sessions.empreinte });

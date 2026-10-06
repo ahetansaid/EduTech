@@ -216,6 +216,37 @@ verifier("Parent → file des demandes d'assistance", (await parent!.appel("GET"
 verifier("Sans session → créer une demande", (await anonyme.appel("POST", "/assistance/tickets", { categorie: "bug", sujet: "Essai", description: "Essai sans session" })).statut, 401);
 verifier("Demande d'assistance inconnue", (await parent!.appel("GET", "/assistance/tickets/AST-ABCDEFGH")).statut, 404);
 
+titre("Visites d'inspection et trace des consultations (refus : aucune écriture)");
+// Porte de tutelle : hors agents de tutelle, rien ne se lit et rien ne se consigne — et chaque refus part au journal.
+verifier("Sans session → lecture des visites", (await anonyme.appel("GET", "/visites")).statut, 401);
+verifier("Apprenante → lecture des visites du périmètre", (await apprenante!.appel("GET", "/visites")).statut, 403);
+verifier("Cheffe d'établissement → couverture d'inspection", (await directrice!.appel("GET", "/visites/couverture")).statut, 403);
+verifier("Enseignant → consigner une visite", (await enseignant!.appel("POST", "/visites", {
+  etablissementId: PILOTE, dateVisite: AUJOURDHUI, objet: "Essai hors tutelle", constats: "Constats de la recette, sans valeur pédagogique.",
+  recommandations: null, referenceRapport: null, prochaineVisiteLe: null, cle: "00000000-0000-4000-8000-000000000001",
+})).statut, 403);
+const feuille = (sur: Record<string, unknown>) => ({
+  etablissementId: PILOTE, dateVisite: AUJOURDHUI, objet: "Visite de recette", constats: "Constats de recette, aucune donnée transmise.",
+  recommandations: null, referenceRapport: null, prochaineVisiteLe: null, cle: "00000000-0000-4000-8000-000000000002", ...sur,
+});
+verifier("Inspecteur → visite à une date future (le registre ne s'efface pas)", (await inspecteur!.appel("POST", "/visites", feuille({ dateVisite: "2099-01-01" }))).statut, 422);
+verifier("Inspecteur → date impossible (31 février)", (await inspecteur!.appel("POST", "/visites", feuille({ dateVisite: `${new Date().getFullYear()}-02-31` }))).statut, 422);
+verifier("Inspecteur → visite annoncée avant la visite consignée", (await inspecteur!.appel("POST", "/visites", feuille({ prochaineVisiteLe: AUJOURDHUI }))).statut, 422);
+verifier("Inspecteur → établissement hors de sa circonscription", (await inspecteur!.appel("POST", "/visites", feuille({ etablissementId: "ETB-COT-PILOTE-CEG" }))).statut, 403);
+verifier("Inspecteur → lecture des visites de sa circonscription", (await inspecteur!.appel("GET", "/visites")).statut, 200);
+// La couverture est comptée et triée PAR la base : le plafond de la réponse ne doit rien changer au décompte,
+// sinon l'agent lirait « 200 écoles attendues » là où son territoire en compte mille.
+const couverture = await inspecteur!.appel("GET", "/visites/couverture?cycle=secondaire&limite=5");
+verifier("Inspecteur → couverture d'inspection (cycle et plafond)", couverture.statut, 200,
+  `${couverture.json?.attendus ?? "?"} écoles · ${couverture.json?.couverts ?? "?"} visitées · ${String(couverture.json?.tronque)} · ${liste(couverture.json?.etablissements).length} rendues`);
+verifier("Inspecteur → le plafond borne la liste, jamais le décompte",
+  (couverture.json?.couverts ?? 1) <= (couverture.json?.attendus ?? 0) && liste(couverture.json?.etablissements).length <= 5, true);
+// « Qui a consulté mes données ? » : la fenêtre bornée du sujet, jamais celle d'un tiers.
+verifier("Sans session → trace de ses consultations", (await anonyme.appel("GET", "/droits/mes-consultations")).statut, 401);
+verifier("Apprenante → trace des consultations d'un autre dossier", (await apprenante!.appel("GET", "/droits/mes-consultations?sujet=APP-000002")).statut, 403);
+const traceSoi = await apprenante!.appel("GET", "/droits/mes-consultations");
+verifier("Apprenante → sa propre trace, fenêtre de douze mois", traceSoi.statut, 200, `bornée au ${String(traceSoi.json?.depuis ?? "").slice(0, 10)}`);
+
 titre("Concurrence : 40 lectures simultanées de profils différents");
 const debut = Date.now();
 const lots = await Promise.all(Array.from({ length: 40 }, (_, i) => [
@@ -311,9 +342,35 @@ if (ECRITURES) {
   // Édition de classe par le chef : capacité relevée puis visible au tableau de bord.
   const edition = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S`, { capacite: 47, enseignantPrincipalId: null });
   verifier("Directrice : édition de la capacité d'une classe", edition.statut, 200, `capacité ${edition.json.capacite}`);
-  // Conseil de passage : l'admis est réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
-  const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, { anneeScolaire: "2027-2028", decisions: [{ apprenantId: "APP-000001", decision: "admis" }] });
+  // Conseil de passage : la séance est attestée au registre (fait CONSEIL_DE_CLASSE), puis l'admis est
+  // réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
+  const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2027-2028",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Professeur principal", "Chef d'établissement"], referencePv: "PV-REC-01" },
+    decisions: [{ apprenantId: "APP-000001", decision: "admis" }],
+  });
   verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
+  verifier("Directrice : la séance du conseil est au registre avec ses membres", passage.statut !== 201 || passage.json?.nombreDeMembres === 2, true, `membres ${passage.json?.nombreDeMembres}`);
+  verifier("Directrice : une séance future est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: "2099-01-01", membres: ["Chef d'établissement"], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
+  verifier("Directrice : une séance sans membre est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: [], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
+  verifier("Directrice : un nom de personne au lieu d'une qualité est refusé (registre ineffaçable)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Mme Adjoua KOSSOU, parent délégué"], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
+  verifier("Directrice : une date de séance impossible est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: "2026-02-31", membres: ["Chef d'établissement"], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
   // Révocation d'un diplôme par l'autorité de certification, puis vérification publique qui rend « révoqué ».
   // Le motif est un FAIT du registre (REVOCATION_CERTIFICAT), consultable par un agent habilité : il nomme
   // l'autorité qui a rendu le verdict — la DEC du MEMP pour un CEP. « ONEC » est ivoirien et n'organise

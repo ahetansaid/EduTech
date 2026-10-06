@@ -49,7 +49,7 @@ npm run verifier -w @beile/db     # contrôle : ajout seul, droits, RLS, avec t�
 | Variable | Valeur |
 |---|---|
 | `DATABASE_URL_API` | URL **pooler** de `beile_api` (jamais `neondb_owner` : refusé au démarrage) |
-| `BEILE_ORIGINES_AUTORISEES` | URL(s) du **front** (ex. `https://beile.vercel.app`) — contrôle d'origine des écritures |
+| `BEILE_ORIGINES_AUTORISEES` | URL(s) du **front** (ex. `https://beile.vercel.app`) — contrôle d'origine des écritures et CORS avec cookies. **Obligatoire en production, sans origine `localhost`** : le défaut de développement y est refusé au démarrage |
 | `BEILE_DB_POOL` | facultatif, 10 par défaut |
 
 4. Région : `fra1` (Francfort), au plus près de la base Neon. Front et API dans la même région.

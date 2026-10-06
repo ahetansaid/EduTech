@@ -1,6 +1,6 @@
 "use client";
 
-import type { Certificat, DecisionAcces, Evenement, StatutIdentite } from "@beile/contracts";
+import type { Certificat, DecisionAcces, Evenement, QualiteConseil, StatutIdentite } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, ErreurApi, lire } from "@/lib/http";
 
@@ -11,9 +11,17 @@ import { ecrire, ErreurApi, lire } from "@/lib/http";
 
 /* ------------------------------------------------------------------ Types de réponse */
 
+/** La séance qui a statué, telle que le tableau de bord la rend : date et nombre de membres, rien de nominatif. */
+export interface ConseilAtteste { dateSeance: string; nombreDeMembres: number }
+
+/** Ce que la saisie du conseil envoie : les membres par QUALITÉ (jamais de nom au registre, qui ne s'efface pas). */
+export interface SeanceConseil { dateSeance: string; membres: QualiteConseil[]; referencePv: string | null }
+
 export interface ClasseTableau {
   id: string; libelle: string; niveau: string; capacite: number; effectif: number;
   moyenne: number | null; absentsDuJour: number; professeurPrincipal: string | null;
+  /** Dernier conseil enregistré pour la division ; null = aucune séance attestée au registre. */
+  conseil: ConseilAtteste | null;
 }
 
 export interface EleveEnBaisse { apprenantId: string; nom?: string; notes: number[]; baisse: number | null }
@@ -360,12 +368,12 @@ export function useModifierClasseMutation(id: string | null) {
   });
 }
 
-/** Conseil de passage : décisions prononcées pour la classe, réinscription dans l'année suivante. */
+/** Conseil de passage : la séance d'abord (date, membres, référence du procès-verbal), puis les décisions. */
 export function useConseilPassageMutation(id: string | null) {
   const invalider = useInvalider();
   return useMutation({
-    mutationFn: (v: { classeId: string; anneeScolaire: string; decisions: DecisionPassage[] }) =>
-      ecrire<{ classeId: string; admis: number; maintenus: number; divisionsCrees: string[] }>(`/etablissements/${e(id!)}/classes/${e(v.classeId)}/conseil-passage`, { anneeScolaire: v.anneeScolaire, decisions: v.decisions }),
+    mutationFn: (v: { classeId: string; anneeScolaire: string; seance: SeanceConseil; decisions: DecisionPassage[] }) =>
+      ecrire<{ classeId: string; dateSeance: string; nombreDeMembres: number; admis: number; maintenus: number; divisionsCrees: string[] }>(`/etablissements/${e(id!)}/classes/${e(v.classeId)}/conseil-passage`, { anneeScolaire: v.anneeScolaire, seance: v.seance, decisions: v.decisions }),
     onSuccess: invalider,
   });
 }

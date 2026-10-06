@@ -22,6 +22,13 @@ import { Matiere, Mention, Niveau } from "./referentiels";
 export const SourceDonnee = z.enum(["beile", "registre_national", "educmaster", "examens", "universite", "dbau"]);
 export type SourceDonnee = z.infer<typeof SourceDonnee>;
 
+/** Qualités des membres d'un conseil de classe : ce que le registre retient d'eux (les noms restent au procès-verbal). */
+export const QUALITES_CONSEIL = [
+  "Chef d'établissement", "Censeur ou adjoint", "Professeur principal", "Enseignant", "Conseiller pédagogique",
+  "Parent délégué", "Élève délégué", "Représentant de l'inspection", "Autre membre",
+] as const;
+export type QualiteConseil = (typeof QUALITES_CONSEIL)[number];
+
 const Base = z.object({
   id: z.string(),
   survenuLe: z.string(),
@@ -95,6 +102,24 @@ export const Evenement = z.discriminatedUnion("type", [
     versNiveau: Niveau,
     decision: z.enum(["admis", "redouble"]),
     anneeScolaire: z.string(),
+  }),
+  /**
+   * La séance qui statue, distincte des décisions qu'elle prend. Les faits PASSAGE disent ce qui a été
+   * décidé pour chaque apprenant ; rien n'enregistrait jamais que le conseil s'était réuni, ce jour-là,
+   * avec ces membres. Le procès-verbal signé restait seul hors du registre.
+   *
+   * Les membres sont désignés par leur QUALITÉ, jamais par leur nom : le registre ne s'efface pas, et des
+   * parents délégués ou des élèves délégués (mineurs) y resteraient nommés pour toujours, sans droit à
+   * l'effacement. Les noms restent au procès-verbal signé, dont la référence est inscrite.
+   */
+  Base.extend({
+    type: z.literal("CONSEIL_DE_CLASSE"),
+    etablissementId: z.string(),
+    classeId: z.string(),
+    anneeScolaire: z.string(),
+    dateSeance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    membres: z.array(z.enum(QUALITES_CONSEIL)).min(1).max(20),
+    referencePv: z.string().trim().max(40).nullable(),
   }),
   Base.extend({
     type: z.literal("TRANSFERT"),
@@ -176,6 +201,28 @@ export const Evenement = z.discriminatedUnion("type", [
     enseignantId: z.string(),
     formation: z.string(),
     statut: z.enum(["inscrit", "validee"]),
+  }),
+
+  /* -------------------------------------------------- Visites d'inspection.
+   * Un fait sur un établissement, jamais sur une personne : la visite rend compte de ce qui s'est vu dans
+   * l'école, pas du dossier d'un apprenant. La colonne `type` de `ledger.evenements` est un `text` libre —
+   * ajouter ce membre ne demande aucune migration, et aucune projection : l'écran relit le registre.
+   *
+   * Aucune nomenclature n'est simulée : `objet` et `constats` restent du texte d'agent. Les textes
+   * réglementaires consultés sur les inspections béninoises ne publient pas de typologie des motifs de
+   * visite ; inventer une liste à trois cases et l'appeler « officielle » serait exactement ce que BEILE
+   * refuse de faire.
+   */
+  Base.extend({
+    type: z.literal("VISITE_D_INSPECTION"),
+    etablissementId: z.string(),
+    dateVisite: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    objet: z.string().trim().min(5).max(200),
+    constats: z.string().trim().min(10).max(4000),
+    recommandations: z.string().trim().max(4000).nullable(),
+    /** Référence de l'acte papier ou du rapport signé, pour retrouver la pièce — pas pour la redondance. */
+    referenceRapport: z.string().trim().max(80).nullable(),
+    prochaineVisiteLe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   }),
 
   /* -------------------------------------------------- Enseignement supérieur (LMD + EFTP)

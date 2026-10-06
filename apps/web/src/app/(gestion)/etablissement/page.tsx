@@ -1,5 +1,6 @@
 "use client";
 
+import { QUALITES_CONSEIL, type QualiteConseil } from "@beile/contracts";
 import { communeById } from "@beile/simulation/territoire";
 import { ArrowRight, BookOpenCheck, CalendarX2, Check, ClipboardList, Fingerprint, GraduationCap, HandHelping, Percent, Scale, School, Send, Settings2, TrendingDown, UserPlus, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -16,7 +17,7 @@ import { useProfil } from "@/lib/session";
 import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useJustificatifs, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, ETAPES_ACCOMPAGNEMENT, etapesDuCircuit } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
-import { entier, nombre, note, pourcent } from "@/lib/format";
+import { date, entier, nombre, note, pourcent } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
 import { classeChamp, classeSelect, dateCourte, Dialogue, EtatErreur, heureLocale, heureSecondes, HorsPerimetre, Jauge, LIBELLE_STATUT_DEMANDE, LienBouton, PointDirect, Statut, TON_STATUT_DEMANDE } from "./_composants";
 
@@ -384,6 +385,7 @@ function CarteClasses({ id, t, eleves, absentsParClasse }: { id: string; t: Tabl
                   <div><dt className="text-ink-muted">Moyenne T{t.trimestre}</dt><dd className="font-semibold tabular text-ink">{nombre(c.moyenne, 2)}</dd></div>
                   <div><dt className="text-ink-muted">Absents ce jour</dt><dd className="font-semibold tabular text-ink">{absentsParClasse.get(c.id)?.size ?? 0}</dd></div>
                   <div className="col-span-2"><dt className="text-ink-muted">Professeur principal</dt><dd className="truncate text-ink">{c.professeurPrincipal ?? "—"}</dd></div>
+                  <div className="col-span-2"><dt className="text-ink-muted">Dernier conseil attesté</dt><dd className="truncate text-ink">{c.conseil ? `${date(c.conseil.dateSeance)} · ${c.conseil.nombreDeMembres} membre(s)` : "Aucune séance au registre"}</dd></div>
                 </dl>
                 <div className="mt-3 flex gap-2">
                   <Button taille="sm" variante="secondaire" icone={Settings2} onClick={() => setGerer(c)}>Gérer</Button>
@@ -410,7 +412,7 @@ function CarteClasses({ id, t, eleves, absentsParClasse }: { id: string; t: Tabl
                   const abs = absentsParClasse.get(c.id)?.size ?? 0;
                   return (
                     <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 12) * 0.035 }} className="border-t border-line/60 hover:bg-surface-2/50">
-                      <td className="px-5 py-3"><span className="font-medium text-ink">{c.libelle}</span><span className="block text-xs text-ink-muted">Niveau {c.niveau}</span></td>
+                      <td className="px-5 py-3"><span className="font-medium text-ink">{c.libelle}</span><span className="block text-xs text-ink-muted">Niveau {c.niveau}</span>{c.conseil && <span className="block text-[11.5px] text-ink-muted">Conseil du {date(c.conseil.dateSeance)} · {c.conseil.nombreDeMembres} membre(s)</span>}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <span className="w-14 shrink-0">{c.effectif}/{c.capacite}</span>
@@ -494,9 +496,20 @@ function DialogueGererClasse({ id, classe, onFermer }: { id: string; classe: Cla
 /** Niveaux qui terminent un cycle : la suite relève d'un examen national et d'une affectation. */
 const FIN_DE_CYCLE: Record<string, string> = { CM2: "CEP", "3e": "BEPC", Tle: "baccalauréat" };
 
+/** Bornes du formulaire de séance, alignées sur le contrat du registre. */
+const AUJOURDHUI_ISO = () => new Date().toISOString().slice(0, 10);
+/** Membres ayant siégé, par qualité : le registre ne retient jamais de nom (il ne s'efface pas). */
+type Siegeants = Partial<Record<QualiteConseil, number>>;
+const listeMembres = (s: Siegeants) => QUALITES_CONSEIL.flatMap((q) => Array.from({ length: s[q] ?? 0 }, () => q));
+
 function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; classe: ClasseTableau; eleves: EleveLigne[]; onFermer: () => void }) {
   const muter = useConseilPassageMutation(id);
   const [annee, setAnnee] = useState(anneeScolaireSuggeree());
+  // La séance s'atteste avant de statuer : date de réunion, membres présents, référence du procès-verbal.
+  const [dateSeance, setDateSeance] = useState(AUJOURDHUI_ISO());
+  const [siegeants, setSiegeants] = useState<Siegeants>({ "Chef d'établissement": 1, "Professeur principal": 1 });
+  const ajuster = (q: QualiteConseil, delta: number) => setSiegeants((s) => ({ ...s, [q]: Math.max(0, Math.min(10, (s[q] ?? 0) + delta)) }));
+  const [referencePv, setReferencePv] = useState("");
   // Aucune décision par défaut : chaque élève est statué explicitement par le conseil.
   const [decisions, setDecisions] = useState<Record<string, "admis" | "redouble">>({});
   const [confirme, setConfirme] = useState(false);
@@ -504,14 +517,17 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
   const examenFin = FIN_DE_CYCLE[classe.niveau];
   const versNiveau = examenFin ? undefined : niveauSuivant(classe.niveau);
   const anneeValide = /^\d{4}-\d{4}$/.test(annee);
+  const listes = useMemo(() => listeMembres(siegeants), [siegeants]);
+  const seanceValide = /^\d{4}-\d{2}-\d{2}$/.test(dateSeance) && dateSeance <= AUJOURDHUI_ISO()
+    && listes.length >= 1 && listes.length <= 20 && referencePv.trim().length <= 40;
   const statues = elevesClasse.filter((e) => decisions[e.id]).length;
   const admis = elevesClasse.filter((e) => decisions[e.id] === "admis").length;
   const complet = elevesClasse.length > 0 && statues === elevesClasse.length;
   const choisir = (apprenantId: string, d: "admis" | "redouble") => { setDecisions((x) => ({ ...x, [apprenantId]: d })); setConfirme(false); };
   const envoie = () => {
     const decisionsFinales: DecisionPassage[] = elevesClasse.map((e) => ({ apprenantId: e.id, decision: decisions[e.id]! }));
-    muter.mutate({ classeId: classe.id, anneeScolaire: annee, decisions: decisionsFinales }, {
-      onSuccess: (r) => { notifier({ ton: "succes", titre: "Conseil de passage enregistré", texte: `${r.admis} admis, ${r.maintenus} maintenu(s) en ${annee}${r.divisionsCrees.length ? ` · ${r.divisionsCrees.length} division(s) créée(s)` : ""}.` }); onFermer(); },
+    muter.mutate({ classeId: classe.id, anneeScolaire: annee, seance: { dateSeance, membres: listes, referencePv: referencePv.trim() || null }, decisions: decisionsFinales }, {
+      onSuccess: (r) => { notifier({ ton: "succes", titre: "Conseil de passage enregistré", texte: `Séance du ${date(dateSeance)} attestée avec ${r.nombreDeMembres} membre(s) · ${r.admis} admis, ${r.maintenus} maintenu(s) en ${annee}${r.divisionsCrees.length ? ` · ${r.divisionsCrees.length} division(s) créée(s)` : ""}.` }); onFermer(); },
     });
   };
   return (
@@ -527,13 +543,46 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
       pied={
         <>
           <Button variante="secondaire" onClick={onFermer} disabled={muter.isPending}>Annuler</Button>
-          <Button variante="valider" icone={Check} chargement={muter.isPending} disabled={!complet || !anneeValide || !confirme} onClick={envoie}>
+          <Button variante="valider" icone={Check} chargement={muter.isPending} disabled={!complet || !anneeValide || !seanceValide || !confirme} onClick={envoie}>
             Enregistrer {complet ? `(${admis} admis · ${elevesClasse.length - admis} maintenus)` : `(${statues}/${elevesClasse.length} statués)`}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        <fieldset className="space-y-3 rounded-lg border border-line/70 bg-surface-2/40 px-3.5 py-3">
+          <legend className="px-1 text-[12px] font-semibold uppercase tracking-wide text-ink-muted">Séance du conseil</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Date de la séance</span>
+              <input type="date" value={dateSeance} max={AUJOURDHUI_ISO()} onChange={(e) => setDateSeance(e.target.value)} className={classeChamp} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Référence du procès-verbal</span>
+              <input value={referencePv} onChange={(e) => setReferencePv(e.target.value.slice(0, 40))} placeholder="PV 2026-07/12 (facultatif)" className={classeChamp} />
+            </label>
+          </div>
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-ink">Membres ayant siégé (par qualité)</span>
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {QUALITES_CONSEIL.map((q) => (
+                <li key={q} className="flex items-center justify-between gap-2 rounded-md bg-surface px-2.5 py-1.5 ring-1 ring-inset ring-line/70">
+                  <span className="text-[13px] text-ink">{q}</span>
+                  <span className="flex items-center gap-1">
+                    <button type="button" onClick={() => ajuster(q, -1)} disabled={!siegeants[q]} aria-label={`Retirer un ${q}`} className="h-7 w-7 rounded-md text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-2 disabled:opacity-40">−</button>
+                    <span className="w-5 text-center text-[13px] tabular-nums font-semibold text-ink" aria-label={`${siegeants[q] ?? 0} ${q}`}>{siegeants[q] ?? 0}</span>
+                    <button type="button" onClick={() => ajuster(q, 1)} aria-label={`Ajouter un ${q}`} className="h-7 w-7 rounded-md text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-2">+</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <span className={cn("mt-1 block text-xs", listes.length >= 1 && listes.length <= 20 ? "text-ink-muted" : "text-critical")}>
+              {listes.length
+                ? `${listes.length} membre(s) · le registre retient les qualités, jamais les noms ; les noms figurent au procès-verbal signé, qui fait foi.`
+                : "Indiquez au moins un membre : une séance sans témoin attesté n'est pas une séance."}
+            </span>
+          </div>
+        </fieldset>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Année scolaire de réinscription</span>
           <input value={annee} onChange={(e) => setAnnee(e.target.value.replace(/[^0-9-]/g, "").slice(0, 9))} placeholder="2026-2027" className={classeChamp} />

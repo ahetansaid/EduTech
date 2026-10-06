@@ -166,7 +166,11 @@ export default function InteroperabilitePage() {
           <Cascade data-guide="interop-raccordements" className="grid gap-4 lg:grid-cols-2">
             {RACCORDEMENTS.map((r) => <Element key={r.id}><CarteRaccordement r={r} d={d} /></Element>)}
           </Cascade>
-          <p className="text-xs text-ink-muted">Séquence de raccordement : cadrage → contrat d'interface → tests → mise en service → exploitation. Volumes et dates lus dans le registre des événements.</p>
+          <p className="text-xs text-ink-muted">
+            Séquence de raccordement : cadrage → contrat d'interface → tests → mise en service → exploitation. Volumes et dates lus dans le registre des événements.
+            Un lot est tracé dès qu'il est authentifié et conforme à son schéma ; ce que le registre a refusé ligne à ligne est renvoyé au partenaire et seul son
+            nombre est journalisé — la liste nominative des rejets ne reste pas côté BEILE.
+          </p>
         </section>
 
         <div className="grid gap-6 lg:grid-cols-5">
@@ -205,7 +209,7 @@ function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) 
       ? [["Personnes référencées", entier(d.registreNational.personnes)], ["Apprenants liés", entier(d.registreNational.lies)], ["Recopies", "Aucune"]]
       : statut === "recette"
         ? [["Environnement", "Recette"], ["Échanges en production", "Aucun"], ["Mise en service", "Après tests"]]
-        : [["Dernière réception", derniere ? dateHeure(derniere) : "—"], ["Aujourd'hui", entier(src?.jour ?? 0)], ["Total reçu", entier(src?.total ?? 0)]];
+        : [["Dernière réception", derniere ? dateHeure(derniere) : "—"], ["Aujourd'hui", entier(src?.jour ?? 0)], ["Total reçu", entier(src?.total ?? 0)], ["Lots tracés", entier(p?.lots ?? 0)]];
   return (
     <article className="flex h-full min-w-0 flex-col rounded-xl border border-line/70 bg-surface p-5 shadow-float">
       <header className="flex items-start gap-3">
@@ -243,7 +247,7 @@ function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) 
       </dl>
 
       <div className="mt-auto pt-4">
-        <div className="grid grid-cols-3 gap-2 rounded-lg bg-surface-2/60 p-3">
+        <div className="grid grid-cols-2 gap-2 rounded-lg bg-surface-2/60 p-3 sm:grid-cols-3">
           {mesures.map(([l, v]) => (
             <div key={l} className="min-w-0"><Etiquette className="block truncate">{l}</Etiquette><p className="mt-1 truncate text-sm font-semibold tabular text-ink">{v}</p></div>
           ))}

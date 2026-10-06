@@ -74,6 +74,17 @@
 - Points d'attention et tableau des établissements (effectifs, encadrement, eau, électricité, transmission).
 - « Statistiques de la circonscription » : dispersion de l'occupation et de l'encadrement, comparateur classé d'établissements, position percentile de chaque établissement, couverture en infrastructures — le tout exportable en CSV.
 
+### Visites d'inspection
+
+`/visites` — La couverture de votre circonscription, et le compte rendu de vos visites.
+
+- Quatre repères : établissements du périmètre, déjà visités, visites consignées, établissements jamais visités.
+- La liste part des écoles sans visite, puis remonte vers la visite la plus ancienne ; filtre « Sans visite seulement » et recherche par nom ou commune.
+- « Consigner une visite » demande une date, un objet, des constats — et laisse facultatifs les recommandations, la référence du rapport et la prochaine visite annoncée.
+- Objet et constats se rédigent en français courant : aucune nomenclature de motifs d'inspection n'est imposée, parce qu'aucun texte ne la publie.
+- Un fait sur un établissement, jamais sur un apprenant. Il s'enregistre en ajout seul : une correction est une nouvelle visite qui cite la précédente.
+- Tant que le formulaire n'est pas envoyé, il garde la même clé d'idempotence : une réponse perdue renvoyée ne crée pas de doublon.
+
 ### Ask Education
 
 `/ask` — Poser une question chiffrée sur votre circonscription.
@@ -109,6 +120,18 @@
 1. Lisez « Points d'attention de la circonscription » : saturés, classes surchargées, sans transmission, sans point d'eau.
 2. Dans « Établissements de la circonscription », repérez l'établissement concerné et ses infrastructures.
 3. Touchez « Voir sur la carte » pour situer l'établissement et sa commune.
+
+### Consigner une visite d'inspection
+
+> « J'ai visité cette école » ne se prouve pas ; un constat daté, rattaché à l'établissement et signé de votre identité d'agent, oui.
+
+1. Ouvrez « Visites d'inspection » dans le menu, sous « Pilotage ».
+2. Dans la liste, touchez l'établissement visité : les écoles sans visite viennent en tête.
+3. Touchez « Consigner une visite », puis vérifiez l'établissement et la date — une date future est refusée, un fait n'est pas un projet.
+4. Rédigez l'objet, puis les constats : ce qui a été constaté sur place, sans décrire un apprenant.
+5. Ajoutez si besoin les recommandations, la référence du rapport et la date de la prochaine visite annoncée (elle doit suivre la visite consignée).
+6. Touchez « Consigner au registre ». Le compte rendu s'affiche aussitôt et le comptage de couverture du territoire le prend en compte.
+7. Pour corriger une visite déjà consignée : enregistrez une nouvelle visite qui cite la précédente dans ses constats.
 
 ### Situer un établissement par rapport aux autres
 
@@ -150,7 +173,7 @@ Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinate
 Le menu n'affiche que les écrans permis par votre habilitation (rôle et périmètre). C'est le serveur qui décide de chaque accès.
 
 **Qui voit mes données ?**  
-Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle.
+Seules les personnes qui en ont besoin pour leur mission, dans leur périmètre. Chaque consultation est inscrite au journal d'audit, que le délégué à la protection des données contrôle — et vous la voyez aussi : dans « Mes données », la liste des accès enregistrés à votre sujet sur les douze derniers mois.
 
 **Les chiffres sont-ils fiables ?**  
 Chaque indicateur suit la définition du dictionnaire national et porte un indice de confiance. Une donnée incomplète est signalée comme telle, jamais présentée comme complète.
