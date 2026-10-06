@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AUTORITE_EXAMEN, NIVEAUX, type Habilitation, type Niveau } from "@beile/contracts";
+import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { communeById } from "@beile/simulation/territoire";
@@ -231,7 +231,8 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
     capaciteNouvelleDivision: z.coerce.number().int().min(1).max(2000).default(60),
     seance: z.object({
       dateSeance: z.string().refine(dateCalendaire, "date du calendrier attendue (AAAA-MM-JJ)"),
-      membres: z.array(z.string().trim().min(2).max(80)).min(1).max(20),
+      // Des qualités, jamais des noms : le registre ne s'efface pas (élèves délégués mineurs, parents).
+      membres: z.array(z.enum(QUALITES_CONSEIL)).min(1).max(20),
       referencePv: z.string().trim().max(40).nullable().default(null),
     }).strict(),
     decisions: z.array(z.object({

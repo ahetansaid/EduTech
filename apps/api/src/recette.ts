@@ -346,19 +346,29 @@ if (ECRITURES) {
   // réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
   const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
     anneeScolaire: "2027-2028",
-    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Professeur principal de 5e A", "Chef de l'établissement"], referencePv: "PV-REC-01" },
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Professeur principal", "Chef d'établissement"], referencePv: "PV-REC-01" },
     decisions: [{ apprenantId: "APP-000001", decision: "admis" }],
   });
   verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
   verifier("Directrice : la séance du conseil est au registre avec ses membres", passage.statut !== 201 || passage.json?.nombreDeMembres === 2, true, `membres ${passage.json?.nombreDeMembres}`);
   verifier("Directrice : une séance future est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
     anneeScolaire: "2028-2029",
-    seance: { dateSeance: "2099-01-01", membres: ["Chef de l'établissement"], referencePv: null },
+    seance: { dateSeance: "2099-01-01", membres: ["Chef d'établissement"], referencePv: null },
     decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
   })).statut, 422);
   verifier("Directrice : une séance sans membre est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
     anneeScolaire: "2028-2029",
     seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: [], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
+  verifier("Directrice : un nom de personne au lieu d'une qualité est refusé (registre ineffaçable)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Mme Adjoua KOSSOU, parent délégué"], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
+  verifier("Directrice : une date de séance impossible est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2028-2029",
+    seance: { dateSeance: "2026-02-31", membres: ["Chef d'établissement"], referencePv: null },
     decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
   })).statut, 422);
   // Révocation d'un diplôme par l'autorité de certification, puis vérification publique qui rend « révoqué ».

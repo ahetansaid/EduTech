@@ -1,6 +1,6 @@
 "use client";
 
-import type { Certificat, DecisionAcces, Evenement, StatutIdentite } from "@beile/contracts";
+import type { Certificat, DecisionAcces, Evenement, QualiteConseil, StatutIdentite } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, ErreurApi, lire } from "@/lib/http";
 
@@ -14,8 +14,8 @@ import { ecrire, ErreurApi, lire } from "@/lib/http";
 /** La séance qui a statué, telle que le tableau de bord la rend : date et nombre de membres, rien de nominatif. */
 export interface ConseilAtteste { dateSeance: string; nombreDeMembres: number }
 
-/** Ce que la saisie du conseil envoie : les membres sont nommés pour l'attestation, ils ne redescendent pas dans les listes. */
-export interface SeanceConseil { dateSeance: string; membres: string[]; referencePv: string | null }
+/** Ce que la saisie du conseil envoie : les membres par QUALITÉ (jamais de nom au registre, qui ne s'efface pas). */
+export interface SeanceConseil { dateSeance: string; membres: QualiteConseil[]; referencePv: string | null }
 
 export interface ClasseTableau {
   id: string; libelle: string; niveau: string; capacite: number; effectif: number;

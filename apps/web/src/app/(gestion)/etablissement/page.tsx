@@ -1,5 +1,6 @@
 "use client";
 
+import { QUALITES_CONSEIL, type QualiteConseil } from "@beile/contracts";
 import { communeById } from "@beile/simulation/territoire";
 import { ArrowRight, BookOpenCheck, CalendarX2, Check, ClipboardList, Fingerprint, GraduationCap, HandHelping, Percent, Scale, School, Send, Settings2, TrendingDown, UserPlus, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -497,14 +498,17 @@ const FIN_DE_CYCLE: Record<string, string> = { CM2: "CEP", "3e": "BEPC", Tle: "b
 
 /** Bornes du formulaire de séance, alignées sur le contrat du registre. */
 const AUJOURDHUI_ISO = () => new Date().toISOString().slice(0, 10);
-const découperMembres = (t: string) => t.split(/[,;\n]/).map((m) => m.trim()).filter(Boolean);
+/** Membres ayant siégé, par qualité : le registre ne retient jamais de nom (il ne s'efface pas). */
+type Siegeants = Partial<Record<QualiteConseil, number>>;
+const listeMembres = (s: Siegeants) => QUALITES_CONSEIL.flatMap((q) => Array.from({ length: s[q] ?? 0 }, () => q));
 
 function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; classe: ClasseTableau; eleves: EleveLigne[]; onFermer: () => void }) {
   const muter = useConseilPassageMutation(id);
   const [annee, setAnnee] = useState(anneeScolaireSuggeree());
   // La séance s'atteste avant de statuer : date de réunion, membres présents, référence du procès-verbal.
   const [dateSeance, setDateSeance] = useState(AUJOURDHUI_ISO());
-  const [membres, setMembres] = useState(classe.professeurPrincipal ?? "");
+  const [siegeants, setSiegeants] = useState<Siegeants>({ "Chef d'établissement": 1, "Professeur principal": 1 });
+  const ajuster = (q: QualiteConseil, delta: number) => setSiegeants((s) => ({ ...s, [q]: Math.max(0, Math.min(10, (s[q] ?? 0) + delta)) }));
   const [referencePv, setReferencePv] = useState("");
   // Aucune décision par défaut : chaque élève est statué explicitement par le conseil.
   const [decisions, setDecisions] = useState<Record<string, "admis" | "redouble">>({});
@@ -513,9 +517,9 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
   const examenFin = FIN_DE_CYCLE[classe.niveau];
   const versNiveau = examenFin ? undefined : niveauSuivant(classe.niveau);
   const anneeValide = /^\d{4}-\d{4}$/.test(annee);
-  const listes = useMemo(() => découperMembres(membres), [membres]);
+  const listes = useMemo(() => listeMembres(siegeants), [siegeants]);
   const seanceValide = /^\d{4}-\d{2}-\d{2}$/.test(dateSeance) && dateSeance <= AUJOURDHUI_ISO()
-    && listes.length >= 1 && listes.every((m) => m.length >= 2 && m.length <= 80) && referencePv.trim().length <= 40;
+    && listes.length >= 1 && listes.length <= 20 && referencePv.trim().length <= 40;
   const statues = elevesClasse.filter((e) => decisions[e.id]).length;
   const admis = elevesClasse.filter((e) => decisions[e.id] === "admis").length;
   const complet = elevesClasse.length > 0 && statues === elevesClasse.length;
@@ -558,19 +562,26 @@ function DialogueConseilPassage({ id, classe, eleves, onFermer }: { id: string; 
               <input value={referencePv} onChange={(e) => setReferencePv(e.target.value.slice(0, 40))} placeholder="PV 2026-07/12 (facultatif)" className={classeChamp} />
             </label>
           </div>
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Membres ayant siégé</span>
-            <textarea
-              value={membres}
-              onChange={(e) => setMembres(e.target.value)}
-              rows={2}
-              placeholder="Un nom par ligne, ou séparé par une virgule : professeur principal, parents délégués, inspecteur…"
-              className={cn(classeChamp, "h-auto py-2.5 leading-relaxed")}
-            />
-            <span className={cn("mt-1 block text-xs", listes.length >= 1 ? "text-ink-muted" : "text-critical")}>
-              {listes.length ? `${listes.length} membre(s) nommé(s) · le procès-verbal signé reste le document qui fait foi` : "Nommez au moins un membre : une séance sans témoin attesté n'est pas une séance."}
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-ink">Membres ayant siégé (par qualité)</span>
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {QUALITES_CONSEIL.map((q) => (
+                <li key={q} className="flex items-center justify-between gap-2 rounded-md bg-surface px-2.5 py-1.5 ring-1 ring-inset ring-line/70">
+                  <span className="text-[13px] text-ink">{q}</span>
+                  <span className="flex items-center gap-1">
+                    <button type="button" onClick={() => ajuster(q, -1)} disabled={!siegeants[q]} aria-label={`Retirer un ${q}`} className="h-7 w-7 rounded-md text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-2 disabled:opacity-40">−</button>
+                    <span className="w-5 text-center text-[13px] tabular-nums font-semibold text-ink" aria-label={`${siegeants[q] ?? 0} ${q}`}>{siegeants[q] ?? 0}</span>
+                    <button type="button" onClick={() => ajuster(q, 1)} aria-label={`Ajouter un ${q}`} className="h-7 w-7 rounded-md text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-2">+</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <span className={cn("mt-1 block text-xs", listes.length >= 1 && listes.length <= 20 ? "text-ink-muted" : "text-critical")}>
+              {listes.length
+                ? `${listes.length} membre(s) · le registre retient les qualités, jamais les noms ; les noms figurent au procès-verbal signé, qui fait foi.`
+                : "Indiquez au moins un membre : une séance sans témoin attesté n'est pas une séance."}
             </span>
-          </label>
+          </div>
         </fieldset>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Année scolaire de réinscription</span>

@@ -22,6 +22,13 @@ import { Matiere, Mention, Niveau } from "./referentiels";
 export const SourceDonnee = z.enum(["beile", "registre_national", "educmaster", "examens", "universite", "dbau"]);
 export type SourceDonnee = z.infer<typeof SourceDonnee>;
 
+/** Qualités des membres d'un conseil de classe : ce que le registre retient d'eux (les noms restent au procès-verbal). */
+export const QUALITES_CONSEIL = [
+  "Chef d'établissement", "Censeur ou adjoint", "Professeur principal", "Enseignant", "Conseiller pédagogique",
+  "Parent délégué", "Élève délégué", "Représentant de l'inspection", "Autre membre",
+] as const;
+export type QualiteConseil = (typeof QUALITES_CONSEIL)[number];
+
 const Base = z.object({
   id: z.string(),
   survenuLe: z.string(),
@@ -101,9 +108,9 @@ export const Evenement = z.discriminatedUnion("type", [
    * décidé pour chaque apprenant ; rien n'enregistrait jamais que le conseil s'était réuni, ce jour-là,
    * avec ces membres. Le procès-verbal signé restait seul hors du registre.
    *
-   * Les membres sont nommés en texte libre : un parent délégué, un élu local ou l'inspecteur de la
-   * circonscription siègent sans compte sur la plateforme, et aucun texte béninois ne publie de liste
-   * close des personnes convoquées à un conseil de classe.
+   * Les membres sont désignés par leur QUALITÉ, jamais par leur nom : le registre ne s'efface pas, et des
+   * parents délégués ou des élèves délégués (mineurs) y resteraient nommés pour toujours, sans droit à
+   * l'effacement. Les noms restent au procès-verbal signé, dont la référence est inscrite.
    */
   Base.extend({
     type: z.literal("CONSEIL_DE_CLASSE"),
@@ -111,7 +118,7 @@ export const Evenement = z.discriminatedUnion("type", [
     classeId: z.string(),
     anneeScolaire: z.string(),
     dateSeance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    membres: z.array(z.string().trim().min(2).max(80)).min(1).max(20),
+    membres: z.array(z.enum(QUALITES_CONSEIL)).min(1).max(20),
     referencePv: z.string().trim().max(40).nullable(),
   }),
   Base.extend({
