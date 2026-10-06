@@ -128,10 +128,12 @@ droits.get("/droits/mes-consultations", authentifie, limiteDebit(30, 60_000, cle
 
   // La famille n'est pas un « tiers » : l'enfant et ses responsables légaux sont retirés de la trace. Sinon un
   // parent lirait les consultations de l'autre parent (séparation, conflit) ou celles de l'enfant lui-même.
+  // Le `is not null` n'est pas un ornement : un seul NULL dans la liste interne rendrait `in` indécidable,
+  // la famille deviendrait vide, et `not in (vide)` laisserait passer toutes les consultations d'autrui.
   const famille = sujet === "compte" ? sql`select ${profil.id}::text` : sql`
     select p.id from core.profils p where p.npi in (
       select a.npi from core.apprenants a where a.id = ${sujet} and a.npi is not null
-      union select l.responsable_npi from core.liens_familiaux l where l.apprenant_id = ${sujet})`;
+      union select l.responsable_npi from core.liens_familiaux l where l.apprenant_id = ${sujet} and l.responsable_npi is not null)`;
   const lignes = await base().select({
     horodatage: schema.journal.horodatage,
     // L'agent est désigné par sa FONCTION (« Professeur de mathématiques », « Directrice »), pas par son nom :

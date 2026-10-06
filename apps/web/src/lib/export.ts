@@ -16,8 +16,9 @@ export interface Colonne<T> {
   valeur: (ligne: T) => string | number | null | undefined;
 }
 
-/** Injection CSV : une cellule débutant par = + - @ (ou tabulation) est interprétée comme formule par Excel. */
-const neutraliser = (v: string) => (/^[=+\-@\t]/.test(v) ? `'${v}` : v);
+/** Injection CSV : une cellule débutant par = + - @ (ou tabulation) est interprétée comme formule par Excel.
+ * Un saut de ligne en tête tromperait ce garde : Excel lit la formule qui le suit, donc il compte comme tête. */
+const neutraliser = (v: string) => (/^(?:[\r\n]+[=+\-@]|[=+\-@\t])/.test(v) ? `'${v}` : v);
 
 /** Retire les caractères de contrôle (hors \t \n \r, gérés par l'échappement) : prévient l'injection de lignes et la corruption du fichier. */
 const nettoyer = (v: string) => v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");

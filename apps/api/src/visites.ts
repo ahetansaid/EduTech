@@ -31,9 +31,13 @@ const ROLES_VISITE = ["inspecteur", "direction_departementale", "administration_
  * périmètre retenu est celui d'une habilitation de tutelle — jamais celui d'un autre rôle cumulé (un profil
  * chercheur national ET inspecteur d'une circonscription n'inspecte que sa circonscription).
  */
-function habilitation(profil: Profil): Perimetre {
+async function habilitation(profil: Profil): Promise<Perimetre> {
   const tutelle = profil.habilitations.filter((h) => (ROLES_VISITE as readonly string[]).includes(h.role));
-  if (!tutelle.length) refuser("Les visites d'inspection s'écrivent et se lisent entre agents de tutelle");
+  if (!tutelle.length) {
+    // Porte fermée = trace : le journal promet le critère manquant pour tout accès, accordé ou refusé.
+    await journaliser(profil, "Ouverture des visites d'inspection", "périmètre de tutelle", "controle", false, "role");
+    refuser("Les visites d'inspection s'écrivent et se lisent entre agents de tutelle");
+  }
   return perimetrePilotage({ ...profil, habilitations: tutelle });
 }
 
@@ -61,7 +65,7 @@ class VisiteDejaInscrite extends Error { constructor(public id: string) { super(
 
 visites.post("/visites", authentifie, limiteDebit(20, 60_000, cleUtilisateur), async (c) => {
   const profil = c.get("profil");
-  const perimetre = habilitation(profil);
+  const perimetre = await habilitation(profil);
   const m = await corps(c, z.object({
     etablissementId: ETB,
     dateVisite: DATE,
@@ -121,7 +125,7 @@ visites.post("/visites", authentifie, limiteDebit(20, 60_000, cleUtilisateur), a
  */
 visites.get("/visites", authentifie, limiteDebit(60, 60_000, cleUtilisateur), async (c) => {
   const profil = c.get("profil");
-  const perimetre = habilitation(profil);
+  const perimetre = await habilitation(profil);
   const etablissementId = c.req.query("etablissementId");
   const depuis = c.req.query("depuis");
   const miennes = c.req.query("miennes") === "1";
@@ -170,7 +174,7 @@ visites.get("/visites", authentifie, limiteDebit(60, 60_000, cleUtilisateur), as
  * son territoire ; la question qui compte, « qui n'a jamais été visité », se pose école par école.
  */
 visites.get("/visites/couverture", authentifie, limiteDebit(10, 60_000, cleUtilisateur), async (c) => {
-  const perimetre = habilitation(c.get("profil"));
+  const perimetre = await habilitation(c.get("profil"));
   const dansPerimetre = etablissementsDuPerimetre(perimetre);
   const cycle = z.enum(["tous", "primaire", "secondaire", "superieur"]).catch("tous").parse(c.req.query("cycle"));
   const limite = z.coerce.number().int().min(1).max(500).catch(200).parse(c.req.query("limite"));

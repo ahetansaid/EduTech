@@ -216,6 +216,30 @@ verifier("Parent → file des demandes d'assistance", (await parent!.appel("GET"
 verifier("Sans session → créer une demande", (await anonyme.appel("POST", "/assistance/tickets", { categorie: "bug", sujet: "Essai", description: "Essai sans session" })).statut, 401);
 verifier("Demande d'assistance inconnue", (await parent!.appel("GET", "/assistance/tickets/AST-ABCDEFGH")).statut, 404);
 
+titre("Visites d'inspection et trace des consultations (refus : aucune écriture)");
+// Porte de tutelle : hors agents de tutelle, rien ne se lit et rien ne se consigne — et chaque refus part au journal.
+verifier("Sans session → lecture des visites", (await anonyme.appel("GET", "/visites")).statut, 401);
+verifier("Apprenante → lecture des visites du périmètre", (await apprenante!.appel("GET", "/visites")).statut, 403);
+verifier("Cheffe d'établissement → couverture d'inspection", (await directrice!.appel("GET", "/visites/couverture")).statut, 403);
+verifier("Enseignant → consigner une visite", (await enseignant!.appel("POST", "/visites", {
+  etablissementId: PILOTE, dateVisite: AUJOURDHUI, objet: "Essai hors tutelle", constats: "Constats de la recette, sans valeur pédagogique.",
+  recommandations: null, referenceRapport: null, prochaineVisiteLe: null, cle: "00000000-0000-4000-8000-000000000001",
+})).statut, 403);
+const feuille = (sur: Record<string, unknown>) => ({
+  etablissementId: PILOTE, dateVisite: AUJOURDHUI, objet: "Visite de recette", constats: "Constats de recette, aucune donnée transmise.",
+  recommandations: null, referenceRapport: null, prochaineVisiteLe: null, cle: "00000000-0000-4000-8000-000000000002", ...sur,
+});
+verifier("Inspecteur → visite à une date future (le registre ne s'efface pas)", (await inspecteur!.appel("POST", "/visites", feuille({ dateVisite: "2099-01-01" }))).statut, 422);
+verifier("Inspecteur → date impossible (31 février)", (await inspecteur!.appel("POST", "/visites", feuille({ dateVisite: `${new Date().getFullYear()}-02-31` }))).statut, 422);
+verifier("Inspecteur → visite annoncée avant la visite consignée", (await inspecteur!.appel("POST", "/visites", feuille({ prochaineVisiteLe: AUJOURDHUI }))).statut, 422);
+verifier("Inspecteur → établissement hors de sa circonscription", (await inspecteur!.appel("POST", "/visites", feuille({ etablissementId: "ETB-COT-PILOTE-CEG" }))).statut, 403);
+verifier("Inspecteur → lecture des visites de sa circonscription", (await inspecteur!.appel("GET", "/visites")).statut, 200);
+// « Qui a consulté mes données ? » : la fenêtre bornée du sujet, jamais celle d'un tiers.
+verifier("Sans session → trace de ses consultations", (await anonyme.appel("GET", "/droits/mes-consultations")).statut, 401);
+verifier("Apprenante → trace des consultations d'un autre dossier", (await apprenante!.appel("GET", "/droits/mes-consultations?sujet=APP-000002")).statut, 403);
+const traceSoi = await apprenante!.appel("GET", "/droits/mes-consultations");
+verifier("Apprenante → sa propre trace, fenêtre de douze mois", traceSoi.statut, 200, `bornée au ${String(traceSoi.json?.depuis ?? "").slice(0, 10)}`);
+
 titre("Concurrence : 40 lectures simultanées de profils différents");
 const debut = Date.now();
 const lots = await Promise.all(Array.from({ length: 40 }, (_, i) => [
