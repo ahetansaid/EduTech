@@ -464,6 +464,11 @@ if (!process.env.BEILE_PARTENAIRES) {
     const premier = await envoyer("dbau", "/interop/dbau/allocations", corps, { lot });
     verifier("DBAU → décision d'allocation reçue par le connecteur", premier.statut === 201 && premier.json.enregistres === 1, true, `HTTP ${premier.statut}`);
     verifier("Rejeu du même lot → rien ne se double", (await envoyer("dbau", "/interop/dbau/allocations", corps, { lot })).json.deja === true, true);
+    // Un PV rejeté (session inconnue) n'est pas « reçu » : renvoyé sous le même lot, il est retraité, pas pris pour un rejeu.
+    const lotPv = `REC-PV-${Date.now()}`;
+    const pv = { examen: "BEPC", session: "Session-inexistante", pvReference: "PV-RECETTE", decisions: [{ numeroTable: "T-0001", decision: "admis", moyenne: 12 }] };
+    verifier("eRESULTATS → PV sur une session inconnue : 404", (await envoyer("eresultats", "/interop/eresultats/pv-examen", pv, { lot: lotPv })).statut, 404);
+    verifier("Le même lot renvoyé après rejet : retraité (404), pas un faux rejeu (409)", (await envoyer("eresultats", "/interop/eresultats/pv-examen", pv, { lot: lotPv })).statut, 404);
   }
 }
 

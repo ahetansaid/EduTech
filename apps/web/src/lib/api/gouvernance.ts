@@ -101,7 +101,7 @@ export interface Interoperabilite {
   /** Connecteurs partenaires : ouverts (secret provisionné) ou fermés, et volume réellement reçu. */
   partenaires: {
     id: string; nom: string; source: SourceDonnee; messages: string[]; ouvert: boolean; recus: number; dernier: string | null;
-    /** Lots tracés dans core.lots_interop — un lot authentifié et conforme, par type de message. `dernier` est un horodatage PostgreSQL brut. */
+    /** Lots tracés dans core.lots_interop — les seuls lots ACCEPTÉS (un lot rejeté n'est pas reçu), par type de message. `dernier` est un horodatage PostgreSQL brut. */
     lots: number;
     parMessage: { partenaire: string; message: string; lots: number; jour: number; dernier: string | null }[];
   }[];

@@ -104,31 +104,50 @@ const ANNEE = z.string().regex(/^\d{4}-\d{4}$/);
 // permettre à un tiers d'épuiser le quota d'eRESULTATS.
 interop.use("/interop/*", limiteDebitPartage("interop", 600, 60_000));
 
-/** Lot non idempotent par nature (PV, publication) : reçu une fois. Un rejeu, même signé, est refusé. */
-async function lotUnique(p: { id: string; lot: string }, message: string) {
-  const [neuf] = await base().insert(schema.lotsInterop).values({ partenaire: p.id, lot: p.lot, message }).onConflictDoNothing().returning({ lot: schema.lotsInterop.lot });
-  if (!neuf) throw new HTTPException(409, { message: "Lot déjà reçu : un PV ou une publication ne se rejoue pas" });
-}
+type Partenaire = Awaited<ReturnType<typeof partenaire>>;
+const L = schema.lotsInterop;
 
 /**
- * Trace d'un lot conforme, sans bloquer le rejeu. Ces trois messages (absences, PV de diplôme, allocations)
- * sont idempotents par leur `idSaisie` : rejouer un lot y répond « déjà enregistré », et non par un conflit.
- * Le lot est malgré tout écrit dans `core.lots_interop` pour que l'écran d'interopérabilité compte tous les
- * partenaires sur le même registre, au lieu de n'en montrer deux.
+ * Chaque lot authentifié est tracé dans `core.lots_interop`, et l'écran d'interopérabilité ne compte que les
+ * lots ACCEPTÉS : un lot rejeté (session inconnue, filière non homologuée, classe hors établissement…) n'est
+ * pas « reçu ». Le lot est réservé « en cours » avant le traitement, puis marqué selon son issue.
+ *
+ * `unique` — PV d'examen et publication ne sont pas idempotents par nature : un lot accepté (ou en cours) ne
+ * se rejoue pas, même signé (409). Un lot REJETÉ se renvoie corrigé sous le même identifiant ; une réservation
+ * restée « en cours » plus de dix minutes (instance interrompue) se reprend aussi. Les trois autres messages
+ * sont idempotents par leur `idSaisie` : un rejeu y répond « déjà enregistré », et un lot accepté le reste.
  */
-async function lotRecu(p: { id: string; lot: string }, message: string) {
-  await base().insert(schema.lotsInterop).values({ partenaire: p.id, lot: p.lot, message }).onConflictDoNothing();
+function avecLot(message: string, unique: boolean, traiter: (c: Context<{ Variables: Variables }>, p: Partenaire) => Promise<Response>) {
+  return async (c: Context<{ Variables: Variables }>) => {
+    const p = await partenaire(c, message);
+    const reprenable = sql`${L.statut} = 'rejete' or (${L.statut} = 'en_cours' and ${L.recuLe} < now() - interval '10 minutes')`;
+    const [reserve] = await base().insert(L).values({ partenaire: p.id, lot: p.lot, message, statut: "en_cours" })
+      .onConflictDoUpdate({ target: [L.partenaire, L.lot], set: { message, statut: "en_cours", recuLe: sql`now()` }, setWhere: unique ? reprenable : sql`${L.statut} <> 'accepte'` })
+      .returning({ lot: L.lot });
+    if (!reserve && unique) throw new HTTPException(409, { message: "Lot déjà reçu : un PV ou une publication ne se rejoue pas" });
+    // Seule la réservation prise ici se clôt : un lot déjà accepté ne redescend jamais en « rejeté ».
+    const clore = (statut: "accepte" | "rejete") => reserve
+      ? base().update(L).set({ statut }).where(and(eq(L.partenaire, p.id), eq(L.lot, p.lot), eq(L.statut, "en_cours")))
+      : Promise.resolve();
+    let reponse: Response;
+    try {
+      reponse = await traiter(c, p);
+    } catch (e) {
+      await clore("rejete").catch(() => undefined);
+      throw e;
+    }
+    await clore(reponse.status < 400 ? "accepte" : "rejete");
+    return reponse;
+  };
 }
 
 /* ------------------------------------------------------------------ EducMaster : vie scolaire */
 
-interop.post("/interop/educmaster/absences", async (c) => {
-  const p = await partenaire(c, "absences");
+interop.post("/interop/educmaster/absences", avecLot("absences", false, async (c, p) => {
   const m = valider(z.object({
     etablissementId: z.string().regex(/^ETB-[A-Za-z0-9-]+$/), classeId: z.string().regex(/^CLS-[A-Za-z0-9-]+$/),
     date: DATE, absents: z.array(NPI).min(1).max(120),
   }).strict(), p.json);
-  await lotRecu(p, "absences");
   const idSaisie = `LOT-${p.lot}`;
   const deja = await dejaSaisi(idSaisie, "ABSENCE");
   if (deja) return c.json({ lot: p.lot, deja: true, enregistres: deja.length });
@@ -156,26 +175,22 @@ interop.post("/interop/educmaster/absences", async (c) => {
   const enregistres = faits.length ? await inscrireAuRegistre(faits) : [];
   await journaliser(p.auteur, "Réception d'absences (EducMaster)", `${m.classeId} · ${m.date} · ${enregistres.length} absence(s), ${rejets.length} rejet(s)`, "gestion", true, null);
   return c.json({ lot: p.lot, enregistres: enregistres.length, rejets }, 201);
-});
+}));
 
 /* ------------------------------------------------------------------ eRESULTATS : examens nationaux */
 
-interop.post("/interop/eresultats/pv-examen", async (c) => {
-  const p = await partenaire(c, "pv-examen");
+interop.post("/interop/eresultats/pv-examen", avecLot("pv-examen", true, async (c, p) => {
   const m = valider(z.object({
     examen: Examen, session: z.string().trim().min(3).max(40), pvReference: z.string().trim().min(3).max(80),
     decisions: z.array(LigneVerdict).min(1).max(5000),
   }).strict(), p.json);
-  await lotUnique(p, "pv-examen");
   return c.json({ lot: p.lot, ...(await recevoirPv(await sessionParLibelle(m.examen, m.session), m.decisions, m.pvReference, p.auteur)) });
-});
+}));
 
-interop.post("/interop/eresultats/publication", async (c) => {
-  const p = await partenaire(c, "publication");
+interop.post("/interop/eresultats/publication", avecLot("publication", true, async (c, p) => {
   const m = valider(z.object({ examen: Examen, session: z.string().trim().min(3).max(40) }).strict(), p.json);
-  await lotUnique(p, "publication");
   return c.json({ lot: p.lot, ...(await publierSession(await sessionParLibelle(m.examen, m.session), p.auteur, "examens")) });
-});
+}));
 
 /* ------------------------------------------------------------------ Université : PV de délibération d'un diplôme */
 
@@ -185,15 +200,13 @@ interop.post("/interop/eresultats/publication", async (c) => {
  * inscription réelle de l'étudiant dans la filière, crédits au moins égaux au volume du diplôme — puis
  * certifie au nom de l'établissement, sceau à clef. Un ajournement est enregistré par le PV, pas certifié.
  */
-interop.post("/interop/uac/pv-diplome", async (c) => {
-  const p = await partenaire(c, "pv-diplome");
+interop.post("/interop/uac/pv-diplome", avecLot("pv-diplome", false, async (c, p) => {
   const m = valider(z.object({
     pvReference: z.string().trim().min(3).max(80), filiereId: z.string().regex(/^FIL-[A-Za-z0-9-]+$/), anneeUniversitaire: ANNEE,
     decisions: z.array(z.object({
       npi: NPI, decision: z.enum(["admis", "ajourne"]), creditsValides: z.number().int().min(0).max(600), moyenne: z.number().min(0).max(20).nullable(),
     }).strict()).min(1).max(500),
   }).strict(), p.json);
-  await lotRecu(p, "pv-diplome");
   const idSaisie = `LOT-${p.lot}`;
   const deja = await dejaSaisi(idSaisie, "CERTIFICATION");
   if (deja) return c.json({ lot: p.lot, deja: true, certifies: deja.length });
@@ -248,12 +261,11 @@ interop.post("/interop/uac/pv-diplome", async (c) => {
   if (faits.length) await inscrireAuRegistre(faits);
   await journaliser(p.auteur, "Réception d'un PV de diplôme", `${filiere.id} · PV ${m.pvReference} · ${certifies.length} certifié(s), ${ajournes} ajourné(s), ${rejets.length} rejet(s)`, "gestion", true, null);
   return c.json({ lot: p.lot, certifies, ajournes, rejets }, 201);
-});
+}));
 
 /* ------------------------------------------------------------------ DBAU : allocations */
 
-interop.post("/interop/dbau/allocations", async (c) => {
-  const p = await partenaire(c, "allocations");
+interop.post("/interop/dbau/allocations", avecLot("allocations", false, async (c, p) => {
   const m = valider(z.object({
     anneeUniversitaire: ANNEE,
     decisions: z.array(z.object({
@@ -261,7 +273,6 @@ interop.post("/interop/dbau/allocations", async (c) => {
       referenceActe: z.string().trim().min(3).max(120), decideLe: DATE,
     }).strict()).min(1).max(2000),
   }).strict(), p.json);
-  await lotRecu(p, "allocations");
   const idSaisie = `LOT-${p.lot}`;
   const deja = await dejaSaisi(idSaisie, "ALLOCATION_DECIDEE");
   if (deja) return c.json({ lot: p.lot, deja: true, enregistres: deja.length });
@@ -288,4 +299,4 @@ interop.post("/interop/dbau/allocations", async (c) => {
   const enregistres = faits.length ? await inscrireAuRegistre(faits) : [];
   await journaliser(p.auteur, "Réception de décisions d'allocation (DBAU)", `${m.anneeUniversitaire} · ${enregistres.length} décision(s), ${rejets.length} rejet(s)`, "gestion", true, null);
   return c.json({ lot: p.lot, enregistres: enregistres.length, rejets }, 201);
-});
+}));

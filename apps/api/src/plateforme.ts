@@ -170,7 +170,7 @@ plateforme.get("/plateforme/interoperabilite", authentifie, async (c) => {
     base().execute<{ partenaire: string; message: string; lots: number; jour: number; dernier: string | null }>(sql`
       select partenaire, message, count(*)::int as lots,
              count(*) filter (where recu_le >= date_trunc('day', now()))::int as jour, max(recu_le) as dernier
-      from core.lots_interop group by 1, 2 order by 1, 2`),
+      from core.lots_interop where statut = 'accepte' group by 1, 2 order by 1, 2`),
   ]);
   // Partenaires du connecteur : habilitations déclarées, connecteur ouvert (secret provisionné) ou fermé,
   // et ce qui a réellement été reçu d'eux (registre, par source). Aucun secret ne sort d'ici.

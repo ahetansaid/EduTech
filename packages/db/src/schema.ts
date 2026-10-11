@@ -634,12 +634,17 @@ export const clesFido = core.table("cles_fido", {
   utiliseeLe: timestamp("utilisee_le", { withTimezone: true }),
 }, (t) => [index("cles_fido_compte_idx").on(t.compteId)]);
 
-/** Lots reçus des systèmes partenaires : un lot signé ne se rejoue pas (PV d'examen, publication). */
+/**
+ * Lots reçus des systèmes partenaires : un lot signé ne se rejoue pas (PV d'examen, publication).
+ * Le statut sépare ce qui a été traité de ce qui a été rejeté : un lot rejeté n'est pas « reçu » à l'écran,
+ * et son identifiant redevient disponible pour le renvoi corrigé du partenaire.
+ */
 export const lotsInterop = core.table("lots_interop", {
   partenaire: text("partenaire").notNull(),
   lot: text("lot").notNull(),
   message: text("message").notNull(),
   recuLe: timestamp("recu_le", { withTimezone: true }).notNull().defaultNow(),
+  statut: text("statut", { enum: ["en_cours", "accepte", "rejete"] }).notNull().default("accepte"),
 }, (t) => [primaryKey({ columns: [t.partenaire, t.lot] })]);
 
 /** Défis WebAuthn à usage unique (supprimés à la consommation), liés à une session et à une intention. */
