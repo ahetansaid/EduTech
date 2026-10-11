@@ -9,7 +9,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, refuser, type Variables } from "./commun";
 import { dejaSaisi, inscrireAuRegistre } from "./ecriture";
-import { perimetrePilotage } from "./pilotage";
+import { perimetrePilotage, ROLES_TUTELLE } from "./pilotage";
 
 /**
  * Visites d'inspection : ce que l'agent de tutelle a vu, dans quelle école, ce qu'il recommande, et si la
@@ -24,7 +24,7 @@ import { perimetrePilotage } from "./pilotage";
  */
 export const visites = new Hono<{ Variables: Variables }>();
 
-const ROLES_VISITE = ["inspecteur", "direction_departementale", "administration_centrale"] as const;
+const ROLES_VISITE = ROLES_TUTELLE;
 
 /**
  * Périmètre de TUTELLE, réservé aux agents de tutelle : un chercheur ne lit pas les constats d'une visite. Le

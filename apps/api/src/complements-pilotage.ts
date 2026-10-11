@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { authentifie, base, refuser, type Variables } from "./commun";
 import { chargerCouches, memo } from "./donnees";
-import { perimetrePilotage } from "./pilotage";
+import { filtreFluxDuProfil, perimetrePilotage } from "./pilotage";
 
 /**
  * Routes complémentaires de l'espace « pilotage » (ajoutées pendant le branchement du front).
@@ -51,14 +51,15 @@ complementsPilotage.get("/pilotage/priorites", authentifie, async (c) => {
  * seulement des faits anonymes du registre (type, établissement, heure), sous le périmètre.
  */
 complementsPilotage.get("/pilotage/flux", authentifie, async (c) => {
-  const perimetre = perimetrePilotage(c.get("profil"));
+  const profil = c.get("profil");
+  const perimetre = perimetrePilotage(profil);
   const limite = z.coerce.number().int().min(1).max(30).catch(12).parse(c.req.query("limite"));
   const autorisees = communesDuPerimetre(perimetre);
   const debut = new Date(`${aujourdhui()}T00:00:00Z`);
   const dansPerimetre = autorisees
     ? sql`${schema.evenements.etablissementId} in (select id from core.etablissements where commune_id in (select jsonb_array_elements_text(${JSON.stringify([...autorisees])}::jsonb)))`
     : undefined;
-  const filtre = and(gte(schema.evenements.enregistreLe, debut), dansPerimetre);
+  const filtre = and(gte(schema.evenements.enregistreLe, debut), dansPerimetre, filtreFluxDuProfil(profil));
   const [derniers, parType] = await Promise.all([
     base()
       .select({ id: schema.evenements.id, type: schema.evenements.type, etablissementId: schema.evenements.etablissementId, etablissement: schema.etablissements.nom, source: schema.evenements.source, enregistreLe: schema.evenements.enregistreLe })
