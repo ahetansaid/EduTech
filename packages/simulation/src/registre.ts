@@ -465,7 +465,7 @@ const REGISTRE_VERIFIE = {
     evocateurs: ["parite", "equite filles", "disparite filles", "filles avantagees", "indice de parite"],
     definition: {
       code: "indice_parite", nom: "Indice de parité filles-garçons",
-      rattachementOdd: { code: "4.5.1", degre: "exact", intitule: "Parity indices (female/male, rural/urban, bottom/top wealth quintile and others such as disability status, for all education indicators on this list that can be disaggregated)", reserve: "Même construit, famille d'indices restreinte : 4.5.1 couvre parité filles/garçons, urbain/rural, quintiles de richesse et handicap, appliqués à tout indicateur disagrégable ; BEILE ne rend que la parité filles/garçons sur les effectifs scolarisés." },
+      rattachementOdd: { code: "4.5.1", degre: "exact", intitule: "Parity indices (female/male, rural/urban, bottom/top wealth quintile and others such as disability status, indigenous peoples and conflict-affected, as data become available) for all education indicators on this list that can be disaggregated", reserve: "Même construit, famille d'indices restreinte : 4.5.1 couvre parité filles/garçons, urbain/rural, quintiles de richesse et handicap, appliqués à tout indicateur disagrégable ; BEILE ne rend que la parité filles/garçons sur les effectifs scolarisés." },
       definition: "Nombre de filles scolarisées pour un garçon, dans le périmètre observé. Un indice de 1,00 est la parité ; en dessous, les filles sont sous-représentées ; au-dessus, elles le sont davantage que les garçons.",
       formule: "effectif des filles ÷ effectif des garçons",
       unite: "indice", moteur: "simulation", perimetre: "k12", assiette: "commune",
