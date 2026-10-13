@@ -143,7 +143,7 @@ export function useFlux(limite = 12) {
 /** Alertes territoriales détectées automatiquement sous le périmètre (GET /pilotage/alertes). */
 /** Suivi d'une alerte par la tutelle : qui l'a prise en charge, jusqu'à quand, et si l'échéance est dépassée. */
 export interface SuiviAlerte {
-  demandeId: string; statut: "ouverte" | "en_cours" | "acceptee" | "refusee"; priseEnChargePar: string | null;
+  demandeId: string | null; statut: "ouverte" | "en_cours" | "acceptee" | "refusee"; priseEnChargePar: string | null;
   le: string; echeance: string | null; enRetard: boolean; note: string | null;
 }
 export type ReponseAlertesSuivies = ReponseAlertes & { peutSuivre: boolean; suivis: Record<string, SuiviAlerte> };

@@ -43,14 +43,17 @@ complementsPilotage.get("/pilotage/alertes", authentifie, async (c) => {
   const parAlerte = new Map<string, (typeof suivis)[number]>();
   for (const s of suivis) if (s.d.ressource && !parAlerte.has(s.d.ressource)) parAlerte.set(s.d.ressource, s);
   const maintenant = Date.now();
+  const peutSuivre = profil.habilitations.some((h) => (ROLES_TUTELLE as readonly string[]).includes(h.role));
   return c.json({
     ...reponse,
-    peutSuivre: profil.habilitations.some((h) => (ROLES_TUTELLE as readonly string[]).includes(h.role)),
+    peutSuivre,
+    // Hors tutelle (chercheur), seul l'état du suivi est rendu : la note d'intention (« visite prévue au CEG X »)
+    // et le nom de l'agent relèvent de la tutelle, comme les visites retirées de son flux.
     suivis: Object.fromEntries([...parAlerte].map(([id, s]) => [id, {
-      demandeId: s.d.id, statut: s.d.statut, priseEnChargePar: s.par ?? null, le: s.d.creeeLe.toISOString(),
+      demandeId: peutSuivre ? s.d.id : null, statut: s.d.statut, priseEnChargePar: peutSuivre ? s.par ?? null : null, le: s.d.creeeLe.toISOString(),
       echeance: s.d.echeance?.toISOString() ?? null,
       enRetard: ["ouverte", "en_cours"].includes(s.d.statut) && !!s.d.echeance && s.d.echeance.getTime() < maintenant,
-      note: (s.d.donnees as { note?: string } | null)?.note ?? null,
+      note: peutSuivre ? (s.d.donnees as { note?: string } | null)?.note ?? null : null,
     }])),
   });
 });

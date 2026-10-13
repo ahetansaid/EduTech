@@ -52,8 +52,8 @@ function SuiviAlerte({ alerte, suivi, peutSuivre }: { alerte: AlerteTerritoriale
           {mode === "prendre"
             ? <Button variante="primaire" icone={Hand} chargement={prendre.isPending} disabled={texte.trim().length < 5}
                 onClick={() => prendre.mutate({ alerteId: alerte.id, note: texte.trim(), echeanceJours: jours }, { onSuccess: () => { notifier({ ton: "succes", titre: "Alerte prise en charge", texte: `Échéance dans ${jours} jours.` }); fermer(); } })}>Prendre en charge</Button>
-            : <Button variante="primaire" icone={CheckCircle2} chargement={clore.isPending} disabled={texte.trim().length < 10 || !suivi}
-                onClick={() => suivi && clore.mutate({ demandeId: suivi.demandeId, issue, constat: texte.trim() }, { onSuccess: () => { notifier({ ton: "succes", titre: "Suivi clos", texte: issue === "traitee" ? "L'alerte est marquée traitée." : "Close sans suite, motif conservé." }); fermer(); } })}>Clore</Button>}
+            : <Button variante="primaire" icone={CheckCircle2} chargement={clore.isPending} disabled={texte.trim().length < 10 || !suivi?.demandeId}
+                onClick={() => suivi?.demandeId && clore.mutate({ demandeId: suivi.demandeId, issue, constat: texte.trim() }, { onSuccess: () => { notifier({ ton: "succes", titre: "Suivi clos", texte: issue === "traitee" ? "L'alerte est marquée traitée." : "Close sans suite, motif conservé." }); fermer(); } })}>Clore</Button>}
         </div>}>
         <div className="space-y-3.5">
           {mode === "clore" && suivi?.note && <p className="rounded-md bg-surface-2 px-3 py-2 text-[13px] text-ink-2"><span className="text-ink-muted">Intention notée : </span>{suivi.note}</p>}
