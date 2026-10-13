@@ -203,6 +203,23 @@ export interface MembrePersonnel {
 export interface Personnel { trimestre: number; periode: Periode | null; formationObligatoire: string; personnel: MembrePersonnel[] }
 
 /** Personnel enseignant de l'établissement : charge, formations, suivi des notes par classe et matière. */
+/** Bulletins d'une classe au trimestre de référence : une seule requête pour l'impression groupée. */
+export interface BulletinsClasse {
+  etablissement: string;
+  classe: { id: string; libelle: string; anneeScolaire: string };
+  trimestre: number;
+  periode: Periode | null;
+  absencesSur: string;
+  bulletins: { apprenant: { id: string; nom: string; prenoms: string }; matieres: { matiere: string; moyenne: number; nb: number }[]; moyenneGenerale: number | null; absences: { total: number; justifiees: number } }[];
+}
+export function useBulletinsClasse(id: string | null, classeId: string | null) {
+  return useQuery({
+    queryKey: ["etablissement", id ?? "-", "bulletins", classeId ?? "-"],
+    queryFn: ({ signal }) => lire<BulletinsClasse>(`/etablissements/${e(id!)}/classes/${e(classeId!)}/bulletins`, signal),
+    enabled: !!id && !!classeId,
+  });
+}
+
 export function usePersonnel(id: string | null) {
   return useQuery({
     queryKey: cles.personnel(id ?? "-"),

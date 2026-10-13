@@ -113,6 +113,9 @@ verifier("Note hors barème (21/20)", (await enseignant!.appel("POST", "/eveneme
   verifier("Carnet : le trimestre affiché dit son année et sa source", !!p && p.trimestre === carnet.json.trimestre && ["calendrier", "notes", "defaut"].includes(p.source ?? ""), true, JSON.stringify(p));
   const demain = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
   verifier("Appel daté d'un jour à venir → 422", (await enseignant!.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: demain, apprenantIds: ["APP-000001"] })).statut, 422);
+  const bul = await directrice!.appel("GET", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/bulletins`);
+  verifier("Directrice : bulletins de toute une classe, au trimestre de référence", bul.statut === 200 && Array.isArray(bul.json?.bulletins) && bul.json.trimestre === (bul.json.periode as { trimestre?: number } | null)?.trimestre, true, `HTTP ${bul.statut}`);
+  verifier("Enseignant : bulletins de classe refusés (gestion de l'établissement)", (await enseignant!.appel("GET", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/bulletins`)).statut, 403);
   verifier("Appel daté d'un jour inexistant (31 février) → 422", (await enseignant!.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: "2026-02-31", apprenantIds: ["APP-000001"] })).statut, 422);
 }
 verifier("Formation inconnue au catalogue", (await enseignant!.appel("POST", "/moi/formations", { code: "INCONNUE" })).statut, 422);

@@ -34,6 +34,15 @@ export async function ouvertureDuTrimestre(anneeScolaire: string, trimestre: num
   return debuts[trimestre - 1] ? String(debuts[trimestre - 1]!.debut) : null;
 }
 
+/** Dates d'un trimestre au calendrier (début, fin), ou `null` si le calendrier ne couvre pas l'année. */
+export async function bornesDuTrimestre(anneeScolaire: string, trimestre: number): Promise<{ debut: string; fin: string } | null> {
+  const lignes = await base().select({ debut: schema.calendrier.debut, fin: schema.calendrier.fin }).from(schema.calendrier)
+    .where(and(eq(schema.calendrier.annee, anneeScolaire), eq(schema.calendrier.categorie, "trimestre")))
+    .orderBy(asc(schema.calendrier.debut));
+  const t = lignes[trimestre - 1];
+  return t ? { debut: String(t.debut), fin: String(t.fin) } : null;
+}
+
 /** Période de référence de chaque année scolaire présente parmi ces classes. */
 export async function periodesDesClasses(classes: { id: string; anneeScolaire: string }[]): Promise<Map<string, Periode>> {
   const parAnnee = new Map<string, string[]>();

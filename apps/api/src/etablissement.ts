@@ -10,7 +10,7 @@ import { z } from "zod";
 import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { enBaisse, scolarisesEtablissement } from "./lectures";
-import { bilansAuTrimestre, enTete, periodePrincipale, periodesDesClasses } from "./periode";
+import { bilansAuTrimestre, bornesDuTrimestre, enTete, periodePrincipale, periodesDesClasses } from "./periode";
 
 /**
  * Espace établissement : tableau de bord, apprenants, transitions, examens, accompagnement.
@@ -111,6 +111,52 @@ etablissement.get("/etablissements/:id/eleves", authentifie, async (c) => {
     const x = b.get(a.id);
     return { id: a.id, nom: a.nom, prenoms: a.prenoms, sexe: a.sexe, dateNaissance: a.dateNaissance, statutIdentite: a.statutIdentite, classeId: a.classeId, classe: a.classe, moyenne: x?.moyenneTrimestre ?? null, absences: x?.absences ?? 0, baisseMaths: enBaisse(x) != null ? x!.dernieresMaths : null };
   }).sort((x, y) => comparerFr(x.classe, y.classe) || comparerFr(x.nom, y.nom)));
+});
+
+/**
+ * Bulletins d'une classe, en une requête : pour chaque élève scolarisé, ses moyennes par matière au trimestre de
+ * référence de l'année de la classe (règle unique de periode.ts), sa moyenne générale non pondérée et ses
+ * absences (dont justifiées). La fin de trimestre se joue ici : une impression groupée, pas trente dossiers.
+ */
+etablissement.get("/etablissements/:id/classes/:classeId/bulletins", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const classeId = z.string().regex(/^CLS-[A-Za-z0-9-]+$/).parse(c.req.param("classeId"));
+  const { profil, etab, finalite } = await acces(c, id);
+  const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, classeId));
+  if (!classe || classe.etablissementId !== id) throw new HTTPException(404, { message: "Classe inconnue ou hors de cet établissement" });
+  const periode = (await periodesDesClasses([{ id: classe.id, anneeScolaire: classe.anneeScolaire }])).get(classe.anneeScolaire) ?? null;
+  const trimestre = periode?.trimestre ?? 1;
+  // Absences du trimestre quand le calendrier en donne les dates ; sinon, celles de l'année de la classe (dit tel quel).
+  const bornes = await bornesDuTrimestre(classe.anneeScolaire, trimestre);
+  const dansLaPeriode = bornes ? sql`and e.donnees->>'date' between ${bornes.debut} and ${bornes.fin}` : sql``;
+  const [eleves, notes, absences] = await Promise.all([
+    base().select({ id: schema.apprenants.id, nom: schema.apprenants.nom, prenoms: schema.apprenants.prenoms })
+      .from(schema.scolarites).innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.scolarites.apprenantId))
+      .where(and(eq(schema.scolarites.classeId, classeId), eq(schema.scolarites.statut, "scolarise"))),
+    base().execute<{ apprenant_id: string; matiere: string; moyenne: number; nb: number }>(sql`
+      select apprenant_id, matiere, avg(note)::float as moyenne, count(*)::int as nb from core.notes
+      where classe_id = ${classeId} and trimestre = ${trimestre} group by 1, 2`),
+    base().execute<{ apprenant_id: string; total: number; justifiees: number }>(sql`
+      select e.apprenant_id, count(*)::int as total,
+             count(*) filter (where coalesce((e.donnees->>'justifiee')::boolean, false) or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id))::int as justifiees
+      from ledger.evenements e where e.type = 'ABSENCE' and e.donnees->>'classeId' = ${classeId} ${dansLaPeriode} group by 1`),
+  ]);
+  const parEleve = new Map<string, { matiere: string; moyenne: number; nb: number }[]>();
+  for (const n of notes) parEleve.set(n.apprenant_id, [...(parEleve.get(n.apprenant_id) ?? []), { matiere: n.matiere, moyenne: n.moyenne, nb: n.nb }]);
+  const abs = new Map(absences.map((a) => [a.apprenant_id, a]));
+  await journaliser(profil, "Édition des bulletins d'une classe", `${classeId} (${classe.libelle}) · T${trimestre} · ${eleves.length} élève(s)`, finalite, true, null);
+  return c.json({
+    etablissement: etab.nom, classe: { id: classe.id, libelle: classe.libelle, anneeScolaire: classe.anneeScolaire }, ...enTete(periode),
+    absencesSur: bornes ? `du ${bornes.debut} au ${bornes.fin}` : `année ${classe.anneeScolaire}`,
+    bulletins: eleves.sort((a, b) => comparerFr(a.nom, b.nom) || comparerFr(a.prenoms, b.prenoms)).map((e) => {
+      const matieres = (parEleve.get(e.id) ?? []).sort((a, b) => comparerFr(a.matiere, b.matiere));
+      return {
+        apprenant: { id: e.id, nom: e.nom, prenoms: e.prenoms }, matieres,
+        moyenneGenerale: matieres.length ? matieres.reduce((s, m) => s + m.moyenne, 0) / matieres.length : null,
+        absences: { total: abs.get(e.id)?.total ?? 0, justifiees: abs.get(e.id)?.justifiees ?? 0 },
+      };
+    }),
+  });
 });
 
 /* ------------------------------------------------------------------ Organisation pédagogique (classes) */
