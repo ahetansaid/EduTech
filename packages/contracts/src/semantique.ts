@@ -262,7 +262,8 @@ export const LigneResultat = z.object({
   cle: z.string(),
   libelle: z.string(),
   valeur: z.number().nullable(),
-  effectif: z.number(),
+  /** Nul quand la cellule est masquée : l'effectif d'une petite case est lui-même ce que le secret protège. */
+  effectif: z.number().nullable(),
   masquee: z.boolean(),
 });
 export type LigneResultat = z.infer<typeof LigneResultat>;

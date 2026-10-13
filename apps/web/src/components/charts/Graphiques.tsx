@@ -97,7 +97,7 @@ export function Courbes({ series, formater = (v) => String(v), hauteur = 240, mi
 
 /* ------------------------------------------------------------------ Barres horizontales classées */
 
-export interface Barre { cle: string; libelle: string; valeur: number | null; masquee?: boolean; effectif?: number; accent?: boolean }
+export interface Barre { cle: string; libelle: string; valeur: number | null; masquee?: boolean; effectif?: number | null; accent?: boolean }
 
 export function BarresClassees({ barres, formater = (v) => String(v), max: maxForce, onSelect, reference, couleur = SERIES[0], limite, className }: {
   barres: Barre[]; formater?: (v: number) => string; max?: number; onSelect?: (cle: string) => void; reference?: { valeur: number; libelle: string };
