@@ -60,6 +60,38 @@ function etablissementsDuPerimetre(perimetre: Perimetre) {
   return sql`select id from core.etablissements where commune_id in (select jsonb_array_elements_text(${JSON.stringify([...autorisees])}::jsonb))${circonscription}`;
 }
 
+/**
+ * Visites annoncées : la « prochaine visite » saisie dans un compte rendu devient un rappel. Pour chaque école du
+ * périmètre, on lit l'annonce de sa DERNIÈRE visite ; elle est à faire si elle tombe dans les 14 jours, en retard
+ * si sa date est passée sans nouvelle visite depuis. Le poste de pilotage de l'agent la fait remonter.
+ */
+visites.get("/visites/a-venir", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
+  const profil = c.get("profil");
+  const perimetre = await habilitation(profil);
+  const dansPerimetre = etablissementsDuPerimetre(perimetre);
+  const jour = aujourdhui();
+  const horizon = new Date(Date.parse(`${jour}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+  const lignes = await base().execute<{ etablissement_id: string; nom: string; derniere: string; prochaine: string }>(sql`
+    with derniere as (
+      select distinct on (e.etablissement_id) e.etablissement_id,
+             (e.donnees->>'dateVisite') as derniere,
+             case when pg_input_is_valid(e.donnees->>'prochaineVisiteLe', 'date') then e.donnees->>'prochaineVisiteLe' end as prochaine
+      from ledger.evenements e
+      where e.type = 'VISITE_D_INSPECTION' ${dansPerimetre ? sql`and e.etablissement_id in (${dansPerimetre})` : sql``}
+      order by e.etablissement_id, e.donnees->>'dateVisite' desc, e.survenu_le desc
+    )
+    select d.etablissement_id, t.nom, d.derniere, d.prochaine from derniere d
+    join core.etablissements t on t.id = d.etablissement_id
+    where d.prochaine is not null and d.prochaine <= ${horizon}
+    order by d.prochaine
+    limit 200`);
+  await journaliser(profil, "Consultation des visites annoncées", `${lignes.length} visite(s)`, "controle", true, null);
+  return c.json({
+    date: jour,
+    visites: lignes.map((l) => ({ etablissementId: l.etablissement_id, etablissement: l.nom, derniereVisite: l.derniere, prevueLe: l.prochaine, enRetard: l.prochaine < jour })),
+  });
+});
+
 /** Fait déjà inscrit (même clé de saisie), découvert dans la transaction : on rend la visite existante. */
 class VisiteDejaInscrite extends Error { constructor(public id: string) { super("deja"); } }
 

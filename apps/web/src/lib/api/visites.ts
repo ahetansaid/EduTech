@@ -107,3 +107,14 @@ export function useConsignerVisite() {
     },
   });
 }
+
+/** Visites annoncées dans les 14 jours, ou annoncées et dépassées : les rappels du poste de pilotage. */
+export interface VisiteAnnoncee { etablissementId: string; etablissement: string; derniereVisite: string; prevueLe: string; enRetard: boolean }
+export function useVisitesAVenir(actif: boolean) {
+  return useQuery({
+    queryKey: ["visites", "a-venir"],
+    queryFn: ({ signal }) => lire<{ date: string; visites: VisiteAnnoncee[] }>("/visites/a-venir", signal),
+    enabled: actif,
+    staleTime: 5 * 60_000,
+  });
+}

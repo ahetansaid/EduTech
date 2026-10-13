@@ -1,7 +1,8 @@
-import { AlarmClock, CalendarX2, ClipboardCheck, Fingerprint, GraduationCap, Inbox, TrendingDown, Users, type LucideIcon } from "lucide-react";
+import { AlarmClock, CalendarX2, Compass, ClipboardCheck, Fingerprint, GraduationCap, Inbox, TrendingDown, Users, type LucideIcon } from "lucide-react";
 import type { Ton } from "@/components/ui/primitives";
 import { jourCourant, type Demande, type DemandeATraiter, type Justificatifs, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, LIBELLE_ROLE_CIRCUIT, libelleEtape } from "@/lib/circuits";
+import type { VisiteAnnoncee } from "@/lib/api/visites";
 
 /**
  * Tâches du jour, dérivées des sources qu'un rôle a le droit de lire (tableau d'établissement,
@@ -126,3 +127,24 @@ export function tachesFile(demandes: DemandeATraiter[] | undefined): Tache[] {
   });
 }
 
+
+/* ------------------------------------------------------------------ Source : visites annoncées (tutelle) */
+
+/** La « prochaine visite » d'un compte rendu devient un rappel daté dans le poste de pilotage. */
+export function tachesVisites(visites: VisiteAnnoncee[] | undefined): Tache[] {
+  return (visites ?? []).map((v) => {
+    const e = analyserEcheance(v.prevueLe);
+    return {
+      cle: `visite-${v.etablissementId}`,
+      libelle: `Visite annoncée : ${v.etablissement}`,
+      detail: `Annoncée lors de la visite du ${dateCourte(v.derniereVisite)}${v.enRetard ? " · pas encore faite" : ""}`,
+      icone: Compass,
+      ton: e.ton,
+      urgence: e.urgence,
+      href: "/visites",
+      action: "Consigner",
+      echeance: e.libelle,
+      ts: e.ts,
+    };
+  });
+}

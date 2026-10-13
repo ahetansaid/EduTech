@@ -462,6 +462,8 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
 titre("Boucle d'action : une alerte se prend en charge, se suit, se clôt");
 {
   const al = await departement!.appel("GET", "/pilotage/alertes");
+  verifier("Inspection : visites annoncées (rappels du poste de pilotage)", (await inspecteur!.appel("GET", "/visites/a-venir")).statut, 200);
+  verifier("Hors tutelle : visites annoncées refusées", (await enseignant!.appel("GET", "/visites/a-venir")).statut, 403);
   verifier("Alertes : état de suivi et droit de suivre renvoyés", al.statut === 200 && al.json?.peutSuivre === true && typeof al.json?.suivis === "object", true, `HTTP ${al.statut}`);
   verifier("Hors tutelle : prise en charge refusée", (await enseignant!.appel("POST", "/pilotage/alertes/suivi", { alerteId: "taux_abandon|parakou|ecart", note: "Hors tutelle", echeanceJours: 30 })).statut, 403);
   verifier("Alerte inventée : 404", (await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: "taux_abandon|commune-imaginaire|ecart", note: "Alerte qui n'existe pas", echeanceJours: 30 })).statut, 404);
