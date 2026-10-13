@@ -1,7 +1,7 @@
 "use client";
 
 import type { AlerteTerritoriale } from "@beile/contracts";
-import { AlarmClock, ArrowRight, CheckCircle2, Hand, Siren, TrendingDown, TriangleAlert, UserCheck, X } from "lucide-react";
+import { AlarmClock, ArrowRight, CheckCircle2, Download, Hand, Siren, TrendingDown, TriangleAlert, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Cascade, Element, EntreePage } from "@/components/motion";
@@ -10,6 +10,7 @@ import { Modale } from "@/components/ui/Modale";
 import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
+import { exporterCsv, type Colonne } from "@/lib/export";
 import { useAlertesPilotage, useCloreSuiviMutation, usePrendreEnChargeMutation, type SuiviAlerte as SuiviAlerteServeur } from "@/lib/api/pilotage";
 import { EtatEchec, useHabilitationPilotage } from "../_commun";
 
@@ -21,6 +22,21 @@ import { EtatEchec, useHabilitationPilotage } from "../_commun";
 type Filtre = "toutes" | "critique" | "rupture" | "a_suivre";
 
 const ouvert = (s: SuiviAlerteServeur | undefined) => !!s && (s.statut === "ouverte" || s.statut === "en_cours");
+
+const LIBELLE_SUIVI: Record<SuiviAlerteServeur["statut"], string> = { ouverte: "prise en charge", en_cours: "prise en charge", acceptee: "traitée", refusee: "close sans suite" };
+/** Export des alertes affichées (agrégats territoriaux, aucune donnée nominative), avec l'état de leur suivi. */
+const colonnesAlertes = (suivis: Record<string, SuiviAlerteServeur>): Colonne<AlerteTerritoriale>[] => [
+  { entete: "departement", valeur: (a) => a.departement },
+  { entete: "commune", valeur: (a) => a.commune },
+  { entete: "indicateur", valeur: (a) => a.indicateur },
+  { entete: "type", valeur: (a) => (a.type === "rupture" ? "décrochage" : "écart aux pairs") },
+  { entete: "gravite", valeur: (a) => a.gravite },
+  { entete: "valeur", valeur: (a) => a.valeur },
+  { entete: "reference", valeur: (a) => a.reference },
+  { entete: "suivi", valeur: (a) => (suivis[a.id] ? LIBELLE_SUIVI[suivis[a.id]!.statut] : "aucun") },
+  { entete: "echeance_suivi", valeur: (a) => suivis[a.id]?.echeance?.slice(0, 10) ?? null },
+  { entete: "en_retard", valeur: (a) => (suivis[a.id]?.enRetard ? "oui" : "non") },
+];
 
 /**
  * Le geste qui manquait : une alerte se prend en charge (note d'intention, échéance), puis se clôt avec le constat
@@ -106,7 +122,9 @@ export default function PageAlertes() {
   return (
     <EntreePage>
       <div className="space-y-5">
-        <PageHeader surtitre="Pilotage" titre="Alertes" />
+        <PageHeader surtitre="Pilotage" titre="Alertes"
+          actions={q.data ? <Button variante="secondaire" taille="sm" icone={Download} disabled={!alertes.length}
+            onClick={() => exporterCsv("alertes_territoriales", alertes, colonnesAlertes(q.data!.suivis), `BEILE — ${alertes.length} alerte(s) · ${q.data!.perimetre} — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter (CSV)</Button> : undefined} />
         {q.isError ? <EtatEchec erreur={q.error} onReessayer={() => q.refetch()} /> : !q.data ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]"><Squelette className="h-96 rounded-2xl" /><div className="space-y-3">{[0, 1, 2].map((i) => <Squelette key={i} className="h-32 rounded-2xl" />)}</div></div>
         ) : (

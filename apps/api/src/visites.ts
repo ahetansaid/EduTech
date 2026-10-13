@@ -31,7 +31,7 @@ const ROLES_VISITE = ROLES_TUTELLE;
  * périmètre retenu est celui d'une habilitation de tutelle — jamais celui d'un autre rôle cumulé (un profil
  * chercheur national ET inspecteur d'une circonscription n'inspecte que sa circonscription).
  */
-async function habilitation(profil: Profil): Promise<Perimetre> {
+export async function habilitation(profil: Profil): Promise<Perimetre> {
   const tutelle = profil.habilitations.filter((h) => (ROLES_VISITE as readonly string[]).includes(h.role));
   if (!tutelle.length) {
     // Porte fermée = trace : le journal promet le critère manquant pour tout accès, accordé ou refusé.
@@ -53,7 +53,7 @@ const ETB = z.string().regex(RE_ETB);
  * jamais une liste d'identifiants collée dans la requête, et le même filtre s'applique au fait et à sa source.
  * Un inspecteur est borné à SA circonscription (comme partout ailleurs dans l'API), pas à toute sa commune.
  */
-function etablissementsDuPerimetre(perimetre: Perimetre) {
+export function etablissementsDuPerimetre(perimetre: Perimetre) {
   const autorisees = communesDuPerimetre(perimetre);
   if (!autorisees) return null;
   const circonscription = perimetre.niveau === "circonscription" ? sql` and circonscription = ${perimetre.circonscription}` : sql``;

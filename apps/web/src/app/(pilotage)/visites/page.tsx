@@ -1,7 +1,7 @@
 "use client";
 
 import type { Perimetre } from "@beile/contracts";
-import { CalendarClock, CalendarPlus, ChevronDown, History, MapPin, School, Search, Stamp } from "lucide-react";
+import { CalendarClock, CalendarPlus, ChevronDown, Download, History, MapPin, School, Search, Stamp } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, Cascade, Compteur, EASE, Element, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, Etiquette, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
@@ -15,6 +15,19 @@ import {
   useConsignerVisite, useCouvertureVisites, useVisites,
   type CouvertureVisites, type CycleEtablissement, type EtablissementCouvert, type FiltreCycle, type Visite,
 } from "@/lib/api/visites";
+import { exporterCsv, type Colonne } from "@/lib/export";
+
+/** Couverture exportée : établissements (pas de personne), dates de visite, aucun constat. */
+const COLONNES_COUVERTURE: Colonne<EtablissementCouvert>[] = [
+  { entete: "etablissement", valeur: (e) => e.nom },
+  { entete: "id", valeur: (e) => e.id },
+  { entete: "commune", valeur: (e) => e.commune },
+  { entete: "circonscription", valeur: (e) => e.circonscription },
+  { entete: "cycle", valeur: (e) => e.cycle },
+  { entete: "visites", valeur: (e) => e.visites },
+  { entete: "derniere_visite", valeur: (e) => e.derniereLe },
+  { entete: "prochaine_visite_annoncee", valeur: (e) => e.prochaineVisiteLe },
+];
 import { EtatEchec, Feuille, libellePerimetre, nomDepartement, pluriel } from "../_commun";
 
 /**
@@ -67,7 +80,11 @@ export default function VisitesInspecteur() {
         surtitre={`Visites d'inspection · ${libellePerimetre(d.perimetre)}`}
         titre="La tutelle sur le terrain"
         sousTitre="Couverture du périmètre par les visites d'inspection, puis le compte rendu de chaque agent. Une visite consignée ne se modifie pas : une correction est une nouvelle visite qui cite la précédente."
-        actions={<Button icone={CalendarPlus} onClick={() => setConsigner(true)}>Consigner une visite</Button>}
+        actions={<div className="flex flex-wrap gap-2">
+          <Button variante="secondaire" icone={Download} disabled={!d.etablissements.length}
+            onClick={() => exporterCsv("couverture_visites", d.etablissements, COLONNES_COUVERTURE, `BEILE — couverture d'inspection · ${libellePerimetre(d.perimetre)} · ${d.couverts}/${d.attendus} visités${d.tronque ? ` · liste limitée à ${d.etablissements.length} (jamais visités en tête)` : ""} — ${new Date().toISOString().slice(0, 10)}`, false)}>Exporter</Button>
+          <Button icone={CalendarPlus} onClick={() => setConsigner(true)}>Consigner une visite</Button>
+        </div>}
       />
 
       <Cascade className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -462,6 +462,10 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
 titre("Boucle d'action : une alerte se prend en charge, se suit, se clôt");
 {
   const al = await departement!.appel("GET", "/pilotage/alertes");
+  const rapport = await departement!.appel("GET", "/rapports/mensuel");
+  verifier("Direction départementale : rapport mensuel tiré du registre", rapport.statut === 200 && rapport.json?.source === "registre", true, `HTTP ${rapport.statut}`);
+  verifier("Hors tutelle : rapport mensuel refusé", (await enseignant!.appel("GET", "/rapports/mensuel")).statut, 403);
+  verifier("Rapport d'un mois à venir : 422", (await departement!.appel("GET", "/rapports/mensuel?mois=2099-01")).statut, 422);
   verifier("Inspection : visites annoncées (rappels du poste de pilotage)", (await inspecteur!.appel("GET", "/visites/a-venir")).statut, 200);
   verifier("Hors tutelle : visites annoncées refusées", (await enseignant!.appel("GET", "/visites/a-venir")).statut, 403);
   verifier("Alertes : état de suivi et droit de suivre renvoyés", al.statut === 200 && al.json?.peutSuivre === true && typeof al.json?.suivis === "object", true, `HTTP ${al.statut}`);
