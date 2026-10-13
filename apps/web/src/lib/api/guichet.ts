@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type {
   AllocationEtudiante, AttestationScolarite, AutoriteDelivrance, DecisionGuichet, DelaisConstates, DemandeActe,
   DossierAllocation, EcheanceDepot, ModeRetrait, PieceIdentite, StatutCompte, StatutDemande, TypeActe, TypeDecisionAllocation,
@@ -115,7 +116,7 @@ export interface EffectifsAllocations {
 const CLE_DEMARCHES = ["moi", "actes"] as const;
 
 export function useMesActes() {
-  return useQuery({ queryKey: CLE_DEMARCHES, queryFn: ({ signal }) => lire<DemandeActe[]>("/moi/actes", signal), refetchInterval: 60_000 });
+  return useQuery({ queryKey: CLE_DEMARCHES, queryFn: ({ signal }) => lire<DemandeActe[]>("/moi/actes", signal), refetchInterval: rafraichir(60_000) });
 }
 
 export function useDeposerActeMutation() {
@@ -164,7 +165,7 @@ export function useFileGuichet(etablissementId: string, options: { retard?: bool
   return useQuery({
     queryKey: ["guichet", etablissementId, "file", retard],
     queryFn: ({ signal }) => lire<DemandeGuichet[]>(`/etablissements/${etablissementId}/actes${retard ? "?retard=1" : ""}`, signal),
-    refetchInterval: 60_000,
+    refetchInterval: rafraichir(60_000),
   });
 }
 

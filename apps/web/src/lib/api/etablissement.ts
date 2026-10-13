@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { Certificat, DecisionAcces, Evenement, QualiteConseil, StatutIdentite } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, ErreurApi, lire } from "@/lib/http";
@@ -183,7 +184,7 @@ export function useTableau(id: string | null) {
     queryKey: cles.tableau(id ?? "-"),
     queryFn: ({ signal }) => lire<Tableau>(`/etablissements/${e(id!)}/tableau`, signal),
     enabled: !!id,
-    refetchInterval: 60_000,
+    refetchInterval: rafraichir(60_000),
   });
 }
 
@@ -247,7 +248,7 @@ export function useAbsencesDuJour(id: string | null, date = jourCourant()) {
     queryKey: cles.absences(id ?? "-", date),
     queryFn: ({ signal }) => lire<Absence[]>(`/etablissements/${e(id!)}/absences?date=${e(date)}`, signal),
     enabled: !!id,
-    refetchInterval: 15_000,
+    refetchInterval: rafraichir(15_000),
     refetchIntervalInBackground: false,
   });
 }
@@ -257,7 +258,7 @@ export function useDemandes(id: string | null) {
     queryKey: cles.demandes(id ?? "-"),
     queryFn: ({ signal }) => lire<Demande[]>(`/etablissements/${e(id!)}/demandes`, signal),
     enabled: !!id,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
     select: (l) => [...l].sort((a, b) => b.creeeLe.localeCompare(a.creeeLe)),
   });
 }
@@ -285,7 +286,7 @@ export function useDemandesATraiter(actif: boolean) {
     queryKey: cles.aTraiter,
     queryFn: ({ signal }) => lire<DemandeATraiter[]>("/demandes/a-traiter", signal),
     enabled: actif,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 
@@ -295,7 +296,7 @@ export function useJustificatifs(id: string | null) {
     queryKey: cles.justificatifs(id ?? "-"),
     queryFn: ({ signal }) => lire<Justificatifs>(`/etablissements/${e(id!)}/justificatifs`, signal),
     enabled: !!id,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import { useQuery } from "@tanstack/react-query";
 import { ecrire, lire, requete } from "@/lib/http";
@@ -24,7 +25,7 @@ export const useEtatMfa = (actif = true) => useQuery({ queryKey: CLES_SECURITE.m
 export const useCoordonnees = () => useQuery({ queryKey: CLES_SECURITE.coordonnees, queryFn: ({ signal }) => lire<Coordonnees>("/moi/coordonnees", signal) });
 export const useCanaux = () => useQuery({ queryKey: CLES_SECURITE.canaux, queryFn: ({ signal }) => lire<{ sms: boolean; courriel: boolean }>("/auth/canaux", signal), staleTime: 10 * 60_000 });
 export const useAlertesSecurite = (statut: "ouvertes" | "toutes") => useQuery({
-  queryKey: [...CLES_SECURITE.alertes, statut], queryFn: ({ signal }) => lire<AlerteSecurite[]>(`/securite/alertes?statut=${statut}`, signal), refetchInterval: 60_000,
+  queryKey: [...CLES_SECURITE.alertes, statut], queryFn: ({ signal }) => lire<AlerteSecurite[]>(`/securite/alertes?statut=${statut}`, signal), refetchInterval: rafraichir(60_000),
 });
 
 /** Enregistre une clé de sécurité FIDO2 (clé USB/NFC, empreinte, Windows Hello…). */

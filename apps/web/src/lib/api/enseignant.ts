@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { Matiere } from "@beile/contracts";
 import type { Periode } from "./etablissement";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -71,7 +72,7 @@ export const dateDuJour = () => new Date().toISOString().slice(0, 10);
 /* ================================================================== Lectures */
 
 export function useMesClasses(actif = true) {
-  return useQuery({ queryKey: CLES.classes, queryFn: ({ signal }) => lire<MesClasses>("/moi/classes", signal), enabled: actif, refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLES.classes, queryFn: ({ signal }) => lire<MesClasses>("/moi/classes", signal), enabled: actif, refetchInterval: rafraichir(30_000) });
 }
 
 export function useCarnet(classeId: string) {
@@ -81,7 +82,7 @@ export function useCarnet(classeId: string) {
       const c = await lire<Carnet>(`/classes/${encodeURIComponent(classeId)}`, signal);
       return { ...c, eleves: c.eleves.map((e) => ({ ...e, notes: e.notes.map((n) => ({ ...n, le: versIso(n.le) })) })) };
     },
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 

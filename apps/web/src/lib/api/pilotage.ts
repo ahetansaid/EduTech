@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAlertes, ReponseAnalyse, ReponseAsk, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
@@ -134,7 +135,7 @@ export function useFlux(limite = 12) {
   return useQuery({
     queryKey: ["pilotage", "flux", limite],
     queryFn: ({ signal }) => lire<FluxPilotage>(`/pilotage/flux?limite=${limite}`, signal),
-    refetchInterval: 15_000,
+    refetchInterval: rafraichir(15_000),
     staleTime: 10_000,
     placeholderData: keepPreviousData,
   });
@@ -210,7 +211,7 @@ export function useAbsencesTerritoire(actif = true) {
     queryKey: ["pilotage", "territoire", "absences"],
     queryFn: ({ signal }) => lire<AbsencesDuJour>("/pilotage/territoire/absences", signal),
     enabled: actif,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
     staleTime: 20_000,
     placeholderData: keepPreviousData,
   });

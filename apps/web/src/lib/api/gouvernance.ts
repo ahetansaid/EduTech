@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { Critere, DefinitionIndicateur, Finalite, Perimetre, SourceDonnee } from "@beile/contracts";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
@@ -150,12 +151,12 @@ export function useJournalAudit(filtres: FiltresJournal) {
       return lire<PageJournal>(`/audit/journal?${p}`, signal);
     },
     getNextPageParam: (derniere) => derniere.suivant,
-    refetchInterval: 15_000,
+    refetchInterval: rafraichir(15_000),
   });
 }
 
 export function useStatistiquesAudit() {
-  return useQuery({ queryKey: CLES.statsAudit, queryFn: ({ signal }) => lire<StatistiquesAudit>("/audit/statistiques", signal), refetchInterval: 15_000 });
+  return useQuery({ queryKey: CLES.statsAudit, queryFn: ({ signal }) => lire<StatistiquesAudit>("/audit/statistiques", signal), refetchInterval: rafraichir(15_000) });
 }
 
 /* ================================================================== Dictionnaire national */
@@ -177,11 +178,11 @@ export function useImpactVersion(examen: "CEP" | "BEPC" | "BAC") {
 
 /** État du service : mesures prises à chaque appel côté serveur ; rafraîchi toutes les 30 s. */
 export function useEtatService() {
-  return useQuery({ queryKey: CLES.etat, queryFn: ({ signal }) => lire<EtatService>("/plateforme/etat", signal), refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLES.etat, queryFn: ({ signal }) => lire<EtatService>("/plateforme/etat", signal), refetchInterval: rafraichir(30_000) });
 }
 
 export function useQualite() {
-  return useQuery({ queryKey: CLES.qualite, queryFn: ({ signal }) => lire<Qualite>("/plateforme/qualite", signal), refetchInterval: 60_000 });
+  return useQuery({ queryKey: CLES.qualite, queryFn: ({ signal }) => lire<Qualite>("/plateforme/qualite", signal), refetchInterval: rafraichir(60_000) });
 }
 
 export function useEtablissementsManquants(communeId: string | null) {
@@ -203,7 +204,7 @@ export function useRecoupement(maille: MailleRecoupement) {
 }
 
 export function useRelances() {
-  return useQuery({ queryKey: CLES.relances, queryFn: ({ signal }) => lire<Relance[]>("/plateforme/relances", signal), refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLES.relances, queryFn: ({ signal }) => lire<Relance[]>("/plateforme/relances", signal), refetchInterval: rafraichir(30_000) });
 }
 
 /** Relance de transmission : une demande suivie par établissement ; invalide la qualité, les manquants et le suivi. */
@@ -219,13 +220,13 @@ export function useRelancerMutation() {
 }
 
 export function useInteroperabilite() {
-  return useQuery({ queryKey: CLES.interop, queryFn: ({ signal }) => lire<Interoperabilite>("/plateforme/interoperabilite", signal), refetchInterval: 60_000 });
+  return useQuery({ queryKey: CLES.interop, queryFn: ({ signal }) => lire<Interoperabilite>("/plateforme/interoperabilite", signal), refetchInterval: rafraichir(60_000) });
 }
 
 /* ================================================================== Administration des comptes */
 
 export function useComptes() {
-  return useQuery({ queryKey: CLES.comptes, queryFn: ({ signal }) => lire<CompteAdmin[]>("/admin/comptes", signal), refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLES.comptes, queryFn: ({ signal }) => lire<CompteAdmin[]>("/admin/comptes", signal), refetchInterval: rafraichir(30_000) });
 }
 
 /**

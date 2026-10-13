@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import { Bell, CheckCheck } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -15,7 +16,7 @@ export function useNotifications() {
   return useQuery({
     queryKey: CLE_NOTIFICATIONS,
     queryFn: () => lire<{ nonLues: number; notifications: NotificationServeur[] }>("/moi/notifications"),
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 
