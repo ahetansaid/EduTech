@@ -667,6 +667,92 @@ titre("Administration déléguée (cascade, plafond, cumul, double validation)")
   }
 }
 
+titre("Balayage en lecture : chaque route GET exercée par son profil, refus de contrôle");
+{
+  // Toute route de lecture livrée est appelée au moins une fois par le profil qui la sert (200), et les plus
+  // sensibles par un profil qui n'y a pas droit (403). Une lecture jamais appelée n'est pas une lecture testée.
+  const [dirIfri, etudiantIfri, enseignanteSup] = await Promise.all(["prosper.ahouandjinou", "etudiant.ifri", "sena.hounkpatin"].map(async (id) => {
+    const s = new Session(); await s.connexion(id); return s;
+  }));
+  const lit = async (nom: string, s: Session, chemin: string, attendu = 200) => verifier(nom, (await s.appel("GET", chemin)).statut, attendu);
+  const IFRI = "ETB-SUP-UAC-IFRI";
+  const ETU = "APP-900001";
+
+  // Public et session
+  await lit("Référentiel : départements (public)", anonyme, "/referentiels/departements");
+  await lit("Référentiel : communes (public)", anonyme, "/referentiels/communes");
+  const codes = liste((await anonyme.appel("GET", "/dictionnaire")).json).map((d) => String(d.code));
+  await lit("Dictionnaire : une fiche (public)", anonyme, `/dictionnaire/${codes[0]}`);
+  await lit("Dictionnaire : fiche inconnue → 404", anonyme, "/dictionnaire/indicateur_inexistant", 404);
+  await lit("Dictionnaire : impact d'une version publiée (réussite aux examens)", central!, "/dictionnaire/taux_reussite_examen/impact?examen=BEPC");
+  await lit("Dictionnaire : aucune comparaison publiée pour un autre indicateur → 404", central!, `/dictionnaire/${codes.find((x) => x !== "taux_reussite_examen")}/impact`, 404);
+  await lit("Dictionnaire : impact sans session → 401", anonyme, "/dictionnaire/taux_reussite_examen/impact?examen=BEPC", 401);
+  await lit("Ma session : profil courant", enseignant!, "/moi");
+  await lit("État d'authentification", enseignant!, "/auth/etat");
+  await lit("Priorités nationales", central!, "/priorites");
+
+  // Établissement (chef) et classe (enseignant)
+  for (const [nom, chemin] of [["absences", "absences"], ["enseignants", "enseignants"], ["justificatifs", "justificatifs"], ["personnel", "personnel"], ["demandes", "demandes"]] as const) {
+    await lit(`Directrice → ${nom} de l'établissement`, directrice!, `/etablissements/${PILOTE}/${chemin}`);
+  }
+  await lit("Enseignant → personnel de l'établissement refusé", enseignant!, `/etablissements/${PILOTE}/personnel`, 403);
+  await lit("Directrice → dossier de gestion d'un apprenant", directrice!, "/apprenants/APP-000001/dossier-gestion");
+  await lit("Parent → dossier de gestion refusé", parent!, "/apprenants/APP-000001/dossier-gestion", 403);
+  await lit("Directrice → classes d'accueil d'un apprenant", directrice!, "/apprenants/APP-000001/classes-accueil");
+  await lit("Enseignant → historique de sa classe", enseignant!, "/classes/CLS-PAR-5eA-S/historique");
+  const aTraiter = await directrice!.appel("GET", "/demandes/a-traiter");
+  verifier("Directrice → demandes à traiter", aTraiter.statut, 200);
+  const premiereDemande = liste(aTraiter.json)[0]?.id as string | undefined;
+  if (premiereDemande) await lit("Directrice → détail d'une demande", directrice!, `/demandes/${premiereDemande}`);
+  await lit("Parent → ses demandes d'exercice des droits", parent!, "/droits/mes-demandes");
+
+  // Pilotage et tutelle
+  await lit("Direction départementale → alertes", departement!, "/pilotage/alertes");
+  await lit("Direction départementale → priorités du territoire", departement!, "/pilotage/priorites");
+  await lit("Direction départementale → flux du jour", departement!, "/pilotage/flux");
+  await lit("Direction départementale → compléments de la console", departement!, "/pilotage/territoire/complements");
+  await lit("Direction départementale → absences du territoire", departement!, "/pilotage/territoire/absences");
+  await lit("Enseignant → flux du pilotage refusé", enseignant!, "/pilotage/flux", 403);
+  await lit("Direction départementale → transmissions d'une commune", departement!, "/plateforme/qualite/communes/parakou");
+  await lit("Direction départementale → relances suivies", departement!, "/plateforme/relances");
+  await lit("Administration centrale → journal d'interopérabilité", central!, "/plateforme/interoperabilite");
+  await lit("Enseignant → journal d'interopérabilité refusé", enseignant!, "/plateforme/interoperabilite", 403);
+
+  // Gouvernance (DPO) et administration
+  await lit("DPO → journal d'audit", dpo!, "/audit/journal");
+  await lit("DPO → statistiques d'audit", dpo!, "/audit/statistiques");
+  await lit("Enseignant → journal d'audit refusé", enseignant!, "/audit/journal", 403);
+  await lit("Autorité → délégations à valider", admin!, "/delegation/a-valider");
+  await lit("Administrateur → calendrier", admin!, "/admin/calendrier");
+  await lit("Administrateur → référentiel des départements", admin!, "/admin/referentiels/departements");
+  await lit("Administrateur → référentiel des circonscriptions", admin!, "/admin/referentiels/circonscriptions");
+  await lit("Administrateur → recherche d'établissement", admin!, "/admin/referentiels/etablissements?q=CEG");
+  await lit("Administrateur → identifiant proposé", admin!, "/admin/identifiant?nom=Recette%20Balayage");
+  const npiInconnu = await admin!.appel("GET", "/admin/referentiels/npi/0000000009");
+  verifier("Administrateur → recherche d'un NPI inconnu : réponse vide, rien d'inventé", npiInconnu.statut === 200 && npiInconnu.json?.personne == null && npiInconnu.json?.apprenant == null, true, `HTTP ${npiInconnu.statut}`);
+  await lit("Administrateur → tickets d'assistance", admin!, "/assistance/tickets");
+  const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
+  if (comptes[0]?.id) await lit("Administrateur → fiche d'un compte", admin!, `/admin/comptes/${comptes[0].id as string}`);
+  await lit("Enseignant → administration des comptes refusée", enseignant!, "/admin/calendrier", 403);
+
+  // Enseignement supérieur : bureau national, établissement, étudiant, enseignant
+  for (const chemin of ["concours", "echeances", "etablissements", "actes/delais", "allocations/effectifs", "stages/effectifs", "scolarite/effectifs", "scolarite/credits-ects"]) {
+    await lit(`Bureau du supérieur → ${chemin}`, central!, `/enseignement-superieur/${chemin}`);
+  }
+  for (const chemin of ["filieres", "periodes", "offres", "unites-enseignement", "groupes", "regles-validation", "equivalences", "statut-administratif", "scolarite/credits-ects", "stages", "actes", "actes/delais", `contrat/${ETU}`]) {
+    await lit(`Direction IFRI → ${chemin}`, dirIfri!, `/etablissements/${IFRI}/${chemin}`);
+  }
+  const periodeIfri = liste((await dirIfri!.appel("GET", `/etablissements/${IFRI}/periodes`)).json)[0]?.id as string | undefined;
+  if (periodeIfri) await lit("Direction IFRI → validations préparables d'une période", dirIfri!, `/etablissements/${IFRI}/validations/preparables?periodeId=${periodeIfri}`);
+  await lit("Direction IFRI → validations préparables sans période → 422", dirIfri!, `/etablissements/${IFRI}/validations/preparables`, 422);
+  await lit("Étudiant·e → filières de gestion de l'établissement refusées", etudiantIfri!, `/etablissements/${IFRI}/offres`, 403);
+  await lit("Étudiant·e → son attestation de scolarité", etudiantIfri!, "/moi/attestation-scolarite");
+  await lit("Étudiant·e → ses allocations", etudiantIfri!, "/moi/allocations");
+  await lit("Étudiant·e → son dossier d'allocation", etudiantIfri!, "/moi/dossier-allocation");
+  await lit("Enseignante du supérieur → ses offres d'UE", enseignanteSup!, "/moi/enseignements/offres");
+  await lit("Enseignante du supérieur → stages qu'elle encadre", enseignanteSup!, "/moi/stages/encadres");
+}
+
 titre("Fin de session");
 verifier("Déconnexion", (await enseignant!.appel("POST", "/auth/deconnexion")).statut, 200);
 verifier("Session révoquée côté serveur", (await enseignant!.appel("GET", "/auth/session")).statut, 401);
