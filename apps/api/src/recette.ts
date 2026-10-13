@@ -733,6 +733,8 @@ titre("Balayage en lecture : chaque route GET exercée par son profil, refus de 
   await lit("Administrateur → tickets d'assistance", admin!, "/assistance/tickets");
   const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
   if (comptes[0]?.id) await lit("Administrateur → fiche d'un compte", admin!, `/admin/comptes/${comptes[0].id as string}`);
+  await lit("Administrateur → fiche d'un compte à identifiant composé (CPT-directeur-ifri)", admin!, "/admin/comptes/CPT-directeur-ifri");
+  await lit("Administrateur → identifiant de compte mal formé → 422", admin!, "/admin/comptes/CPT-Robert'--", 422);
   await lit("Enseignant → administration des comptes refusée", enseignant!, "/admin/calendrier", 403);
 
   // Enseignement supérieur : bureau national, établissement, étudiant, enseignant
