@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Perimetre } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { ANNEE_COURANTE } from "@beile/simulation/macro";
 import { communesDuPerimetre, recoupement } from "@beile/simulation/semantique";
@@ -7,7 +8,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, refuser, type Variables } from "./commun";
-import { perimetrePilotage } from "./pilotage";
+import { ROLES_TUTELLE } from "./pilotage";
 import { chargerCouches, memo } from "./donnees";
 import { lireEnv } from "./env";
 import { PARTENAIRES } from "./interop";
@@ -23,6 +24,22 @@ const SEUIL_FRAICHEUR_JOURS = 30;
 
 function exploitant(c: Context<{ Variables: Variables }>) {
   if (!c.get("profil").habilitations.some((h) => ["administrateur", "dpo", "administration_centrale"].includes(h.role))) refuser("Réservé à l'exploitation de la plateforme");
+}
+
+/**
+ * Périmètre de la qualité des remontées (transmissions, relances, recoupement) : l'exploitation (administrateur,
+ * DPO) voit le national ; sinon il faut une habilitation de TUTELLE, et c'est son périmètre à elle qui compte —
+ * jamais celui d'un rôle cumulé (chercheur national ET inspecteur d'une circonscription : sa circonscription).
+ * Le chercheur seul n'y a pas accès : ce sont des données d'exploitation, pas de la statistique publiée.
+ */
+async function perimetreTutelle(profil: Variables["profil"], action: string, exploitationAdmise = true): Promise<Perimetre> {
+  if (exploitationAdmise && profil.habilitations.some((h) => ["administrateur", "dpo"].includes(h.role))) return { niveau: "national" };
+  const h = profil.habilitations.find((x) => (ROLES_TUTELLE as readonly string[]).includes(x.role));
+  if (!h) {
+    await journaliser(profil, action, "qualité des remontées", "controle", false, "role");
+    return refuser("La qualité des remontées relève des autorités de tutelle et de l'exploitation : accès refusé et journalisé");
+  }
+  return h.perimetre;
 }
 
 /** État de service : latence base mesurée, activité du registre, sessions, sécurité (refus journalisés). */
@@ -62,7 +79,7 @@ plateforme.get("/plateforme/etat", authentifie, async (c) => {
 /** Qualité des remontées, sous le périmètre de l'utilisateur : par département puis par commune. */
 plateforme.get("/plateforme/qualite", authentifie, async (c) => {
   const profil = c.get("profil");
-  const perimetre = profil.habilitations.some((h) => ["administrateur", "dpo"].includes(h.role)) ? { niveau: "national" as const } : perimetrePilotage(profil);
+  const perimetre = await perimetreTutelle(profil, "Consultation de la qualité des remontées");
   const autorisees = communesDuPerimetre(perimetre);
   const filtre = autorisees ? sql`where e.commune_id in (select jsonb_array_elements_text(${JSON.stringify([...autorisees])}::jsonb))` : sql``;
   const [etabs, communes, relances] = await Promise.all([
@@ -100,7 +117,7 @@ plateforme.get("/plateforme/qualite", authentifie, async (c) => {
 plateforme.get("/plateforme/qualite/communes/:id", authentifie, async (c) => {
   const profil = c.get("profil");
   const communeId = z.string().regex(/^[a-z0-9-]+$/).parse(c.req.param("id"));
-  const perimetre = profil.habilitations.some((h) => ["administrateur", "dpo"].includes(h.role)) ? { niveau: "national" as const } : perimetrePilotage(profil);
+  const perimetre = await perimetreTutelle(profil, "Consultation des transmissions d'une commune");
   const autorisees = communesDuPerimetre(perimetre);
   if (autorisees && !autorisees.has(communeId)) refuser("Commune hors de votre périmètre");
   const manquants = await base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom, cycle: schema.etablissements.cycle, statut: schema.etablissements.statut, circonscription: schema.etablissements.circonscription })
@@ -122,7 +139,7 @@ plateforme.get("/plateforme/qualite/communes/:id", authentifie, async (c) => {
  */
 plateforme.get("/plateforme/recoupement", authentifie, limiteDebit(10, 60_000, cleUtilisateur), async (c) => {
   const profil = c.get("profil");
-  const perimetre = perimetrePilotage(profil);
+  const perimetre = await perimetreTutelle(profil, "Recoupement national et mailles");
   const maille = z.enum(["departement", "commune"]).catch("departement").parse(c.req.query("maille"));
   const couches = await chargerCouches(base());
   const reponse = memo(couches, `recoupement:${JSON.stringify(perimetre)}:${maille}`, () => recoupement(couches, perimetre, maille));
@@ -133,9 +150,8 @@ plateforme.get("/plateforme/recoupement", authentifie, limiteDebit(10, 60_000, c
 /** Relance : une demande suivie par établissement (circuit RELANCE_TRANSMISSION), visible par sa direction. */
 plateforme.post("/plateforme/relances", authentifie, async (c) => {
   const profil = c.get("profil");
-  // Une relance engage une autorité hiérarchique : direction départementale, inspection, administration centrale — pas un chercheur.
-  if (!profil.habilitations.some((h) => ["direction_departementale", "inspecteur", "administration_centrale"].includes(h.role))) refuser("Les relances relèvent des autorités de tutelle");
-  const perimetre = perimetrePilotage(profil);
+  // Une relance engage une autorité hiérarchique (tutelle) : ni un chercheur, ni l'exploitation technique.
+  const perimetre = await perimetreTutelle(profil, "Relance de transmission", false);
   const { etablissementIds } = await corps(c, z.object({ etablissementIds: z.array(z.string().regex(/^ETB-[A-Z0-9-]+$/)).min(1).max(200) }).strict());
   const cibles = await base().select({ id: schema.etablissements.id, communeId: schema.etablissements.communeId, transmis: schema.etablissements.transmis })
     .from(schema.etablissements).where(inArray(schema.etablissements.id, etablissementIds));

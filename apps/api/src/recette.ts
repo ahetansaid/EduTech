@@ -136,6 +136,10 @@ verifier("Administrateur → état de service", (await admin!.appel("GET", "/pla
 verifier("Direction départementale → état de service", (await departement!.appel("GET", "/plateforme/etat")).statut, 403);
 verifier("Qualité des remontées (Borgou)", (await departement!.appel("GET", "/plateforme/qualite")).statut, 200);
 verifier("Relance hors périmètre", (await departement!.appel("POST", "/plateforme/relances", { etablissementIds: ["ETB-COT-PILOTE-CEG"] })).statut, 403);
+verifier("Hors tutelle → qualité des remontées refusée", (await enseignant!.appel("GET", "/plateforme/qualite")).statut, 403);
+verifier("Hors tutelle → recoupement refusé", (await enseignant!.appel("GET", "/plateforme/recoupement")).statut, 403);
+verifier("Inspection → recoupement de son périmètre", (await inspecteur!.appel("GET", "/plateforme/recoupement")).statut, 200);
+verifier("Dictionnaire national : public par choix (aucune donnée personnelle)", (await anonyme.appel("GET", "/dictionnaire")).statut, 200);
 verifier("Vérification publique d'un diplôme", (await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
 verifier("Identifiant de diplôme mal formé", (await anonyme.appel("GET", "/certificats/abc'--/verification")).statut, 400);
 // Deux régimes dans le service public : l'identifiant seul atteste l'existence du diplôme, jamais son

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChartColumn, Info } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { PagePublique } from "@/components/public/CadrePublic";
 import { Compteur, EASE, motion } from "@/components/motion";
@@ -68,6 +69,7 @@ export default function PageDonnees() {
                 </div>
               </div>
               <p className="flex gap-2 text-[12.5px] leading-relaxed text-ink-muted"><Info size={15} className="mt-0.5 shrink-0" aria-hidden /> Période {courant.periode}. Les données de l'année en cours sont provisoires jusqu'à leur validation.</p>
+              <Link href="/donnees/definitions" className="text-[13px] font-semibold text-blue underline-offset-2 hover:underline">Définitions de tous les indicateurs →</Link>
             </aside>
           </motion.section>
         </>

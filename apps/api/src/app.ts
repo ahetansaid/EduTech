@@ -107,6 +107,8 @@ app.get("/sante", async (c) => {
   return c.json({ statut: "ok", service: "beile-api", version: "0.3.0", base: r ? "connectée" : "vide", horodatage: new Date().toISOString() });
 });
 
+// Publics PAR CHOIX (transparence) : la maille administrative et le dictionnaire national ne contiennent aucune
+// donnée personnelle, et la page /donnees/definitions les sert à tous. Seul l'impact d'une version est réservé.
 app.get("/referentiels/departements", (c) => c.json(DEPARTEMENTS));
 app.get("/referentiels/communes", (c) => c.json(COMMUNES.map(({ cx: _cx, cy: _cy, ...commune }) => commune)));
 app.get("/dictionnaire", (c) => c.json(Object.values(DICTIONNAIRE)));
