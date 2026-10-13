@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Concours, StatutConcours, StatutStage, type Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
-import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -167,10 +167,17 @@ superieur.post("/moi/voeux", authentifie, async (c) => {
   const [filiere] = await base().select({ id: schema.filiereSuperieure.id }).from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, filiereId));
   if (!filiere) throw new HTTPException(422, { message: "Filière inconnue du catalogue" });
   const id = `VOE-${randomUUID()}`;
+  // Un vœu déjà statué (admissible, admis, refusé, désisté) ne se réécrit pas : sans cette clause, l'élève
+  // remettrait « soumis » sur un vœu que l'autorité a refusé ou admis.
   const [pose] = await base().insert(schema.voeuSuperieur)
     .values({ id, apprenantId, filiereId, concoursId, rang, statut, anneeScolaire })
-    .onConflictDoUpdate({ target: [schema.voeuSuperieur.apprenantId, schema.voeuSuperieur.filiereId, schema.voeuSuperieur.anneeScolaire], set: { concoursId, rang, statut } })
+    .onConflictDoUpdate({
+      target: [schema.voeuSuperieur.apprenantId, schema.voeuSuperieur.filiereId, schema.voeuSuperieur.anneeScolaire],
+      set: { concoursId, rang, statut },
+      setWhere: inArray(schema.voeuSuperieur.statut, ["brouillon", "soumis"]),
+    })
     .returning();
+  if (!pose) throw new HTTPException(409, { message: "Ce vœu a déjà été statué : il ne se modifie plus" });
   await journaliser(profil, "Dépôt d'un vœu d'orientation", filiereId, "consultation_personnelle", true, null);
   return c.json(pose, 201);
 });
