@@ -1,6 +1,6 @@
 "use client";
 
-import { Award, Compass, FileClock, FileText, Route, ShieldCheck } from "lucide-react";
+import { Award, Compass, FileClock, FileText, Layers, Route, ShieldCheck } from "lucide-react";
 import { EspacePersonnel } from "@/components/shell/EspacePersonnel";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       onglets={[
         { href: "/apprenant", libelle: "Mon parcours", icone: Route },
         { href: "/apprenant/bulletins", libelle: "Mes bulletins", icone: FileText, scolaire: true },
+        { href: "/apprenant/cursus", libelle: "Mon cursus", icone: Layers, etudiantSuperieur: true },
         { href: "/apprenant/demarches", libelle: "Mes démarches", icone: FileClock, etudiantSuperieur: true },
         { href: "/apprenant/preuves", libelle: "Mes diplômes", icone: Award },
         { href: "/apprenant/orientation", libelle: "Orientation", icone: Compass },

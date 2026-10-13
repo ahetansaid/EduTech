@@ -412,6 +412,13 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
   verifier("Bureau du supérieur : catalogue de pilotage", (await central!.appel("GET", "/enseignement-superieur/filieres")).statut, 200);
   verifier("Étudiant·e : catalogue de pilotage refusé", (await etudiantIfri!.appel("GET", "/enseignement-superieur/filieres")).statut, 403);
   verifier("Étudiant·e : son contrat pédagogique", (await etudiantIfri!.appel("GET", "/moi/contrat")).statut, 200);
+  {
+    const offres = await etudiantIfri!.appel("GET", "/moi/contrat/offres");
+    verifier("Étudiant·e : offres d'UE ouvertes à son contrat (sa filière, son année)", offres.statut === 200 && !!offres.json?.inscription && Array.isArray(offres.json?.offres), true, `HTTP ${offres.statut}`);
+    verifier("Étudiant·e : ses stages", (await etudiantIfri!.appel("GET", "/moi/stages")).statut, 200);
+    verifier("Élève du secondaire : pas d'offre d'UE (aucune inscription dans le supérieur)", (await apprenante!.appel("GET", "/moi/contrat/offres")).json?.inscription == null, true);
+    verifier("Élève : ses vœux d'orientation", (await apprenante!.appel("GET", "/moi/voeux")).statut, 200);
+  }
   verifier("Étudiant·e : ses démarches", (await etudiantIfri!.appel("GET", "/moi/actes")).statut, 200);
   verifier("Enseignante : notes d'une offre d'une autre enseignante refusées", (await enseignanteSup!.appel("POST", "/moi/enseignements/notes-ue", { offreUeId: "OFU-inexistante", notes: [{ apprenantId: "APP-900001", note: 12 }] })).statut, 404);
 

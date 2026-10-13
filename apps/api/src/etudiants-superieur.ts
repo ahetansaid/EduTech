@@ -731,6 +731,57 @@ scolariteSuperieure.get("/moi/contrat", authentifie, async (c) => {
   return c.json(contrat);
 });
 
+/**
+ * Offres d'UE que l'étudiant peut inscrire à son contrat : celles de son établissement d'attache, pour les UE
+ * de SA filière, sur les périodes de SON année universitaire. Chaque ligne dit d'avance ce que la proposition
+ * vérifiera (prérequis acquis, places restantes, contrat déjà ouvert) : l'écran ne propose pas un choix voué
+ * au refus. Les UE obligatoires sont listées pour mémoire — la scolarité les inscrit d'office.
+ */
+scolariteSuperieure.get("/moi/contrat/offres", authentifie, async (c) => {
+  const profil = c.get("profil");
+  const apprenantId = monApprenant(profil);
+  const insc = await inscriptionDe(apprenantId);
+  if (!insc) return c.json({ inscription: null, offres: [] });
+  const lignes = await base().select({ offre: schema.offresUe, ue: schema.unitesEnseignement, periode: { id: schema.periodes.id, intitule: schema.periodes.intitule, numero: schema.periodes.numero } })
+    .from(schema.offresUe)
+    .innerJoin(schema.unitesEnseignement, eq(schema.unitesEnseignement.id, schema.offresUe.ueId))
+    .innerJoin(schema.periodes, eq(schema.periodes.id, schema.offresUe.periodeId))
+    .where(and(
+      eq(schema.offresUe.etablissementId, insc.etablissementId),
+      eq(schema.unitesEnseignement.filiereId, insc.filiereId),
+      eq(schema.periodes.anneeUniversitaire, insc.anneeUniversitaire),
+    ))
+    .orderBy(asc(schema.periodes.numero), asc(schema.unitesEnseignement.code))
+    .limit(300);
+  const offreIds = lignes.map((l) => l.offre.id);
+  const [occupees, miens, acquis, codesFiliere] = await Promise.all([
+    offreIds.length ? base().select({ offreUeId: schema.inscriptionsUe.offreUeId, n: count() }).from(schema.inscriptionsUe)
+      .where(and(inArray(schema.inscriptionsUe.offreUeId, offreIds), inArray(schema.inscriptionsUe.statut, ["proposee", "signee", "validee"])))
+      .groupBy(schema.inscriptionsUe.offreUeId) : [],
+    base().select({ offreUeId: schema.inscriptionsUe.offreUeId, statut: schema.inscriptionsUe.statut }).from(schema.inscriptionsUe)
+      .where(eq(schema.inscriptionsUe.inscriptionSuperieureId, insc.id)),
+    base().select({ ueId: schema.validationsUe.ueId }).from(schema.validationsUe).where(eq(schema.validationsUe.apprenantId, apprenantId)),
+    base().select({ id: schema.unitesEnseignement.id, code: schema.unitesEnseignement.code }).from(schema.unitesEnseignement).where(eq(schema.unitesEnseignement.filiereId, insc.filiereId)),
+  ]);
+  const occupation = new Map(occupees.map((o) => [o.offreUeId, Number(o.n)]));
+  const monStatut = new Map(miens.map((m) => [m.offreUeId, m.statut]));
+  const idsAcquis = new Set(acquis.map((a) => a.ueId));
+  const idDuCode = new Map(codesFiliere.map((u) => [u.code, u.id]));
+  await journaliser(profil, "Consultation des offres d'UE ouvertes à son contrat", `${lignes.length} offre(s)`, "consultation_personnelle", true, null);
+  return c.json({
+    inscription: { id: insc.id, etablissementId: insc.etablissementId, filiereId: insc.filiereId, anneeUniversitaire: insc.anneeUniversitaire },
+    offres: lignes.map(({ offre, ue, periode }) => ({
+      offreUeId: offre.id, periode, session: offre.session,
+      ue: { id: ue.id, code: ue.code, intitule: ue.intitule, type: ue.type, creditsEcts: ue.creditsEcts },
+      auChoix: ue.type !== "obligatoire",
+      acquise: idsAcquis.has(ue.id),
+      prerequisManquants: ue.prerequis.filter((code) => { const id = idDuCode.get(code); return !id || !idsAcquis.has(id); }),
+      placesRestantes: offre.capacite === null ? null : Math.max(0, offre.capacite - (occupation.get(offre.id) ?? 0)),
+      monContrat: monStatut.get(offre.id) ?? null,
+    })),
+  });
+});
+
 scolariteSuperieure.get("/etablissements/:id/contrat/:apprenantId", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const apprenantId = ID_APPRENANT.parse(c.req.param("apprenantId"));

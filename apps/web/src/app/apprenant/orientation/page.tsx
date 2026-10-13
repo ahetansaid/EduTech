@@ -1,11 +1,13 @@
 "use client";
 
-import { Compass, GraduationCap, Info, NotebookPen, RefreshCw, Scale, ShieldAlert, ShieldCheck, UserCheck } from "lucide-react";
+import { Compass, GraduationCap, Info, ListOrdered, NotebookPen, Plus, RefreshCw, Scale, Send, ShieldAlert, ShieldCheck, UserCheck } from "lucide-react";
 import { useMemo } from "react";
 import { Cascade, EASE, Element, EntreePage, motion } from "@/components/motion";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Squelette } from "@/components/ui/primitives";
 import { anneeCourante, estTeteValide, notesEffectives, pistesOrientation, usePasseport, type Dossier, type NoteEffective } from "@/lib/api/parcours";
 import { useFilieresSup } from "@/lib/api/superieur-public";
+import { LIBELLE_STATUT_VOEU, TON_STATUT_VOEU, useMesVoeux, usePoserVoeuMutation } from "@/lib/api/cursus";
+import { notifier } from "@/components/ui/Notifications";
 import { cn } from "@/lib/cn";
 import { adequationFilieres, estFiliereValidee, type PisteSuperieure, type SerieBac } from "@/lib/enseignement-superieur";
 import { diplomeCertifie } from "@beile/contracts";
@@ -165,10 +167,56 @@ function ApresLeBac({ notes, annee, serie }: { notes: NoteEffective[]; annee: st
                 </div>} />
               <p className="text-[13px] text-ink">Indice : {nombre(f.score!, 1)}/20{f.ecartTete != null && f.ecartTete > 0 ? ` · ${nombre(f.ecartTete, 1)} pt sous la tête` : ""}{f.couverture < 0.99 ? ` · ${Math.round(f.couverture * 100)} % des critères évalués` : ""}</p>
               <p className="mt-1 text-xs text-ink-muted">{f.criteres.filter((c) => c.moyenne != null).map((c) => `${c.matiere} ${nombre(c.moyenne!, 1)}`).join(" · ") || "Aucune matière de référence encore évaluée"}</p>
+              {annee && <div className="mt-3"><AjoutVoeu filiereId={f.id} annee={annee} /></div>}
             </Card>
           </Element>
         ))}
       </div>
+      {annee && <MesVoeux annee={annee} noms={new Map((q.data ?? []).map((f) => [f.id, `${f.nom} · ${f.etablissement}`]))} />}
     </section>
+  );
+}
+
+/* ------------------------------------------------------------------ Vœux d'orientation */
+
+/** Ajouter une filière à ses vœux : en brouillon, au rang suivant. Un vœu statué ne se réécrit pas. */
+function AjoutVoeu({ filiereId, annee }: { filiereId: string; annee: string }) {
+  const voeux = useMesVoeux();
+  const poser = usePoserVoeuMutation();
+  const deLAnnee = (voeux.data ?? []).filter((v) => v.anneeScolaire === annee);
+  const existant = deLAnnee.find((v) => v.filiereId === filiereId);
+  if (existant) return <Badge ton={TON_STATUT_VOEU[existant.statut]} icone={ListOrdered}>Vœu n°{existant.rang} · {LIBELLE_STATUT_VOEU[existant.statut]}</Badge>;
+  return (
+    <Button taille="sm" variante="secondaire" icone={Plus} chargement={poser.isPending} disabled={voeux.isPending || deLAnnee.length >= 20}
+      onClick={() => poser.mutate({ filiereId, rang: deLAnnee.length + 1, statut: "brouillon", anneeScolaire: annee }, {
+        onSuccess: () => notifier({ ton: "succes", titre: "Vœu ajouté", texte: "En brouillon : soumettez-le quand votre liste est prête." }),
+        onError: (e) => notifier({ ton: "critique", titre: "Vœu non enregistré", texte: e.message }),
+      })}>Ajouter à mes vœux</Button>
+  );
+}
+
+/** La liste de ses vœux de l'année, dans l'ordre de préférence. Soumettre fige le choix côté élève. */
+function MesVoeux({ annee, noms }: { annee: string; noms: Map<string, string> }) {
+  const voeux = useMesVoeux();
+  const poser = usePoserVoeuMutation();
+  const liste = (voeux.data ?? []).filter((v) => v.anneeScolaire === annee).sort((a, b) => a.rang - b.rang);
+  if (voeux.isPending || !liste.length) return null;
+  const brouillons = liste.filter((v) => v.statut === "brouillon");
+  const soumettre = () => Promise.all(brouillons.map((v) => poser.mutateAsync({ filiereId: v.filiereId, rang: v.rang, statut: "soumis", anneeScolaire: annee, concoursId: v.concoursId })))
+    .then(() => notifier({ ton: "succes", titre: "Vœux soumis", texte: `${brouillons.length} vœu${brouillons.length > 1 ? "x" : ""} transmis pour instruction.` }))
+    .catch((e: Error) => notifier({ ton: "critique", titre: "Soumission incomplète", texte: e.message }));
+  return (
+    <Card>
+      <CardHeader icon={ListOrdered} title={`Mes vœux ${annee}`} subtitle="Dans l'ordre de préférence. Un vœu soumis est instruit par l'autorité ; un vœu statué ne se modifie plus."
+        action={brouillons.length ? <Button taille="sm" variante="primaire" icone={Send} chargement={poser.isPending} onClick={soumettre}>Soumettre {brouillons.length > 1 ? `les ${brouillons.length} brouillons` : "le brouillon"}</Button> : undefined} />
+      <ol className="divide-y divide-line">
+        {liste.map((v) => (
+          <li key={v.id} className="flex items-center justify-between gap-3 py-2.5">
+            <span className="min-w-0 truncate text-[14px] text-ink"><span className="mr-2 font-semibold tabular">{v.rang}.</span>{noms.get(v.filiereId) ?? v.filiereId}</span>
+            <Badge ton={TON_STATUT_VOEU[v.statut]}>{LIBELLE_STATUT_VOEU[v.statut]}</Badge>
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
