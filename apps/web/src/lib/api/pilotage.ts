@@ -141,8 +141,29 @@ export function useFlux(limite = 12) {
 }
 
 /** Alertes territoriales détectées automatiquement sous le périmètre (GET /pilotage/alertes). */
+/** Suivi d'une alerte par la tutelle : qui l'a prise en charge, jusqu'à quand, et si l'échéance est dépassée. */
+export interface SuiviAlerte {
+  demandeId: string; statut: "ouverte" | "en_cours" | "acceptee" | "refusee"; priseEnChargePar: string | null;
+  le: string; echeance: string | null; enRetard: boolean; note: string | null;
+}
+export type ReponseAlertesSuivies = ReponseAlertes & { peutSuivre: boolean; suivis: Record<string, SuiviAlerte> };
+
 export function useAlertesPilotage(actif = true) {
-  return useQuery({ queryKey: ["pilotage", "alertes"], queryFn: ({ signal }) => lire<ReponseAlertes>("/pilotage/alertes", signal), staleTime: CINQ_MINUTES, enabled: actif });
+  return useQuery({ queryKey: ["pilotage", "alertes"], queryFn: ({ signal }) => lire<ReponseAlertesSuivies>("/pilotage/alertes", signal), staleTime: CINQ_MINUTES, enabled: actif });
+}
+export function usePrendreEnChargeMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { alerteId: string; note: string; echeanceJours: number }) => ecrire<{ demandeId: string }>("/pilotage/alertes/suivi", v),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["pilotage", "alertes"] }),
+  });
+}
+export function useCloreSuiviMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { demandeId: string; issue: "traitee" | "sans_suite"; constat: string }) => ecrire<{ statut: string }>(`/pilotage/alertes/suivi/${encodeURIComponent(v.demandeId)}/cloture`, { issue: v.issue, constat: v.constat }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["pilotage", "alertes"] }),
+  });
 }
 
 export function usePrioritesPilotage() {

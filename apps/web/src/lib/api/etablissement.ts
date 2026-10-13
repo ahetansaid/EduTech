@@ -137,6 +137,8 @@ export interface DemandeATraiter extends Demande {
   etablissement: string | null;
   modeleLibelle: string;
   etapeRole: string;
+  /** Demande que j'ai émise, échue chez quelqu'un d'autre : elle remonte chez moi pour être relancée. */
+  escalade?: boolean;
 }
 
 export type CorpsInscription =

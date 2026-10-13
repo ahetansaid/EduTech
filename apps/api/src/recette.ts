@@ -459,6 +459,22 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
   }
 }
 
+titre("Boucle d'action : une alerte se prend en charge, se suit, se clôt");
+{
+  const al = await departement!.appel("GET", "/pilotage/alertes");
+  verifier("Alertes : état de suivi et droit de suivre renvoyés", al.statut === 200 && al.json?.peutSuivre === true && typeof al.json?.suivis === "object", true, `HTTP ${al.statut}`);
+  verifier("Hors tutelle : prise en charge refusée", (await enseignant!.appel("POST", "/pilotage/alertes/suivi", { alerteId: "taux_abandon|parakou|ecart", note: "Hors tutelle", echeanceJours: 30 })).statut, 403);
+  verifier("Alerte inventée : 404", (await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: "taux_abandon|commune-imaginaire|ecart", note: "Alerte qui n'existe pas", echeanceJours: 30 })).statut, 404);
+  const libre = liste(al.json?.alertes).find((a) => !(al.json?.suivis as Record<string, unknown>)[String(a.id)]);
+  if (ECRITURES && libre) {
+    const p = await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: libre.id, note: "Recette : visite des écoles de la commune.", echeanceJours: 30 });
+    verifier("Direction départementale : prise en charge d'une alerte", p.statut, 201);
+    verifier("Une seule prise en charge ouverte par alerte", (await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: libre.id, note: "Doublon refusé", echeanceJours: 30 })).statut, 409);
+    verifier("Clôture motivée du suivi", (await departement!.appel("POST", `/pilotage/alertes/suivi/${p.json.demandeId}/cloture`, { issue: "traitee", constat: "Recette : écoles visitées, remédiation engagée." })).statut, 200);
+    verifier("Un suivi clos ne se rouvre pas par une seconde clôture", (await departement!.appel("POST", `/pilotage/alertes/suivi/${p.json.demandeId}/cloture`, { issue: "traitee", constat: "Seconde clôture refusée" })).statut, 409);
+  }
+}
+
 titre("Interopérabilité : connecteurs signés des systèmes partenaires");
 if (!process.env.BEILE_PARTENAIRES) {
   console.log("   (BEILE_PARTENAIRES absent : connecteurs non provisionnés, cas ignorés)");

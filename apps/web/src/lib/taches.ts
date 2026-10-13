@@ -1,4 +1,4 @@
-import { CalendarX2, ClipboardCheck, Fingerprint, GraduationCap, Inbox, TrendingDown, Users, type LucideIcon } from "lucide-react";
+import { AlarmClock, CalendarX2, ClipboardCheck, Fingerprint, GraduationCap, Inbox, TrendingDown, Users, type LucideIcon } from "lucide-react";
 import type { Ton } from "@/components/ui/primitives";
 import { jourCourant, type Demande, type DemandeATraiter, type Justificatifs, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, LIBELLE_ROLE_CIRCUIT, libelleEtape } from "@/lib/circuits";
@@ -97,6 +97,20 @@ export function tachesFile(demandes: DemandeATraiter[] | undefined): Tache[] {
   return (demandes ?? []).map((d) => {
     const e = analyserEcheance(d.echeance);
     const role = LIBELLE_ROLE_CIRCUIT[d.etapeRole] ?? d.etapeRole;
+    if (d.escalade) {
+      return {
+        cle: `escalade-${d.id}`,
+        libelle: `Sans réponse : ${d.objet}`,
+        detail: `${CIRCUIT_LIBELLE[d.modele] ?? d.modeleLibelle} · échéance dépassée, en attente chez ${role}${d.etablissement ? ` · ${d.etablissement}` : ""}`,
+        icone: AlarmClock,
+        ton: "critique" as const,
+        urgence: 0 as Urgence,
+        href: "/demandes",
+        action: "Relancer",
+        echeance: d.echeance ? e.libelle : undefined,
+        ts: e.ts,
+      };
+    }
     return {
       cle: `file-${d.id}`,
       libelle: d.objet,

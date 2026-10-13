@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
+import { communesDuPerimetre } from "@beile/simulation/semantique";
 import { communeById } from "@beile/simulation/territoire";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
@@ -578,6 +579,22 @@ function couvreEtab(h: Habilitation, etab: { id: string; communeId: string; circ
   return false;
 }
 
+/**
+ * Périmètre d'une demande, une seule règle pour la file, la lecture et la décision : l'établissement qu'elle
+ * vise ; à défaut la commune qu'elle porte (`donnees.communeId`, un suivi d'alerte territoriale) ; à défaut le
+ * seul niveau national. Sans cette règle, une demande sans établissement se décidait par tout porteur du
+ * rôle, où qu'il soit, alors que la file ne la montrait qu'au national.
+ */
+function couvreDemande(h: Habilitation, etab: { id: string; communeId: string; circonscription: string } | null, donnees: unknown) {
+  if (etab) return couvreEtab(h, etab);
+  const communeId = (donnees as { communeId?: unknown } | null)?.communeId;
+  if (typeof communeId === "string") {
+    const autorisees = communesDuPerimetre(h.perimetre);
+    return autorisees ? autorisees.has(communeId) : h.perimetre.niveau === "national";
+  }
+  return h.perimetre.niveau === "national";
+}
+
 type EtapeCircuit = { ordre: number; code: string; role: string; delaiJours: number };
 
 /**
@@ -668,16 +685,24 @@ etablissement.get("/demandes/a-traiter", authentifie, async (c) => {
   const lignes = ouvertes.flatMap((l) => {
     const etape = etapesParModele.get(l.d.modele)?.find((e) => e.code === l.d.etapeCourante);
     if (!etape || !roles.has(etape.role)) return [];
-    const hab = profil.habilitations.find((h) => h.role === etape.role);
-    if (!hab) return [];
-    const couvert = l.d.ressource && l.nom && l.communeId && l.circonscription
-      ? couvreEtab(hab, { id: l.d.ressource, communeId: l.communeId, circonscription: l.circonscription })
-      : hab.perimetre.niveau === "national";
-    if (!couvert) return [];
-    return [{ ...l.d, etablissement: l.nom ?? null, modeleLibelle: modeles.find((m) => m.code === l.d.modele)?.libelle ?? l.d.modele, etapeRole: etape.role }];
-  }).sort((a, b) => b.creeeLe.getTime() - a.creeeLe.getTime());
-  await journaliser(profil, "Consultation des demandes à traiter", `${lignes.length} demande(s)`, "gestion", true, null);
-  return c.json(lignes);
+    const etab = l.d.ressource && l.nom && l.communeId && l.circonscription ? { id: l.d.ressource, communeId: l.communeId, circonscription: l.circonscription } : null;
+    // Toutes les habilitations du rôle, pas la première : un inspecteur de deux circonscriptions voit les deux.
+    if (!profil.habilitations.some((h) => h.role === etape.role && couvreDemande(h, etab, l.d.donnees))) return [];
+    return [{ ...l.d, etablissement: l.nom ?? null, modeleLibelle: modeles.find((m) => m.code === l.d.modele)?.libelle ?? l.d.modele, etapeRole: etape.role, escalade: false }];
+  });
+  // Escalade : ce que J'AI demandé (une relance, un suivi) et qui a dépassé son échéance chez quelqu'un d'autre
+  // remonte dans ma file. Sans cela, une relance échue restait dans la file du chef d'établissement, invisible
+  // pour l'autorité qui l'avait envoyée.
+  const maintenant = Date.now();
+  const dejaLa = new Set(lignes.map((x) => x.id));
+  const escalades = ouvertes.flatMap((l) => {
+    if (l.d.demandeurId !== profil.id || dejaLa.has(l.d.id) || !l.d.echeance || l.d.echeance.getTime() >= maintenant) return [];
+    const etape = etapesParModele.get(l.d.modele)?.find((e) => e.code === l.d.etapeCourante);
+    return [{ ...l.d, etablissement: l.nom ?? null, modeleLibelle: modeles.find((m) => m.code === l.d.modele)?.libelle ?? l.d.modele, etapeRole: etape?.role ?? "", escalade: true }];
+  });
+  const toutes = [...lignes, ...escalades].sort((a, b) => b.creeeLe.getTime() - a.creeeLe.getTime());
+  await journaliser(profil, "Consultation des demandes à traiter", `${lignes.length} demande(s), ${escalades.length} échue(s) chez autrui`, "gestion", true, null);
+  return c.json(toutes);
 });
 
 /** Contexte d'une demande : modèle, étape courante, établissement ressource, et droit d'agir de l'utilisateur. */
@@ -691,7 +716,7 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
   const [etab] = demande.ressource
     ? await base().select({ id: schema.etablissements.id, communeId: schema.etablissements.communeId, circonscription: schema.etablissements.circonscription, nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, demande.ressource))
     : [];
-  const hab = etape ? profil.habilitations.find((h) => h.role === etape.role && (!etab || couvreEtab(h, etab))) : undefined;
+  const hab = etape ? profil.habilitations.find((h) => h.role === etape.role && couvreDemande(h, etab ?? null, demande.donnees)) : undefined;
   return { demande, modele, etapes, etape, etab: etab ?? null, peutStatuer: !!hab && ["ouverte", "en_cours"].includes(demande.statut) };
 }
 
@@ -702,7 +727,7 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
  */
 function peutLireDemande(profil: import("@beile/contracts").Profil, ctx: Awaited<ReturnType<typeof contexteDemande>>) {
   if (ctx.demande.demandeurId === profil.id) return true;
-  return ctx.etapes.some((e) => profil.habilitations.some((h) => h.role === e.role && (ctx.etab ? couvreEtab(h, ctx.etab) : h.perimetre.niveau === "national")));
+  return ctx.etapes.some((e) => profil.habilitations.some((h) => h.role === e.role && couvreDemande(h, ctx.etab, ctx.demande.donnees)));
 }
 
 /** Détail d'une demande : circuit, décisions déjà rendues (ajout seul), et droit d'agir de l'utilisateur. */
