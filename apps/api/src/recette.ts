@@ -139,6 +139,7 @@ verifier("Administrateur → état de service", (await admin!.appel("GET", "/pla
 verifier("Direction départementale → état de service", (await departement!.appel("GET", "/plateforme/etat")).statut, 403);
 verifier("Qualité des remontées (Borgou)", (await departement!.appel("GET", "/plateforme/qualite")).statut, 200);
 verifier("Relance hors périmètre", (await departement!.appel("POST", "/plateforme/relances", { etablissementIds: ["ETB-COT-PILOTE-CEG"] })).statut, 403);
+verifier("Pilotage : l'origine des chiffres est déclarée (simulation ou registre)", ["simulation", "registre"].includes(String((await central!.appel("GET", "/pilotage/origine")).json?.indicateurs)), true);
 verifier("Hors tutelle → qualité des remontées refusée", (await enseignant!.appel("GET", "/plateforme/qualite")).statut, 403);
 verifier("Hors tutelle → recoupement refusé", (await enseignant!.appel("GET", "/plateforme/recoupement")).statut, 403);
 verifier("Inspection → recoupement de son périmètre", (await inspecteur!.appel("GET", "/plateforme/recoupement")).statut, 200);

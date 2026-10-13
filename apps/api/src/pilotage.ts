@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, journaliser, refuser, type Variables } from "./commun";
-import { chargerCouches, memo } from "./donnees";
+import { chargerCouches, memo, ORIGINE_DES_CHIFFRES } from "./donnees";
 
 /**
  * Pilotage : cockpit national, console territoriale, fiche commune.
@@ -103,6 +103,12 @@ pilotage.get("/pilotage/synthese", authentifie, async (c) => {
     ...agregats.corps,
     flux: { total: faitsDuJour, derniers: flux.map((f) => ({ ...f, etablissement: f.etablissementId ? nomsEtab.get(f.etablissementId) ?? null : null })) },
   });
+});
+
+/** D'où viennent les chiffres du pilotage : la mention affichée en tête de chaque écran. */
+pilotage.get("/pilotage/origine", authentifie, (c) => {
+  perimetrePilotage(c.get("profil"));
+  return c.json(ORIGINE_DES_CHIFFRES);
 });
 
 /** Valeurs d'un indicateur par commune (couches de la carte). */
