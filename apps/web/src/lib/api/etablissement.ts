@@ -26,10 +26,16 @@ export interface ClasseTableau {
 
 export interface EleveEnBaisse { apprenantId: string; nom?: string; notes: number[]; baisse: number | null }
 
+/** D'où vient le trimestre affiché : le calendrier officiel de l'année, ou à défaut le dernier trimestre saisi. */
+export interface Periode { anneeScolaire: string; trimestre: number; source: "calendrier" | "notes" | "defaut" }
+export const provenancePeriode = (p: Periode | null | undefined) =>
+  !p ? null : p.source === "calendrier" ? `calendrier officiel ${p.anneeScolaire}` : p.source === "notes" ? `dernier trimestre saisi · ${p.anneeScolaire}` : `aucune note encore · ${p.anneeScolaire}`;
+
 export interface Tableau {
   etablissement: { id: string; nom: string; communeId: string; circonscription: string; capacite: number; cycle: "primaire" | "secondaire" };
   date: string;
   trimestre: number;
+  periode: Periode | null;
   chiffres: { apprenants: number; capacite: number; enseignants: number; moyenne: number | null; absentsDuJour: number };
   classes: ClasseTableau[];
   alertes: {
@@ -88,6 +94,7 @@ export interface DossierGestion {
   apprenant: { id: string; nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; statutIdentite: StatutIdentite; besoinsParticuliers: boolean };
   situation: { statut: "scolarise" | "abandon" | "non_inscrit"; etablissementId: string | null; etablissement: string | null; classeId: string | null; classe: string | null; niveau: string | null; anneeScolaire: string | null };
   trimestre: number;
+  periode: Periode | null;
   moyennes: { matiere: string; moyenne: number; nombre: number }[];
   historique: { anneeScolaire: string; trimestre: number; moyenne: number | null; matieres: { matiere: string; moyenne: number; nombre: number }[] }[];
   absences: number;
@@ -193,7 +200,7 @@ export interface MembrePersonnel {
   id: string; nom: string; prenoms: string; sexe: "M" | "F"; grade: string | null; matieres: string[]; anciennete: number | null;
   classes: ClasseTenue[]; eleves: number; formations: { intitule: string; le: string }[]; formationObligatoire: boolean;
 }
-export interface Personnel { trimestre: number; formationObligatoire: string; personnel: MembrePersonnel[] }
+export interface Personnel { trimestre: number; periode: Periode | null; formationObligatoire: string; personnel: MembrePersonnel[] }
 
 /** Personnel enseignant de l'établissement : charge, formations, suivi des notes par classe et matière. */
 export function usePersonnel(id: string | null) {

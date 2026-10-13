@@ -106,6 +106,15 @@ verifier("Absence en 3e A (pas sa classe)", (await enseignant!.appel("POST", "/e
 verifier("Absence d'un élève hors de la classe", (await enseignant!.appel("POST", "/evenements/absences", { ...absence, apprenantIds: [zoulfath] })).statut, 422);
 verifier("Notes de français (pas sa matière)", (await enseignant!.appel("POST", "/evenements/evaluations", { classeId: "CLS-PAR-5eA-S", matiere: "Français", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 12 }] })).statut, 403);
 verifier("Note hors barème (21/20)", (await enseignant!.appel("POST", "/evenements/evaluations", { classeId: "CLS-PAR-5eA-S", matiere: "Mathématiques", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 21 }] })).statut, 422);
+{
+  // Trimestre de référence : une seule règle, qui dit sa source (calendrier de l'année, sinon dernier trimestre saisi).
+  const carnet = await enseignant!.appel("GET", "/classes/CLS-PAR-5eA-S");
+  const p = carnet.json?.periode as { anneeScolaire?: string; trimestre?: number; source?: string } | null;
+  verifier("Carnet : le trimestre affiché dit son année et sa source", !!p && p.trimestre === carnet.json.trimestre && ["calendrier", "notes", "defaut"].includes(p.source ?? ""), true, JSON.stringify(p));
+  const demain = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  verifier("Appel daté d'un jour à venir → 422", (await enseignant!.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: demain, apprenantIds: ["APP-000001"] })).statut, 422);
+  verifier("Appel daté d'un jour inexistant (31 février) → 422", (await enseignant!.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: "2026-02-31", apprenantIds: ["APP-000001"] })).statut, 422);
+}
 verifier("Formation inconnue au catalogue", (await enseignant!.appel("POST", "/moi/formations", { code: "INCONNUE" })).statut, 422);
 
 titre("Familles et apprenants");

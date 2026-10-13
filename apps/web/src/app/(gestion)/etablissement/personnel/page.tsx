@@ -4,7 +4,7 @@ import { BadgeCheck, CircleAlert, GraduationCap, Search, Star, UserX, Users, X }
 import { useMemo, useState } from "react";
 import { Cascade, Element, EntreePage } from "@/components/motion";
 import { Badge, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
-import { usePersonnel, type MembrePersonnel } from "@/lib/api/etablissement";
+import { provenancePeriode, usePersonnel, type MembrePersonnel } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
@@ -66,7 +66,7 @@ export default function PagePersonnel() {
                 <Chiffre libelle="Enseignants" valeur={entier(synthese.total)} detail={`${synthese.femmes} femme${synthese.femmes > 1 ? "s" : ""}`} icone={Users} />
                 <Chiffre libelle="Élèves en charge" valeur={nombre(synthese.charge, 0)} detail="en moyenne, par enseignant en service" icone={GraduationCap} />
                 <Chiffre libelle="Sans formation obligatoire" valeur={entier(synthese.sansFormation.length)} detail={p.formationObligatoire} icone={BadgeCheck} alerte={synthese.sansFormation.length > 0} />
-                <Chiffre libelle="Classes sans note" valeur={entier(synthese.sansNote.length)} detail={`trimestre ${p.trimestre}, par matière`} icone={CircleAlert} alerte={synthese.sansNote.length > 0} />
+                <Chiffre libelle="Classes sans note" valeur={entier(synthese.sansNote.length)} detail={`trimestre ${p.trimestre}, par matière${provenancePeriode(p.periode) ? ` · ${provenancePeriode(p.periode)}` : ""}`} icone={CircleAlert} alerte={synthese.sansNote.length > 0} />
               </dl>
 
               {(synthese.sansService.length > 0 || synthese.sansNote.length > 0) && (

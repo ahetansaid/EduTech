@@ -1,6 +1,7 @@
 "use client";
 
 import type { Matiere } from "@beile/contracts";
+import type { Periode } from "./etablissement";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { notifier } from "@/components/ui/Notifications";
@@ -26,7 +27,7 @@ export interface EleveCarnet {
 }
 export interface Carnet {
   classe: { id: string; libelle: string; niveau: string; capacite: number; etablissementId: string; anneeScolaire: string };
-  matieres: Matiere[]; lecture: boolean; trimestre: number; date: string; eleves: EleveCarnet[];
+  matieres: Matiere[]; lecture: boolean; trimestre: number; periode: Periode | null; date: string; eleves: EleveCarnet[];
 }
 
 /** GET /classes/:id/historique (complément enseignant) */

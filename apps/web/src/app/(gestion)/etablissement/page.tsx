@@ -14,7 +14,7 @@ import { BandeauAccueil, type ATraiter } from "@/components/tableau/Tableau";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { tachesEtablissement } from "@/lib/taches";
 import { useProfil } from "@/lib/session";
-import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useJustificatifs, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
+import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useJustificatifs, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, provenancePeriode, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, ETAPES_ACCOMPAGNEMENT, etapesDuCircuit } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
 import { date, entier, nombre, note, pourcent } from "@/lib/format";
@@ -84,7 +84,7 @@ function TableauDeBord({ id }: { id: string }) {
           <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={t.chiffres.apprenants} format={entier} />} indice={`${t.classes.length} classes`} /></Element>
           <Element><TuileIndicateur libelle="Occupation" icone={Percent} accent={t.chiffres.apprenants > t.chiffres.capacite ? "critique" : "sarcelle"} valeur={<Compteur valeur={(t.chiffres.apprenants / Math.max(1, t.chiffres.capacite)) * 100} format={(v) => nombre(v, 0)} />} unite="%" indice={`capacité ${entier(t.chiffres.capacite)} places`} /></Element>
           <Element><TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={<Compteur valeur={t.chiffres.enseignants} format={entier} />} indice={t.chiffres.enseignants ? `${nombre(t.chiffres.apprenants / t.chiffres.enseignants, 0)} élèves par enseignant` : undefined} /></Element>
-          <Element><TuileIndicateur libelle={`Moyenne T${t.trimestre}`} icone={BookOpenCheck} accent="ambre" valeur={t.chiffres.moyenne != null ? <Compteur valeur={t.chiffres.moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice="toutes matières" /></Element>
+          <Element><TuileIndicateur libelle={`Moyenne T${t.trimestre}`} icone={BookOpenCheck} accent="ambre" valeur={t.chiffres.moyenne != null ? <Compteur valeur={t.chiffres.moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice={provenancePeriode(t.periode) ?? "toutes matières"} /></Element>
           <Element><TuileIndicateur libelle="Absents aujourd'hui" icone={CalendarX2} accent={nbAbsents ? "critique" : "neutre"} valeur={<Compteur valeur={nbAbsents} format={entier} />} indice={<span className="inline-flex items-center gap-1.5"><PointDirect actif={!absences.isError} className="scale-75" /> {pourcent((nbAbsents / Math.max(1, t.chiffres.apprenants)) * 100)} · en direct</span>} /></Element>
         </Cascade>
       )}

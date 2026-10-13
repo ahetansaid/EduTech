@@ -9,7 +9,8 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
-import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
+import { enBaisse, scolarisesEtablissement } from "./lectures";
+import { bilansAuTrimestre, enTete, periodePrincipale, periodesDesClasses } from "./periode";
 
 /**
  * Espace établissement : tableau de bord, apprenants, transitions, examens, accompagnement.
@@ -19,7 +20,6 @@ import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
 export const etablissement = new Hono<{ Variables: Variables }>();
 
 const ID_ETAB = z.string().regex(/^ETB-[A-Z0-9-]+$/);
-const TRIMESTRE_COURANT = 2;
 const FORMATION_OBLIGATOIRE = "Évaluation formative en mathématiques";
 const moyenneDe = (v: (number | null)[]) => { const x = v.filter((n): n is number => n != null); return x.length ? x.reduce((s, n) => s + n, 0) / x.length : null; };
 
@@ -62,7 +62,8 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
       // Le « dernier conseil » est celui de la séance la plus récente, pas le dernier enregistré (saisie antidatée).
       .orderBy(sql`${schema.evenements.donnees}->>'dateSeance'`, schema.evenements.survenuLe),
   ]);
-  const b = await bilans(eleves.map((e) => e.id), TRIMESTRE_COURANT);
+  const periodes = await periodesDesClasses(classes);
+  const b = await bilansAuTrimestre(eleves, periodes);
   const nom = new Map(eleves.map((a) => [a.id, `${a.prenoms} ${a.nom}`]));
   const formesIds = new Set(formes.map((f) => f.id));
   const derniereSeance = new Map(seances.filter((s) => s.classeId).map((s) => [s.classeId as string, { dateSeance: s.dateSeance, nombreDeMembres: s.nombreDeMembres }]));
@@ -83,7 +84,7 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
   return c.json({
     etablissement: { id: etab.id, nom: etab.nom, communeId: etab.communeId, circonscription: etab.circonscription, capacite: etab.capacite, cycle: etab.cycle },
     date: jour,
-    trimestre: TRIMESTRE_COURANT,
+    ...enTete(periodePrincipale(periodes, eleves)),
     chiffres: { apprenants: eleves.length, capacite: etab.capacite, enseignants: enseignants.length, moyenne: moyenneDe(eleves.map((e) => b.get(e.id)?.moyenneTrimestre ?? null)), absentsDuJour: absentsDuJour.length },
     classes: lignesClasses,
     alertes: {
@@ -103,7 +104,8 @@ etablissement.get("/etablissements/:id/eleves", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, finalite } = await acces(c, id);
   const eleves = await scolarisesEtablissement(id);
-  const b = await bilans(eleves.map((e) => e.id), TRIMESTRE_COURANT);
+  const periodes = await periodesDesClasses([...new Map(eleves.map((e) => [e.classeId, { id: e.classeId, anneeScolaire: e.anneeScolaire }])).values()]);
+  const b = await bilansAuTrimestre(eleves, periodes);
   await journaliser(profil, "Consultation de la liste des apprenants", id, finalite, true, null);
   return c.json(eleves.map((a) => {
     const x = b.get(a.id);
@@ -132,6 +134,10 @@ etablissement.get("/etablissements/:id/enseignants", authentifie, async (c) => {
 etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, finalite } = await acces(c, id);
+  // Le suivi des notes se lit, classe par classe, au trimestre de référence de l'année de la classe.
+  const classesEtab = await base().select({ id: schema.classes.id, anneeScolaire: schema.classes.anneeScolaire }).from(schema.classes).where(eq(schema.classes.etablissementId, id));
+  const periodes = await periodesDesClasses(classesEtab);
+  const trimestreDe = JSON.stringify(Object.fromEntries(classesEtab.map((cl) => [cl.id, periodes.get(cl.anneeScolaire)?.trimestre ?? 1])));
   const [enseignants, enseignements, effectifs, notes, formations] = await Promise.all([
     base().select().from(schema.enseignants).where(eq(schema.enseignants.etablissementId, id)),
     base().select({ enseignantId: schema.enseignements.enseignantId, classeId: schema.enseignements.classeId, matiere: schema.enseignements.matiere, libelle: schema.classes.libelle, niveau: schema.classes.niveau, principal: schema.classes.enseignantPrincipalId })
@@ -140,7 +146,7 @@ etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
     base().execute<{ classe_id: string; n: number }>(sql`select classe_id, count(*)::int as n from core.scolarites where statut = 'scolarise' and classe_id in (select id from core.classes where etablissement_id = ${id}) group by classe_id`),
     base().execute<{ classe_id: string; matiere: string; n: number; derniere: string | null }>(sql`
       select n.classe_id, n.matiere, count(*)::int as n, max(n.survenu_le)::text as derniere from core.notes n
-      where n.trimestre = ${TRIMESTRE_COURANT} and n.classe_id in (select id from core.classes where etablissement_id = ${id})
+      join jsonb_each_text(${trimestreDe}::jsonb) as tr(classe_id, t) on tr.classe_id = n.classe_id and n.trimestre = tr.t::int
       group by n.classe_id, n.matiere`),
     base().select({ enseignantId: schema.evenements.enseignantId, formation: sql<string>`${schema.evenements.donnees}->>'formation'`, le: schema.evenements.survenuLe })
       .from(schema.evenements).where(and(eq(schema.evenements.type, "FORMATION_ENSEIGNANT"), eq(schema.evenements.etablissementId, id))),
@@ -164,7 +170,8 @@ etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
       formationObligatoire: suivies.some((f) => f.formation?.startsWith(FORMATION_OBLIGATOIRE)),
     };
   }).sort((a, b) => comparerFr(a.nom, b.nom));
-  return c.json({ trimestre: TRIMESTRE_COURANT, formationObligatoire: FORMATION_OBLIGATOIRE, personnel });
+  const scolarisesParAnnee = classesEtab.flatMap((cl) => Array.from({ length: effectif.get(cl.id) ?? 0 }, () => ({ anneeScolaire: cl.anneeScolaire })));
+  return c.json({ ...enTete(periodePrincipale(periodes, scolarisesParAnnee)), formationObligatoire: FORMATION_OBLIGATOIRE, personnel });
 });
 
 /**

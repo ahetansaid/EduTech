@@ -16,12 +16,15 @@ export interface Bilan {
   dernieresMaths: number[];
 }
 
-export async function bilans(apprenantIds: string[], trimestre = 0): Promise<Map<string, Bilan>> {
+export async function bilans(apprenantIds: string[], trimestre = 0, anneeScolaire?: string): Promise<Map<string, Bilan>> {
   if (!apprenantIds.length) return new Map();
   const ids = JSON.stringify(apprenantIds);
+  // Le numéro du trimestre ne suffit pas : sans l'année, le T1 d'un élève passé en classe supérieure mêlerait
+  // ses notes de l'an dernier à celles de cette année.
+  const deLAnnee = anneeScolaire ? sql`and classe_id in (select id from core.classes where annee_scolaire = ${anneeScolaire})` : sql``;
   const lignes = await base().execute<{ a: string; moyenne: number | null; moyenne_trimestre: number | null; absences: number; maths: number[] | null }>(sql`
     with ids as (select jsonb_array_elements_text(${ids}::jsonb) as a),
-    notes as (select apprenant_id as a, matiere as m, trimestre as t, survenu_le as s, note as n from core.notes where apprenant_id in (select a from ids)),
+    notes as (select apprenant_id as a, matiere as m, trimestre as t, survenu_le as s, note as n, (true ${deLAnnee}) as annee_ok from core.notes where apprenant_id in (select a from ids)),
     ev as (
       select e.apprenant_id, e.donnees->>'anneeScolaire' as annee, max(e.donnees->>'anneeScolaire') over (partition by e.apprenant_id) as derniere
       from ledger.evenements e
@@ -30,7 +33,7 @@ export async function bilans(apprenantIds: string[], trimestre = 0): Promise<Map
         and not exists (select 1 from core.absences_justifiees j where j.absence_id = e.id)
     ),
     g as (select a, avg(moy) as moyenne from (select a, m, avg(n) as moy from notes group by a, m) x group by a),
-    gt as (select a, avg(moy) as moyenne from (select a, m, avg(n) as moy from notes where t = ${trimestre} group by a, m) x group by a),
+    gt as (select a, avg(moy) as moyenne from (select a, m, avg(n) as moy from notes where t = ${trimestre} and annee_ok group by a, m) x group by a),
     maths as (select a, (array_agg(n order by s desc))[1:3] as dern from notes where m = 'Mathématiques' group by a),
     abs as (select apprenant_id as a, count(*)::int as nb from ev where annee is not distinct from derniere group by 1)
     select ids.a, g.moyenne, gt.moyenne as moyenne_trimestre, coalesce(abs.nb, 0) as absences, maths.dern as maths
