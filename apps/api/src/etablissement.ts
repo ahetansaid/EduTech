@@ -209,7 +209,7 @@ etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
     }).sort((a, b) => comparerFr(a.classe, b.classe));
     const suivies = formations.filter((f) => f.enseignantId === e.id).sort((a, b) => b.le.toISOString().localeCompare(a.le.toISOString()));
     return {
-      id: e.id, nom: e.nom, prenoms: e.prenoms, sexe: e.sexe, grade: e.grade, matieres: e.matieres,
+      id: e.id, nom: e.nom, prenoms: e.prenoms, sexe: e.sexe, grade: e.grade, matieres: e.matieres, statut: e.statut,
       anciennete: e.dateRecrutement ? Math.max(0, annee - Number(String(e.dateRecrutement).slice(0, 4))) : null,
       classes: tenues,
       eleves: [...new Set(tenues.map((t) => t.classeId))].reduce((s, cid) => s + (effectif.get(cid) ?? 0), 0),

@@ -4,7 +4,7 @@ import { BadgeCheck, CircleAlert, GraduationCap, Search, Star, UserX, Users, X }
 import { useMemo, useState } from "react";
 import { Cascade, Element, EntreePage } from "@/components/motion";
 import { Badge, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
-import { provenancePeriode, usePersonnel, type MembrePersonnel } from "@/lib/api/etablissement";
+import { COURT_STATUT_EMPLOI, provenancePeriode, usePersonnel, type MembrePersonnel } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
@@ -128,7 +128,7 @@ function CarteEnseignant({ m }: { m: MembrePersonnel }) {
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-soft font-display text-[15px] font-bold text-accent-ink">{initiales}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-ink">{m.prenoms} {m.nom}</p>
-          <p className="truncate text-[12.5px] text-ink-muted">{[m.grade, m.anciennete != null ? `${m.anciennete} an${m.anciennete > 1 ? "s" : ""} de service` : null].filter(Boolean).join(" · ")}</p>
+          <p className="truncate text-[12.5px] text-ink-muted">{[m.statut ? COURT_STATUT_EMPLOI[m.statut] : "statut non renseigné", m.grade, m.anciennete != null ? `${m.anciennete} an${m.anciennete > 1 ? "s" : ""} de service` : null].filter(Boolean).join(" · ")}</p>
         </div>
         {m.formationObligatoire
           ? <Badge ton="succes" icone={BadgeCheck}>Formé</Badge>

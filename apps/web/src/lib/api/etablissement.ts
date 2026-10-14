@@ -200,7 +200,7 @@ export function useEleves(id: string | null) {
 /** GET /etablissements/:id/personnel */
 export interface ClasseTenue { classeId: string; classe: string; niveau: string; matiere: string; principal: boolean; effectif: number; notesTrimestre: number; derniereNote: string | null }
 export interface MembrePersonnel {
-  id: string; nom: string; prenoms: string; sexe: "M" | "F"; grade: string | null; matieres: string[]; anciennete: number | null;
+  id: string; nom: string; prenoms: string; sexe: "M" | "F"; grade: string | null; matieres: string[]; anciennete: number | null; statut: StatutEmploi | null;
   classes: ClasseTenue[]; eleves: number; formations: { intitule: string; le: string }[]; formationObligatoire: boolean;
 }
 export interface Personnel { trimestre: number; periode: Periode | null; formationObligatoire: string; personnel: MembrePersonnel[] }
@@ -404,3 +404,10 @@ export function useConseilPassageMutation(id: string | null) {
     onSuccess: invalider,
   });
 }
+
+/** Statut d'emploi d'un enseignant (tenu par la gestion des personnels, jamais déduit du grade). */
+export type StatutEmploi = "ape" | "ace" | "ame" | "vacataire";
+export const LIBELLE_STATUT_EMPLOI: Record<StatutEmploi, string> = {
+  ape: "Agent permanent de l'État", ace: "Agent contractuel de l'État", ame: "Aspirant au métier d'enseignant", vacataire: "Vacataire",
+};
+export const COURT_STATUT_EMPLOI: Record<StatutEmploi, string> = { ape: "APE", ace: "ACE", ame: "AME", vacataire: "Vacataire" };

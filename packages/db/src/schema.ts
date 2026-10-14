@@ -273,6 +273,12 @@ export const enseignants = core.table("enseignants", {
   etablissementId: text("etablissement_id").notNull().references(() => etablissements.id),
   grade: text("grade").notNull(),
   dateRecrutement: date("date_recrutement").notNull(),
+  /**
+   * Statut d'emploi : Agent permanent de l'État (APE), Agent contractuel de l'État (ACE), Aspirant au métier
+   * d'enseignant (AME), vacataire. Nul = non renseigné : rien n'est déduit du grade. Tenu par la gestion des
+   * personnels (direction départementale, administration centrale), jamais déclaré par l'établissement.
+   */
+  statut: text("statut", { enum: ["ape", "ace", "ame", "vacataire"] }),
 });
 
 export const liensFamiliaux = core.table("liens_familiaux", {
