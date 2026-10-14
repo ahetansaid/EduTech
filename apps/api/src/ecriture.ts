@@ -123,6 +123,7 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
       await tx.insert(schema.notes).values(evaluations.map((l) => ({
         evenementId: l.id, apprenantId: l.apprenantId!, classeId: String(l.donnees.classeId), matiere: String(l.donnees.matiere),
         trimestre: Number(l.donnees.trimestre), note: Number(l.donnees.note), noteInitiale: Number(l.donnees.note), survenuLe: maintenant,
+        typeEvaluation: (l.donnees.typeEvaluation as "interrogation" | "devoir" | "composition" | undefined) ?? null,
       })));
     }
     for (const l of lignes.filter((x) => x.type === "CORRECTION_EVALUATION")) {

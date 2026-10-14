@@ -1,7 +1,7 @@
 "use client";
 
 import { rafraichir } from "@/lib/economie";
-import type { Matiere } from "@beile/contracts";
+import type { Matiere, TypeEvaluation } from "@beile/contracts";
 import type { Periode } from "./etablissement";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -21,7 +21,7 @@ export interface ClasseEnseignant {
 export interface MesClasses { enseignant: EnseignantResume; trimestre?: number; date?: string; classes: ClasseEnseignant[] }
 
 /** GET /classes/:id */
-export interface NoteCarnet { id: string; matiere: Matiere; trimestre: number; note: number; corrigee: boolean; le: string }
+export interface NoteCarnet { id: string; matiere: Matiere; trimestre: number; note: number; corrigee: boolean; le: string; typeEvaluation?: TypeEvaluation | null }
 export interface EleveCarnet {
   id: string; nom: string; prenoms: string; sexe: "M" | "F"; besoinsParticuliers: boolean;
   notes: NoteCarnet[]; absences: number; absentAujourdhui: boolean; moyenneTrimestre: number | null;
@@ -161,7 +161,7 @@ export function useAppelMutation(classeId: string, libelleClasse: string) {
   });
 }
 
-export interface CorpsNotes { classeId: string; matiere: Matiere; trimestre: number; notes: { apprenantId: string; note: number }[] }
+export interface CorpsNotes { classeId: string; matiere: Matiere; trimestre: number; typeEvaluation?: TypeEvaluation; notes: { apprenantId: string; note: number }[] }
 
 export function useNotesMutation(classeId: string, libelleClasse: string) {
   const client = useQueryClient();

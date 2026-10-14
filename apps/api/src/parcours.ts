@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Finalite, Matiere, Profil } from "@beile/contracts";
-import { MATIERES } from "@beile/contracts";
+import { MATIERES, TYPES_EVALUATION } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { decider } from "@beile/simulation/abac";
 import { indexer, situationApprenant } from "@beile/simulation/projections";
@@ -82,6 +82,7 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
     classeId: ID_CLASSE,
     matiere: z.enum(MATIERES),
     trimestre: z.number().int().min(1).max(3),
+    typeEvaluation: z.enum(TYPES_EVALUATION).optional(),
     notes: z.array(z.object({ apprenantId: ID_APPRENANT, note: z.number().min(0).max(20).refine((n) => Number.isInteger(n * 4), "au quart de point") })).min(1).max(80),
     idSaisie: ID_SAISIE,
   }).strict());
@@ -106,7 +107,7 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
   }
   const enregistres = await inscrireAuRegistre(saisie.notes.map((n) => ({
     type: "EVALUATION", auteurId: enseignant!.id, etablissementId: classe!.etablissementId, apprenantId: n.apprenantId,
-    donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
+    donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire, ...(saisie.typeEvaluation ? { typeEvaluation: saisie.typeEvaluation } : {}), ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
   })));
   await journaliser(profil, "Saisie de notes", `${saisie.classeId} · ${saisie.matiere} (${enregistres.length})`, "evaluation", true, null);
   return c.json({ enregistres }, 201);

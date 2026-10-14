@@ -96,15 +96,15 @@ enseignant.get("/classes/:id", authentifie, async (c) => {
     refuser("Aucune relation pédagogique avec cette classe : consultation refusée et journalisée");
   }
   const visibles = matieres.length ? matieres : [...MATIERES];
-  const lignes = await base().execute<{ id: string; apprenant_id: string; type: string; survenu_le: string; matiere: string | null; trimestre: number | null; note: number | null; corrigee: boolean; date: string | null; justifiee: boolean | null }>(sql`
+  const lignes = await base().execute<{ id: string; apprenant_id: string; type: string; survenu_le: string; matiere: string | null; trimestre: number | null; note: number | null; corrigee: boolean; date: string | null; justifiee: boolean | null; type_evaluation: string | null }>(sql`
     with el as (select apprenant_id from core.scolarites where statut = 'scolarise' and classe_id = ${classeId})
-    select n.evenement_id as id, n.apprenant_id, 'EVALUATION' as type, n.survenu_le, n.matiere, n.trimestre, n.note, n.corrigee, null as date, null::boolean as justifiee
+    select n.evenement_id as id, n.apprenant_id, 'EVALUATION' as type, n.survenu_le, n.matiere, n.trimestre, n.note, n.corrigee, null as date, null::boolean as justifiee, n.type_evaluation
     from core.notes n
     where n.classe_id = ${classeId} and n.apprenant_id in (select apprenant_id from el)
       and n.matiere in (select jsonb_array_elements_text(${JSON.stringify(visibles)}::jsonb))
     union all
     select e.id, e.apprenant_id, 'ABSENCE', e.survenu_le, null, null, null, false, e.donnees->>'date',
-      ((e.donnees->>'justifiee')::boolean or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id))
+      ((e.donnees->>'justifiee')::boolean or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id)), null
     from ledger.evenements e
     where e.type = 'ABSENCE' and e.apprenant_id in (select apprenant_id from el) and e.donnees->>'classeId' = ${classeId}
     order by 4
@@ -121,7 +121,7 @@ enseignant.get("/classes/:id", authentifie, async (c) => {
     matieres: visibles, lecture: !matieres.length, ...enTete(periode), date: jour,
     eleves: eleves.map((a) => {
       const miens = lignes.filter((l) => l.apprenant_id === a.id);
-      const notes = miens.filter((l) => l.type === "EVALUATION").map((l) => ({ id: l.id, matiere: l.matiere!, trimestre: l.trimestre!, note: Number(l.note), corrigee: l.corrigee, le: l.survenu_le }));
+      const notes = miens.filter((l) => l.type === "EVALUATION").map((l) => ({ id: l.id, matiere: l.matiere!, trimestre: l.trimestre!, note: Number(l.note), corrigee: l.corrigee, le: l.survenu_le, typeEvaluation: l.type_evaluation }));
       const abs = miens.filter((l) => l.type === "ABSENCE").map((l) => ({ id: l.id, date: l.date!, justifiee: !!l.justifiee }));
       const duTrimestre = notes.filter((n) => n.trimestre === trimestre);
       return {

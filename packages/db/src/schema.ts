@@ -723,6 +723,8 @@ export const notes = core.table("notes", {
   noteInitiale: doublePrecision("note_initiale").notNull(),
   corrigee: boolean("corrigee").notNull().default(false),
   survenuLe: timestamp("survenu_le", { withTimezone: true }).notNull(),
+  /** Interrogation, devoir, composition — nul pour les notes antérieures. Pas encore pondéré. */
+  typeEvaluation: text("type_evaluation", { enum: ["interrogation", "devoir", "composition"] }),
 }, (t) => [index("notes_apprenant_idx").on(t.apprenantId, t.matiere, t.survenuLe), index("notes_classe_idx").on(t.classeId, t.matiere)]);
 
 /* ------------------------------------------------------------------ Assistance (support aux utilisateurs) */

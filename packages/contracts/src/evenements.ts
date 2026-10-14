@@ -29,6 +29,14 @@ export const QUALITES_CONSEIL = [
 ] as const;
 export type QualiteConseil = (typeof QUALITES_CONSEIL)[number];
 
+/**
+ * Nature d'une évaluation. Enregistrée, pas encore pondérée : les coefficients officiels par série et niveau
+ * n'étant pas fournis, la moyenne reste non pondérée — et l'écran le dit. Facultative : les notes déjà inscrites
+ * au registre, qui ne s'efface pas, n'en portent pas.
+ */
+export const TYPES_EVALUATION = ["interrogation", "devoir", "composition"] as const;
+export type TypeEvaluation = (typeof TYPES_EVALUATION)[number];
+
 const Base = z.object({
   id: z.string(),
   survenuLe: z.string(),
@@ -56,6 +64,7 @@ export const Evenement = z.discriminatedUnion("type", [
     note: z.number().min(0).max(20),
     trimestre: z.number().int().min(1).max(3),
     anneeScolaire: z.string(),
+    typeEvaluation: z.enum(TYPES_EVALUATION).optional(),
   }),
   Base.extend({
     type: z.literal("CORRECTION_EVALUATION"),

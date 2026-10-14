@@ -1,6 +1,6 @@
 "use client";
 
-import type { Matiere } from "@beile/contracts";
+import { TYPES_EVALUATION, type Matiere, type TypeEvaluation } from "@beile/contracts";
 import { ChevronDown, CloudOff, History, PenLine, Save, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "@/components/motion";
@@ -13,6 +13,9 @@ import { useFileHorsConnexion } from "@/lib/fileHorsConnexion";
 import { BadgePoint, BarreAction, Confirmation, FeuilleModale, nomComplet } from "../../communs";
 
 /* ------------------------------------------------------------------ Brouillon local (appel téléphonique, écran verrouillé…) */
+
+/** Libellés des natures d'évaluation. La moyenne reste non pondérée tant que les coefficients officiels ne sont pas fournis. */
+const LIBELLE_TYPE_EVALUATION: Record<TypeEvaluation, string> = { interrogation: "Interrogation", devoir: "Devoir", composition: "Composition" };
 
 const cleBrouillon = (classeId: string, matiere: string, trimestre: number) => `beile.brouillon-notes.${classeId}.${matiere}.${trimestre}`;
 function lireBrouillon(cle: string): Record<string, string> {
@@ -35,6 +38,7 @@ export function Notes({ carnet }: { carnet: Carnet }) {
   const enLigne = useEnLigne();
   const [matiere, setMatiere] = useState<Matiere>(carnet.matieres[0]!);
   const [trimestre, setTrimestre] = useState<number>(carnet.trimestre);
+  const [typeEvaluation, setTypeEvaluation] = useState<TypeEvaluation>("devoir");
   const [saisies, setSaisies] = useState<Record<string, string>>(() => lireBrouillon(cleBrouillon(classeId, carnet.matieres[0]!, carnet.trimestre)));
   const [confirmation, setConfirmation] = useState<{ attente: boolean; n: number } | null>(null);
   const fermer = useCallback(() => setConfirmation(null), []);
@@ -57,7 +61,7 @@ export function Notes({ carnet }: { carnet: Carnet }) {
 
   const enregistrer = () => {
     if (!valides.length || erreurs) return;
-    mutation.mutate({ classeId, matiere, trimestre, notes: valides }, {
+    mutation.mutate({ classeId, matiere, trimestre, typeEvaluation, notes: valides }, {
       onSuccess: (r) => { effacer(); setConfirmation({ attente: r.etat === "en_attente", n: valides.length }); },
     });
   };
@@ -84,6 +88,7 @@ export function Notes({ carnet }: { carnet: Carnet }) {
           <div className="flex flex-wrap gap-2">
             {carnet.matieres.length > 1 && <Segmente label="Matière" valeur={matiere} onChange={(m) => changerContexte(m, trimestre)} options={carnet.matieres.map((m) => ({ valeur: m, libelle: m }))} />}
             <Segmente label="Trimestre" valeur={String(trimestre) as "1" | "2" | "3"} onChange={(t) => changerContexte(matiere, Number(t))} options={[{ valeur: "1", libelle: "T1" }, { valeur: "2", libelle: "T2" }, { valeur: "3", libelle: "T3" }]} />
+            <Segmente label="Type d’évaluation" valeur={typeEvaluation} onChange={(t) => setTypeEvaluation(t as TypeEvaluation)} options={TYPES_EVALUATION.map((t) => ({ valeur: t, libelle: LIBELLE_TYPE_EVALUATION[t] }))} />
           </div>
           {/* Progression de la saisie */}
           <div>
@@ -229,7 +234,7 @@ function Evaluations({ carnet, matiere }: { carnet: Carnet; matiere?: Matiere })
                       <span className="text-[9.5px] uppercase">{new Date(g.le).toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" }).replace(".", "")}</span>
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-medium text-ink">{matiere ? "Évaluation" : g.matiere} · T{g.trimestre}</span>
+                      <span className="block truncate text-[14px] font-medium text-ink">{matiere ? (g.notes[0]?.typeEvaluation ? LIBELLE_TYPE_EVALUATION[g.notes[0].typeEvaluation] : "Évaluation") : g.matiere} · T{g.trimestre}</span>
                       <span className="block text-xs text-ink-muted">{g.notes.length} copie{g.notes.length > 1 ? "s" : ""} · {heure(g.le)}{corrigees ? ` · ${corrigees} corrigée${corrigees > 1 ? "s" : ""}` : ""}</span>
                     </span>
                     <span className="text-right">
