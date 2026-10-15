@@ -1,15 +1,17 @@
 "use client";
 
-import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, Fingerprint, Printer, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
+import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, FileText, Fingerprint, Printer, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { EntreePage, motion } from "@/components/motion";
 import { FeuilleImprimable } from "@/components/etats/Etats";
+import { BulletinsDeClasse } from "@/components/bulletin/Bulletin";
+import { bulletinsDepuisClasse } from "@/lib/bulletin";
 import { StatsPromotion } from "@/components/stats/Promotion";
 import { StatsLiaison } from "@/components/stats/Liaison";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette, type Ton } from "@/components/ui/primitives";
-import { useEleves, useTableau, type EleveLigne } from "@/lib/api/etablissement";
+import { useBulletinsClasse, useEleves, useTableau, type EleveLigne } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { exporterCsv, type Colonne } from "@/lib/export";
 import { bandeAge, entier, nombre, note } from "@/lib/format";
@@ -82,6 +84,7 @@ function Liste() {
   const [sens, setSens] = useState<Sensibilite>("normale");
   const [vigilanceOuverte, setVigilanceOuverte] = useState(true);
   const [impression, setImpression] = useState(false);
+  const [bulletins, setBulletins] = useState(false);
 
   const choisirFiltre = (f: Filtre) => {
     const p = new URLSearchParams(params.toString());
@@ -110,6 +113,9 @@ function Liste() {
     return n;
   }, [evals]);
   const classes = useMemo(() => [...new Set((donnees ?? []).map((e) => e.classe))].sort(fr.compare), [donnees]);
+  // Le filtre porte le libellé ; les bulletins se demandent par identifiant de classe.
+  const classeId = classe === "toutes" ? null : (donnees ?? []).find((e) => e.classe === classe)?.classeId ?? null;
+  const bulletinsClasse = useBulletinsClasse(bulletins ? id : null, bulletins ? classeId : null);
 
   const liste = useMemo(() => {
     const n = normaliser(q);
@@ -143,6 +149,8 @@ function Liste() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, COLONNES, `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — ${tableau.data?.etablissement.nom ?? "établissement"}. Données à caractère personnel : usage limité à la gestion de l'établissement.`)} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque, classe d'âge)`}>Exporter</Button>
             <Button variante="secondaire" icone={Printer} disabled={!liste.length} onClick={() => setImpression(true)} title="Imprimer un état nominatif, une feuille d'appel ou un PV de conseil">Imprimer</Button>
+            {classeId && <Button variante="secondaire" icone={FileText} chargement={bulletins && bulletinsClasse.isFetching} onClick={() => setBulletins(true)} title={`Tous les bulletins de ${classe}, un par page`}>Bulletins de la classe</Button>}
+            {bulletins && bulletinsClasse.isError && <span role="alert" className="text-[13px] text-critical">{bulletinsClasse.error.message}</span>}
             <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
           </div>
         }
@@ -278,6 +286,9 @@ function Liste() {
         </>
       )}
 
+      {bulletins && bulletinsClasse.data && (
+        <BulletinsDeClasse views={bulletinsDepuisClasse(bulletinsClasse.data)} titre={`${bulletinsClasse.data.classe.libelle} · T${bulletinsClasse.data.trimestre}`} onFermer={() => setBulletins(false)} />
+      )}
       {impression && (
         <FeuilleImprimable
           eleves={liste}

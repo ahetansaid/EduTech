@@ -58,6 +58,42 @@ export function Bulletin({ view, trimestres, trimestre, onTrimestre, onFermer }:
   );
 }
 
+/**
+ * Bulletins de toute une classe, un par page à l'impression : même document que le bulletin individuel, répété.
+ * La fin de trimestre se fait en une impression, pas en trente ouvertures de dossier.
+ */
+export function BulletinsDeClasse({ views, titre, onFermer }: { views: BulletinView[]; titre: string; onFermer: () => void }) {
+  const monte = useSyncExternalStore(() => () => {}, () => true, () => false);
+  useEffect(() => {
+    const echap = (e: KeyboardEvent) => { if (e.key === "Escape") onFermer(); };
+    window.addEventListener("keydown", echap);
+    const avant = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", echap); document.body.style.overflow = avant; };
+  }, [onFermer]);
+  if (!monte) return null;
+  const libelleTrimestre = (t: number) => (t === 1 ? "1er trimestre" : `${t}e trimestre`);
+  return createPortal(
+    <div data-impression className="fixed inset-0 z-[80] overflow-y-auto bg-navy-deep/50 backdrop-blur-sm print:static print:overflow-visible print:bg-white print:backdrop-blur-none">
+      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-0 sm:p-6 print:block print:max-w-none print:gap-0 print:p-0">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 bg-surface/95 px-4 py-3 shadow-soft backdrop-blur sm:rounded-t-xl print:hidden">
+          <span className="text-sm font-semibold text-ink">{titre} · {views.length} bulletin{views.length > 1 ? "s" : ""}</span>
+          <div className="flex items-center gap-2">
+            <Button variante="secondaire" taille="sm" icone={Printer} disabled={!views.length} onClick={() => window.print()}>Imprimer / PDF</Button>
+            <Button variante="fantome" taille="sm" icone={X} onClick={onFermer} aria-label="Fermer les bulletins" />
+          </div>
+        </div>
+        {views.map((v) => (
+          <div key={v.apprenant.id} className="print:break-after-page">
+            <Document view={v} libelleTrimestre={libelleTrimestre} />
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /** Le document lui-même : couleurs claires explicites pour rester lisible même en thème sombre. */
 function Document({ view, libelleTrimestre }: { view: BulletinView; libelleTrimestre: (t: number) => string }) {
   const a = view.apprenant;
@@ -113,7 +149,8 @@ function Document({ view, libelleTrimestre }: { view: BulletinView; libelleTrime
 
       <section className="mt-5 grid grid-cols-2 gap-3">
         <Synthese libelle="Moyenne générale" valeur={view.moyenneGenerale != null ? `${nombre(view.moyenneGenerale, 2)}/20` : "—"} accent={view.moyenneGenerale != null && view.moyenneGenerale < 10} />
-        <Synthese libelle="Absences enregistrées" valeur={`${view.absences.total} jour${view.absences.total > 1 ? "s" : ""}`} indice={view.absences.justifiees ? `dont ${view.absences.justifiees} justifiée(s)` : undefined} />
+        <Synthese libelle="Absences enregistrées" valeur={`${view.absences.total} jour${view.absences.total > 1 ? "s" : ""}`}
+          indice={[view.absences.justifiees ? `dont ${view.absences.justifiees} justifiée(s)` : null, view.absencesSur ?? null].filter(Boolean).join(" · ") || undefined} />
       </section>
 
       <footer className="mt-6 border-t border-slate-200 pt-3 text-[11px] leading-relaxed text-slate-500">

@@ -14,7 +14,7 @@ import { BandeauAccueil, type ATraiter } from "@/components/tableau/Tableau";
 import { Badge, Button, Card, CardHeader, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { tachesEtablissement } from "@/lib/taches";
 import { useProfil } from "@/lib/session";
-import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useJustificatifs, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
+import { useAbsencesDuJour, useAccompagnementMutation, useConseilPassageMutation, useDemandes, useEleves, useJustificatifs, useEnseignantsEtablissement, useModifierClasseMutation, useTableau, provenancePeriode, type Absence, type ClasseTableau, type DecisionPassage, type Demande, type EleveLigne, type Tableau } from "@/lib/api/etablissement";
 import { CIRCUIT_LIBELLE, ETAPES_ACCOMPAGNEMENT, etapesDuCircuit } from "@/lib/circuits";
 import { cn } from "@/lib/cn";
 import { date, entier, nombre, note, pourcent } from "@/lib/format";
@@ -84,7 +84,7 @@ function TableauDeBord({ id }: { id: string }) {
           <Element><TuileIndicateur libelle="Apprenants" icone={Users} accent="bleu" valeur={<Compteur valeur={t.chiffres.apprenants} format={entier} />} indice={`${t.classes.length} classes`} /></Element>
           <Element><TuileIndicateur libelle="Occupation" icone={Percent} accent={t.chiffres.apprenants > t.chiffres.capacite ? "critique" : "sarcelle"} valeur={<Compteur valeur={(t.chiffres.apprenants / Math.max(1, t.chiffres.capacite)) * 100} format={(v) => nombre(v, 0)} />} unite="%" indice={`capacité ${entier(t.chiffres.capacite)} places`} /></Element>
           <Element><TuileIndicateur libelle="Enseignants" icone={GraduationCap} accent="bleu" valeur={<Compteur valeur={t.chiffres.enseignants} format={entier} />} indice={t.chiffres.enseignants ? `${nombre(t.chiffres.apprenants / t.chiffres.enseignants, 0)} élèves par enseignant` : undefined} /></Element>
-          <Element><TuileIndicateur libelle={`Moyenne T${t.trimestre}`} icone={BookOpenCheck} accent="ambre" valeur={t.chiffres.moyenne != null ? <Compteur valeur={t.chiffres.moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice="toutes matières" /></Element>
+          <Element><TuileIndicateur libelle={`Moyenne T${t.trimestre}`} icone={BookOpenCheck} accent="ambre" valeur={t.chiffres.moyenne != null ? <Compteur valeur={t.chiffres.moyenne} format={(v) => nombre(v, 2)} /> : "—"} unite="/20" indice={provenancePeriode(t.periode) ?? "toutes matières"} /></Element>
           <Element><TuileIndicateur libelle="Absents aujourd'hui" icone={CalendarX2} accent={nbAbsents ? "critique" : "neutre"} valeur={<Compteur valeur={nbAbsents} format={entier} />} indice={<span className="inline-flex items-center gap-1.5"><PointDirect actif={!absences.isError} className="scale-75" /> {pourcent((nbAbsents / Math.max(1, t.chiffres.apprenants)) * 100)} · en direct</span>} /></Element>
         </Cascade>
       )}
@@ -127,6 +127,7 @@ function CarteAlertes({ t }: { t: Tableau | undefined }) {
   const lignes: { icone: LucideIcon; ton: "avertissement" | "info" | "critique"; titre: string; detail: string; lien?: string; action?: string }[] = [];
   if (a.baisse.length) lignes.push({ icone: TrendingDown, ton: "avertissement", titre: `${a.baisse.length} élève${a.baisse.length > 1 ? "s" : ""} en baisse importante en mathématiques`, detail: "Trois évaluations consécutives en recul d'au moins 5 points au total", lien: "/etablissement/eleves?filtre=baisse", action: "Voir la liste" });
   if (a.regularisations.length) lignes.push({ icone: Fingerprint, ton: "info", titre: `${a.regularisations.length} identité${a.regularisations.length > 1 ? "s" : ""} en cours de régularisation`, detail: "Inscription maintenue ; démarche engagée auprès de l'agence d'identification", lien: "/etablissement/eleves?filtre=identite", action: "Suivre" });
+  if (a.saisiesParInspection?.faits) lignes.push({ icone: ClipboardList, ton: "info", titre: `${a.saisiesParInspection.faits} fait(s) saisi(s) par l'inspection pour votre compte`, detail: "Appel et notes reportés depuis des pièces papier quand l'école n'était pas connectée — chacun porte la référence de sa pièce.", lien: "/etablissement/eleves", action: "Consulter" });
   for (const s of a.surcharges) lignes.push({ icone: Users, ton: "critique", titre: `${s.classe} au-delà de sa capacité`, detail: `${s.effectif} élèves pour ${s.capacite} places`, lien: "/etablissement/eleves", action: "Examiner" });
   if (a.enseignantsSansFormation) lignes.push({ icone: GraduationCap, ton: "avertissement", titre: `${a.enseignantsSansFormation} enseignant${a.enseignantsSansFormation > 1 ? "s n'ont" : " n'a"} pas suivi la formation obligatoire`, detail: `« ${a.formationObligatoire} »` });
 

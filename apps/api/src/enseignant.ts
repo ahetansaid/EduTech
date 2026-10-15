@@ -8,6 +8,7 @@ import { z } from "zod";
 import { authentifie, base, comparerFr, corps, journaliser, refuser, type Variables } from "./commun";
 import { inscrireAuRegistre } from "./ecriture";
 import { enseignantDe } from "./parcours";
+import { enTete, periodePrincipale, periodesDesClasses } from "./periode";
 
 /**
  * Espace enseignant et notifications personnelles.
@@ -17,7 +18,6 @@ import { enseignantDe } from "./parcours";
 export const enseignant = new Hono<{ Variables: Variables }>();
 
 const ID_CLASSE = z.string().regex(/^CLS-[A-Za-z0-9-]+$/);
-const TRIMESTRE_COURANT = 2;
 
 /** Catalogue de formation continue ouvert à l'inscription (la première est obligatoire cette année). */
 export const CATALOGUE_FORMATIONS = [
@@ -42,14 +42,19 @@ enseignant.get("/moi/classes", authentifie, async (c) => {
   const ids = [...new Set(liens.map((l) => l.classeId))];
   if (!ids.length) return c.json({ enseignant: e, classes: [] });
   const jour = aujourdhui();
+  // Chaque classe au trimestre de référence de SON année scolaire (un enseignant peut tenir deux années).
+  const classesTenues = [...new Map(liens.map((l) => [l.classeId, { id: l.classeId, anneeScolaire: l.classe.anneeScolaire }])).values()];
+  const periodes = await periodesDesClasses(classesTenues);
+  const trimestreDe = new Map(classesTenues.map((cl) => [cl.id, periodes.get(cl.anneeScolaire)?.trimestre ?? 1]));
   const stats = await base().execute<{ classe_id: string; effectif: number; absents: number; moyenne: number | null }>(sql`
     with el as (select apprenant_id, classe_id from core.scolarites where statut = 'scolarise' and classe_id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))),
     ma as (select classe_id, matiere from core.enseignements where enseignant_id = ${e.id}),
+    tr as (select classe_id, t::int as t from jsonb_each_text(${JSON.stringify(Object.fromEntries(trimestreDe))}::jsonb) as x(classe_id, t)),
     notes as (
       select n.classe_id, n.note as n from core.notes n
       join el on el.apprenant_id = n.apprenant_id and el.classe_id = n.classe_id
       join ma on ma.classe_id = n.classe_id and ma.matiere = n.matiere
-      where n.trimestre = ${TRIMESTRE_COURANT}
+      join tr on tr.classe_id = n.classe_id and tr.t = n.trimestre
     ),
     ev as (select apprenant_id, donnees from ledger.evenements where type = 'ABSENCE' and apprenant_id in (select apprenant_id from el) and donnees->>'date' = ${jour})
     select k.classe_id,
@@ -63,7 +68,7 @@ enseignant.get("/moi/classes", authentifie, async (c) => {
     .where(inArray(schema.etablissements.id, [...new Set(liens.map((l) => l.classe.etablissementId))]));
   return c.json({
     enseignant: { id: e.id, nom: e.nom, prenoms: e.prenoms, grade: e.grade, matieres: e.matieres, etablissementId: e.etablissementId },
-    trimestre: TRIMESTRE_COURANT, date: jour,
+    ...enTete(periodePrincipale(periodes)), date: jour,
     classes: ids.map((id) => {
       const l = liens.filter((x) => x.classeId === id);
       const s = parClasse.get(id);
@@ -71,7 +76,7 @@ enseignant.get("/moi/classes", authentifie, async (c) => {
         id, libelle: l[0]!.classe.libelle, niveau: l[0]!.classe.niveau, capacite: l[0]!.classe.capacite,
         etablissement: etabs.find((x) => x.id === l[0]!.classe.etablissementId)?.nom ?? null,
         matieres: l.map((x) => x.matiere), principal: l[0]!.classe.enseignantPrincipalId === e.id,
-        effectif: s?.effectif ?? 0, absentsDuJour: s?.absents ?? 0, moyenne: s?.moyenne ?? null,
+        effectif: s?.effectif ?? 0, absentsDuJour: s?.absents ?? 0, moyenne: s?.moyenne ?? null, trimestre: trimestreDe.get(id) ?? 1,
       };
     }).sort((a, b) => comparerFr(a.libelle, b.libelle)),
   });
@@ -91,15 +96,15 @@ enseignant.get("/classes/:id", authentifie, async (c) => {
     refuser("Aucune relation pédagogique avec cette classe : consultation refusée et journalisée");
   }
   const visibles = matieres.length ? matieres : [...MATIERES];
-  const lignes = await base().execute<{ id: string; apprenant_id: string; type: string; survenu_le: string; matiere: string | null; trimestre: number | null; note: number | null; corrigee: boolean; date: string | null; justifiee: boolean | null }>(sql`
+  const lignes = await base().execute<{ id: string; apprenant_id: string; type: string; survenu_le: string; matiere: string | null; trimestre: number | null; note: number | null; corrigee: boolean; date: string | null; justifiee: boolean | null; type_evaluation: string | null }>(sql`
     with el as (select apprenant_id from core.scolarites where statut = 'scolarise' and classe_id = ${classeId})
-    select n.evenement_id as id, n.apprenant_id, 'EVALUATION' as type, n.survenu_le, n.matiere, n.trimestre, n.note, n.corrigee, null as date, null::boolean as justifiee
+    select n.evenement_id as id, n.apprenant_id, 'EVALUATION' as type, n.survenu_le, n.matiere, n.trimestre, n.note, n.corrigee, null as date, null::boolean as justifiee, n.type_evaluation
     from core.notes n
     where n.classe_id = ${classeId} and n.apprenant_id in (select apprenant_id from el)
       and n.matiere in (select jsonb_array_elements_text(${JSON.stringify(visibles)}::jsonb))
     union all
     select e.id, e.apprenant_id, 'ABSENCE', e.survenu_le, null, null, null, false, e.donnees->>'date',
-      ((e.donnees->>'justifiee')::boolean or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id))
+      ((e.donnees->>'justifiee')::boolean or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id)), null
     from ledger.evenements e
     where e.type = 'ABSENCE' and e.apprenant_id in (select apprenant_id from el) and e.donnees->>'classeId' = ${classeId}
     order by 4
@@ -108,15 +113,17 @@ enseignant.get("/classes/:id", authentifie, async (c) => {
     .from(schema.scolarites).innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.scolarites.apprenantId))
     .where(and(eq(schema.scolarites.classeId, classeId), eq(schema.scolarites.statut, "scolarise")));
   const jour = aujourdhui();
+  const periode = (await periodesDesClasses([{ id: classe.id, anneeScolaire: classe.anneeScolaire }])).get(classe.anneeScolaire) ?? null;
+  const trimestre = periode?.trimestre ?? 1;
   await journaliser(profil, "Consultation d'un carnet de classe", classeId, chef && !matieres.length ? "gestion" : "evaluation", true, null);
   return c.json({
     classe: { id: classe.id, libelle: classe.libelle, niveau: classe.niveau, capacite: classe.capacite, etablissementId: classe.etablissementId, anneeScolaire: classe.anneeScolaire },
-    matieres: visibles, lecture: !matieres.length, trimestre: TRIMESTRE_COURANT, date: jour,
+    matieres: visibles, lecture: !matieres.length, ...enTete(periode), date: jour,
     eleves: eleves.map((a) => {
       const miens = lignes.filter((l) => l.apprenant_id === a.id);
-      const notes = miens.filter((l) => l.type === "EVALUATION").map((l) => ({ id: l.id, matiere: l.matiere!, trimestre: l.trimestre!, note: Number(l.note), corrigee: l.corrigee, le: l.survenu_le }));
+      const notes = miens.filter((l) => l.type === "EVALUATION").map((l) => ({ id: l.id, matiere: l.matiere!, trimestre: l.trimestre!, note: Number(l.note), corrigee: l.corrigee, le: l.survenu_le, typeEvaluation: l.type_evaluation }));
       const abs = miens.filter((l) => l.type === "ABSENCE").map((l) => ({ id: l.id, date: l.date!, justifiee: !!l.justifiee }));
-      const duTrimestre = notes.filter((n) => n.trimestre === TRIMESTRE_COURANT);
+      const duTrimestre = notes.filter((n) => n.trimestre === trimestre);
       return {
         ...a, notes, absences: abs.length, absentAujourdhui: abs.some((x) => x.date === jour),
         moyenneTrimestre: duTrimestre.length ? duTrimestre.reduce((s, n) => s + n.note, 0) / duTrimestre.length : null,

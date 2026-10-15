@@ -32,7 +32,7 @@ export const QuestionAnalyse = z.object({ question: z.string().trim().min(3).max
 export type TonConstat = "favorable" | "defavorable" | "neutre" | "alerte";
 export interface ConstatAnalyse { texte: string; ton: TonConstat }
 
-export interface BarreAnalyse { cle: string; libelle: string; valeur: number | null; accent?: boolean; masquee?: boolean; effectif?: number }
+export interface BarreAnalyse { cle: string; libelle: string; valeur: number | null; accent?: boolean; masquee?: boolean; effectif?: number | null }
 export interface SerieAnalyse { nom: string; points: { x: string; y: number | null }[]; pointille?: boolean; discret?: boolean }
 
 /** Figures : une description, pas un dessin. Le client choisit le composant, le serveur choisit la figure. */

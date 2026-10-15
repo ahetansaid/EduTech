@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Finalite, Matiere, Profil } from "@beile/contracts";
-import { MATIERES } from "@beile/contracts";
+import { MATIERES, TYPES_EVALUATION } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { decider } from "@beile/simulation/abac";
 import { indexer, situationApprenant } from "@beile/simulation/projections";
@@ -11,6 +11,7 @@ import { z } from "zod";
 import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
 import { classesCourantes, dejaSaisi, effectifClasse, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
+import { ouvertureDuTrimestre, trimestreAuCalendrier } from "./periode";
 
 /**
  * Parcours individuels : espace famille, passeport de l'apprenant, notes, inscription.
@@ -81,6 +82,7 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
     classeId: ID_CLASSE,
     matiere: z.enum(MATIERES),
     trimestre: z.number().int().min(1).max(3),
+    typeEvaluation: z.enum(TYPES_EVALUATION).optional(),
     notes: z.array(z.object({ apprenantId: ID_APPRENANT, note: z.number().min(0).max(20).refine((n) => Number.isInteger(n * 4), "au quart de point") })).min(1).max(80),
     idSaisie: ID_SAISIE,
   }).strict());
@@ -96,9 +98,16 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
   const deja = await dejaSaisi(saisie.idSaisie, "EVALUATION");
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
+  // Pas de note pour un trimestre que le calendrier officiel n'a pas encore ouvert (une année qu'il ne couvre pas
+  // n'est pas bornée : rien ne permet de le prouver).
+  const enCours = await trimestreAuCalendrier(classe!.anneeScolaire);
+  if (enCours != null && saisie.trimestre > enCours) {
+    const ouverture = await ouvertureDuTrimestre(classe!.anneeScolaire, saisie.trimestre);
+    throw new HTTPException(422, { message: `Le ${saisie.trimestre === 2 ? "2e" : "3e"} trimestre ${classe!.anneeScolaire} n'est pas ouvert${ouverture ? ` (calendrier officiel : ${ouverture})` : ""} : la note se saisit au trimestre ${enCours}.` });
+  }
   const enregistres = await inscrireAuRegistre(saisie.notes.map((n) => ({
     type: "EVALUATION", auteurId: enseignant!.id, etablissementId: classe!.etablissementId, apprenantId: n.apprenantId,
-    donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
+    donnees: { apprenantId: n.apprenantId, classeId: saisie.classeId, matiere: saisie.matiere as Matiere, note: n.note, trimestre: saisie.trimestre, anneeScolaire: classe!.anneeScolaire, ...(saisie.typeEvaluation ? { typeEvaluation: saisie.typeEvaluation } : {}), ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
   })));
   await journaliser(profil, "Saisie de notes", `${saisie.classeId} · ${saisie.matiere} (${enregistres.length})`, "evaluation", true, null);
   return c.json({ enregistres }, 201);

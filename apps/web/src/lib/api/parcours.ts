@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification } from "@beile/contracts";
 import { MATIERES, NOM_DIPLOME_ATTESTE } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,12 +33,12 @@ export const CLE_PASSEPORT = ["apprenant", "passeport"] as const;
 
 /** Enfants rattachés par un lien de filiation vérifié. Rafraîchi toutes les 30 s : une absence saisie en classe apparaît. */
 export function useEnfants() {
-  return useQuery({ queryKey: CLE_ENFANTS, queryFn: ({ signal }) => lire<Dossier[]>("/famille/enfants", signal), refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLE_ENFANTS, queryFn: ({ signal }) => lire<Dossier[]>("/famille/enfants", signal), refetchInterval: rafraichir(30_000) });
 }
 
 /** Passeport éducatif de l'apprenant connecté. */
 export function usePasseport() {
-  return useQuery({ queryKey: CLE_PASSEPORT, queryFn: ({ signal }) => lire<Dossier>("/moi/passeport", signal), refetchInterval: 60_000 });
+  return useQuery({ queryKey: CLE_PASSEPORT, queryFn: ({ signal }) => lire<Dossier>("/moi/passeport", signal), refetchInterval: rafraichir(60_000) });
 }
 
 export function useJustifierAbsenceMutation() {

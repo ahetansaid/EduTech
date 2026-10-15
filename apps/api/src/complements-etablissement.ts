@@ -6,12 +6,12 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, comparerFr, journaliser, refuser, type Variables } from "./commun";
 import { dossier } from "./parcours";
+import { enTete, periodesDesClasses } from "./periode";
 
 /** Routes complémentaires de l'espace « etablissement » (ajoutées pendant le branchement du front). */
 export const complementsEtablissement = new Hono<{ Variables: Variables }>();
 
 const ID_APPRENANT = z.string().regex(/^APP-\d{6}$/);
-const TRIMESTRE_COURANT = 2;
 
 /**
  * Dossier de gestion d'un apprenant : décision ABAC (rôle, périmètre, relation, finalité) prise et journalisée
@@ -26,8 +26,11 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
   const d = r.dossier;
 
   const notes = notesApprenant(d.evenements, apprenantId);
+  // Moyennes du trimestre de référence de l'année de sa classe actuelle — jamais le même numéro d'une autre année.
+  const classeActuelle = d.situation.classe;
+  const periode = classeActuelle ? (await periodesDesClasses([{ id: classeActuelle.id, anneeScolaire: classeActuelle.anneeScolaire }])).get(classeActuelle.anneeScolaire) ?? null : null;
   const parMatiere = new Map<string, number[]>();
-  for (const n of notes) if (n.trimestre === TRIMESTRE_COURANT) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
+  for (const n of notes) if (periode && n.trimestre === periode.trimestre && n.anneeScolaire === periode.anneeScolaire) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
 
   // Historique longitudinal : les mêmes notes déjà chargées pour ce dossier, agrégées par année et trimestre.
   // Moyenne générale = moyenne non pondérée des moyennes de matière (aucun coefficient transmis), comme la tuile du trimestre courant.
@@ -63,7 +66,7 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
       niveau: d.situation.classe?.niveau ?? null,
       anneeScolaire: d.situation.classe?.anneeScolaire ?? null,
     },
-    trimestre: TRIMESTRE_COURANT,
+    ...enTete(periode),
     moyennes: [...parMatiere].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, x) => s + x, 0) / notes.length, nombre: notes.length })).sort((x, y) => comparerFr(x.matiere, y.matiere)),
     historique,
     absences: d.evenements.filter((e) => e.type === "ABSENCE").length,

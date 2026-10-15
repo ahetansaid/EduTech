@@ -9,7 +9,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, refuser, type Variables } from "./commun";
 import { dejaSaisi, inscrireAuRegistre } from "./ecriture";
-import { perimetrePilotage } from "./pilotage";
+import { perimetrePilotage, ROLES_TUTELLE } from "./pilotage";
 
 /**
  * Visites d'inspection : ce que l'agent de tutelle a vu, dans quelle école, ce qu'il recommande, et si la
@@ -24,14 +24,14 @@ import { perimetrePilotage } from "./pilotage";
  */
 export const visites = new Hono<{ Variables: Variables }>();
 
-const ROLES_VISITE = ["inspecteur", "direction_departementale", "administration_centrale"] as const;
+const ROLES_VISITE = ROLES_TUTELLE;
 
 /**
  * Périmètre de TUTELLE, réservé aux agents de tutelle : un chercheur ne lit pas les constats d'une visite. Le
  * périmètre retenu est celui d'une habilitation de tutelle — jamais celui d'un autre rôle cumulé (un profil
  * chercheur national ET inspecteur d'une circonscription n'inspecte que sa circonscription).
  */
-async function habilitation(profil: Profil): Promise<Perimetre> {
+export async function habilitation(profil: Profil): Promise<Perimetre> {
   const tutelle = profil.habilitations.filter((h) => (ROLES_VISITE as readonly string[]).includes(h.role));
   if (!tutelle.length) {
     // Porte fermée = trace : le journal promet le critère manquant pour tout accès, accordé ou refusé.
@@ -53,12 +53,44 @@ const ETB = z.string().regex(RE_ETB);
  * jamais une liste d'identifiants collée dans la requête, et le même filtre s'applique au fait et à sa source.
  * Un inspecteur est borné à SA circonscription (comme partout ailleurs dans l'API), pas à toute sa commune.
  */
-function etablissementsDuPerimetre(perimetre: Perimetre) {
+export function etablissementsDuPerimetre(perimetre: Perimetre) {
   const autorisees = communesDuPerimetre(perimetre);
   if (!autorisees) return null;
   const circonscription = perimetre.niveau === "circonscription" ? sql` and circonscription = ${perimetre.circonscription}` : sql``;
   return sql`select id from core.etablissements where commune_id in (select jsonb_array_elements_text(${JSON.stringify([...autorisees])}::jsonb))${circonscription}`;
 }
+
+/**
+ * Visites annoncées : la « prochaine visite » saisie dans un compte rendu devient un rappel. Pour chaque école du
+ * périmètre, on lit l'annonce de sa DERNIÈRE visite ; elle est à faire si elle tombe dans les 14 jours, en retard
+ * si sa date est passée sans nouvelle visite depuis. Le poste de pilotage de l'agent la fait remonter.
+ */
+visites.get("/visites/a-venir", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
+  const profil = c.get("profil");
+  const perimetre = await habilitation(profil);
+  const dansPerimetre = etablissementsDuPerimetre(perimetre);
+  const jour = aujourdhui();
+  const horizon = new Date(Date.parse(`${jour}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+  const lignes = await base().execute<{ etablissement_id: string; nom: string; derniere: string; prochaine: string }>(sql`
+    with derniere as (
+      select distinct on (e.etablissement_id) e.etablissement_id,
+             (e.donnees->>'dateVisite') as derniere,
+             case when pg_input_is_valid(e.donnees->>'prochaineVisiteLe', 'date') then e.donnees->>'prochaineVisiteLe' end as prochaine
+      from ledger.evenements e
+      where e.type = 'VISITE_D_INSPECTION' ${dansPerimetre ? sql`and e.etablissement_id in (${dansPerimetre})` : sql``}
+      order by e.etablissement_id, e.donnees->>'dateVisite' desc, e.survenu_le desc
+    )
+    select d.etablissement_id, t.nom, d.derniere, d.prochaine from derniere d
+    join core.etablissements t on t.id = d.etablissement_id
+    where d.prochaine is not null and d.prochaine <= ${horizon}
+    order by d.prochaine
+    limit 200`);
+  await journaliser(profil, "Consultation des visites annoncées", `${lignes.length} visite(s)`, "controle", true, null);
+  return c.json({
+    date: jour,
+    visites: lignes.map((l) => ({ etablissementId: l.etablissement_id, etablissement: l.nom, derniereVisite: l.derniere, prevueLe: l.prochaine, enRetard: l.prochaine < jour })),
+  });
+});
 
 /** Fait déjà inscrit (même clé de saisie), découvert dans la transaction : on rend la visite existante. */
 class VisiteDejaInscrite extends Error { constructor(public id: string) { super("deja"); } }

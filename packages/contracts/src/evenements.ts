@@ -29,6 +29,22 @@ export const QUALITES_CONSEIL = [
 ] as const;
 export type QualiteConseil = (typeof QUALITES_CONSEIL)[number];
 
+/**
+ * Nature d'une évaluation. Enregistrée, pas encore pondérée : les coefficients officiels par série et niveau
+ * n'étant pas fournis, la moyenne reste non pondérée — et l'écran le dit. Facultative : les notes déjà inscrites
+ * au registre, qui ne s'efface pas, n'en portent pas.
+ */
+export const TYPES_EVALUATION = ["interrogation", "devoir", "composition"] as const;
+export type TypeEvaluation = (typeof TYPES_EVALUATION)[number];
+
+/**
+ * Saisie de secours par la tutelle pour un établissement NON CONNECTÉ (aucun chef d’établissement actif sur la
+ * plateforme) : le fait dit qui l’a saisi et sur quelle pièce (feuille d’appel, relevé de notes papier). Il
+ * s’ajoute au registre comme les autres ; la marque le distingue à jamais d’une saisie de l’établissement.
+ */
+export const SaisiePour = z.object({ autorite: z.literal("inspection"), piece: z.string().min(3).max(120) }).strict();
+export type SaisiePour = z.infer<typeof SaisiePour>;
+
 const Base = z.object({
   id: z.string(),
   survenuLe: z.string(),
@@ -56,6 +72,8 @@ export const Evenement = z.discriminatedUnion("type", [
     note: z.number().min(0).max(20),
     trimestre: z.number().int().min(1).max(3),
     anneeScolaire: z.string(),
+    typeEvaluation: z.enum(TYPES_EVALUATION).optional(),
+    saisiePour: SaisiePour.optional(),
   }),
   Base.extend({
     type: z.literal("CORRECTION_EVALUATION"),
@@ -71,6 +89,7 @@ export const Evenement = z.discriminatedUnion("type", [
     date: z.string(),
     justifiee: z.boolean(),
     anneeScolaire: z.string(),
+    saisiePour: SaisiePour.optional(),
   }),
   /**
    * Justificatif d'absence transmis par un responsable légal. Ajout seul : il référence les absences

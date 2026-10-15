@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { Certificat, DecisionAcces, Evenement, QualiteConseil, StatutIdentite } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, ErreurApi, lire } from "@/lib/http";
@@ -26,15 +27,23 @@ export interface ClasseTableau {
 
 export interface EleveEnBaisse { apprenantId: string; nom?: string; notes: number[]; baisse: number | null }
 
+/** D'où vient le trimestre affiché : le calendrier officiel de l'année, ou à défaut le dernier trimestre saisi. */
+export interface Periode { anneeScolaire: string; trimestre: number; source: "calendrier" | "notes" | "defaut" }
+export const provenancePeriode = (p: Periode | null | undefined) =>
+  !p ? null : p.source === "calendrier" ? `calendrier officiel ${p.anneeScolaire}` : p.source === "notes" ? `dernier trimestre saisi · ${p.anneeScolaire}` : `aucune note encore · ${p.anneeScolaire}`;
+
 export interface Tableau {
   etablissement: { id: string; nom: string; communeId: string; circonscription: string; capacite: number; cycle: "primaire" | "secondaire" };
   date: string;
   trimestre: number;
+  periode: Periode | null;
   chiffres: { apprenants: number; capacite: number; enseignants: number; moyenne: number | null; absentsDuJour: number };
   classes: ClasseTableau[];
   alertes: {
     baisse: EleveEnBaisse[];
     regularisations: { id: string; nom?: string }[];
+    /** Faits saisis par l'inspection pour le compte de l'école quand elle n'était pas connectée. */
+    saisiesParInspection?: { faits: number; derniere: string | null };
     enseignantsSansFormation: number;
     formationObligatoire: string;
     surcharges: { classe: string; effectif: number; capacite: number }[];
@@ -88,6 +97,7 @@ export interface DossierGestion {
   apprenant: { id: string; nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; statutIdentite: StatutIdentite; besoinsParticuliers: boolean };
   situation: { statut: "scolarise" | "abandon" | "non_inscrit"; etablissementId: string | null; etablissement: string | null; classeId: string | null; classe: string | null; niveau: string | null; anneeScolaire: string | null };
   trimestre: number;
+  periode: Periode | null;
   moyennes: { matiere: string; moyenne: number; nombre: number }[];
   historique: { anneeScolaire: string; trimestre: number; moyenne: number | null; matieres: { matiere: string; moyenne: number; nombre: number }[] }[];
   absences: number;
@@ -130,6 +140,8 @@ export interface DemandeATraiter extends Demande {
   etablissement: string | null;
   modeleLibelle: string;
   etapeRole: string;
+  /** Demande que j'ai émise, échue chez quelqu'un d'autre : elle remonte chez moi pour être relancée. */
+  escalade?: boolean;
 }
 
 export type CorpsInscription =
@@ -174,7 +186,7 @@ export function useTableau(id: string | null) {
     queryKey: cles.tableau(id ?? "-"),
     queryFn: ({ signal }) => lire<Tableau>(`/etablissements/${e(id!)}/tableau`, signal),
     enabled: !!id,
-    refetchInterval: 60_000,
+    refetchInterval: rafraichir(60_000),
   });
 }
 
@@ -190,12 +202,29 @@ export function useEleves(id: string | null) {
 /** GET /etablissements/:id/personnel */
 export interface ClasseTenue { classeId: string; classe: string; niveau: string; matiere: string; principal: boolean; effectif: number; notesTrimestre: number; derniereNote: string | null }
 export interface MembrePersonnel {
-  id: string; nom: string; prenoms: string; sexe: "M" | "F"; grade: string | null; matieres: string[]; anciennete: number | null;
+  id: string; nom: string; prenoms: string; sexe: "M" | "F"; grade: string | null; matieres: string[]; anciennete: number | null; statut: StatutEmploi | null;
   classes: ClasseTenue[]; eleves: number; formations: { intitule: string; le: string }[]; formationObligatoire: boolean;
 }
-export interface Personnel { trimestre: number; formationObligatoire: string; personnel: MembrePersonnel[] }
+export interface Personnel { trimestre: number; periode: Periode | null; formationObligatoire: string; personnel: MembrePersonnel[] }
 
 /** Personnel enseignant de l'établissement : charge, formations, suivi des notes par classe et matière. */
+/** Bulletins d'une classe au trimestre de référence : une seule requête pour l'impression groupée. */
+export interface BulletinsClasse {
+  etablissement: string;
+  classe: { id: string; libelle: string; anneeScolaire: string };
+  trimestre: number;
+  periode: Periode | null;
+  absencesSur: string;
+  bulletins: { apprenant: { id: string; nom: string; prenoms: string }; matieres: { matiere: string; moyenne: number; nb: number }[]; moyenneGenerale: number | null; absences: { total: number; justifiees: number } }[];
+}
+export function useBulletinsClasse(id: string | null, classeId: string | null) {
+  return useQuery({
+    queryKey: ["etablissement", id ?? "-", "bulletins", classeId ?? "-"],
+    queryFn: ({ signal }) => lire<BulletinsClasse>(`/etablissements/${e(id!)}/classes/${e(classeId!)}/bulletins`, signal),
+    enabled: !!id && !!classeId,
+  });
+}
+
 export function usePersonnel(id: string | null) {
   return useQuery({
     queryKey: cles.personnel(id ?? "-"),
@@ -221,7 +250,7 @@ export function useAbsencesDuJour(id: string | null, date = jourCourant()) {
     queryKey: cles.absences(id ?? "-", date),
     queryFn: ({ signal }) => lire<Absence[]>(`/etablissements/${e(id!)}/absences?date=${e(date)}`, signal),
     enabled: !!id,
-    refetchInterval: 15_000,
+    refetchInterval: rafraichir(15_000),
     refetchIntervalInBackground: false,
   });
 }
@@ -231,7 +260,7 @@ export function useDemandes(id: string | null) {
     queryKey: cles.demandes(id ?? "-"),
     queryFn: ({ signal }) => lire<Demande[]>(`/etablissements/${e(id!)}/demandes`, signal),
     enabled: !!id,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
     select: (l) => [...l].sort((a, b) => b.creeeLe.localeCompare(a.creeeLe)),
   });
 }
@@ -259,7 +288,7 @@ export function useDemandesATraiter(actif: boolean) {
     queryKey: cles.aTraiter,
     queryFn: ({ signal }) => lire<DemandeATraiter[]>("/demandes/a-traiter", signal),
     enabled: actif,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 
@@ -269,7 +298,7 @@ export function useJustificatifs(id: string | null) {
     queryKey: cles.justificatifs(id ?? "-"),
     queryFn: ({ signal }) => lire<Justificatifs>(`/etablissements/${e(id!)}/justificatifs`, signal),
     enabled: !!id,
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 
@@ -377,3 +406,10 @@ export function useConseilPassageMutation(id: string | null) {
     onSuccess: invalider,
   });
 }
+
+/** Statut d'emploi d'un enseignant (tenu par la gestion des personnels, jamais déduit du grade). */
+export type StatutEmploi = "ape" | "ace" | "ame" | "vacataire";
+export const LIBELLE_STATUT_EMPLOI: Record<StatutEmploi, string> = {
+  ape: "Agent permanent de l'État", ace: "Agent contractuel de l'État", ame: "Aspirant au métier d'enseignant", vacataire: "Vacataire",
+};
+export const COURT_STATUT_EMPLOI: Record<StatutEmploi, string> = { ape: "APE", ace: "ACE", ame: "AME", vacataire: "Vacataire" };

@@ -105,7 +105,20 @@ verifier("Carrière", (await enseignant!.appel("GET", "/moi/carriere")).statut, 
 verifier("Absence en 3e A (pas sa classe)", (await enseignant!.appel("POST", "/evenements/absences", { ...absence, classeId: "CLS-PAR-3eA-S" })).statut, 403);
 verifier("Absence d'un élève hors de la classe", (await enseignant!.appel("POST", "/evenements/absences", { ...absence, apprenantIds: [zoulfath] })).statut, 422);
 verifier("Notes de français (pas sa matière)", (await enseignant!.appel("POST", "/evenements/evaluations", { classeId: "CLS-PAR-5eA-S", matiere: "Français", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 12 }] })).statut, 403);
+verifier("Type d'évaluation hors liste : 422", (await enseignant!.appel("POST", "/evenements/evaluations", { classeId: "CLS-PAR-5eA-S", matiere: "Mathématiques", trimestre: 2, typeEvaluation: "examen_blanc", notes: [{ apprenantId: "APP-000001", note: 12 }] })).statut, 422);
 verifier("Note hors barème (21/20)", (await enseignant!.appel("POST", "/evenements/evaluations", { classeId: "CLS-PAR-5eA-S", matiere: "Mathématiques", trimestre: 2, notes: [{ apprenantId: "APP-000001", note: 21 }] })).statut, 422);
+{
+  // Trimestre de référence : une seule règle, qui dit sa source (calendrier de l'année, sinon dernier trimestre saisi).
+  const carnet = await enseignant!.appel("GET", "/classes/CLS-PAR-5eA-S");
+  const p = carnet.json?.periode as { anneeScolaire?: string; trimestre?: number; source?: string } | null;
+  verifier("Carnet : le trimestre affiché dit son année et sa source", !!p && p.trimestre === carnet.json.trimestre && ["calendrier", "notes", "defaut"].includes(p.source ?? ""), true, JSON.stringify(p));
+  const demain = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  verifier("Appel daté d'un jour à venir → 422", (await enseignant!.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: demain, apprenantIds: ["APP-000001"] })).statut, 422);
+  const bul = await directrice!.appel("GET", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/bulletins`);
+  verifier("Directrice : bulletins de toute une classe, au trimestre de référence", bul.statut === 200 && Array.isArray(bul.json?.bulletins) && bul.json.trimestre === (bul.json.periode as { trimestre?: number } | null)?.trimestre, true, `HTTP ${bul.statut}`);
+  verifier("Enseignant : bulletins de classe refusés (gestion de l'établissement)", (await enseignant!.appel("GET", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/bulletins`)).statut, 403);
+  verifier("Appel daté d'un jour inexistant (31 février) → 422", (await enseignant!.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: "2026-02-31", apprenantIds: ["APP-000001"] })).statut, 422);
+}
 verifier("Formation inconnue au catalogue", (await enseignant!.appel("POST", "/moi/formations", { code: "INCONNUE" })).statut, 422);
 
 titre("Familles et apprenants");
@@ -127,6 +140,11 @@ verifier("Administrateur → état de service", (await admin!.appel("GET", "/pla
 verifier("Direction départementale → état de service", (await departement!.appel("GET", "/plateforme/etat")).statut, 403);
 verifier("Qualité des remontées (Borgou)", (await departement!.appel("GET", "/plateforme/qualite")).statut, 200);
 verifier("Relance hors périmètre", (await departement!.appel("POST", "/plateforme/relances", { etablissementIds: ["ETB-COT-PILOTE-CEG"] })).statut, 403);
+verifier("Pilotage : l'origine des chiffres est déclarée (simulation ou registre)", ["simulation", "registre"].includes(String((await central!.appel("GET", "/pilotage/origine")).json?.indicateurs)), true);
+verifier("Hors tutelle → qualité des remontées refusée", (await enseignant!.appel("GET", "/plateforme/qualite")).statut, 403);
+verifier("Hors tutelle → recoupement refusé", (await enseignant!.appel("GET", "/plateforme/recoupement")).statut, 403);
+verifier("Inspection → recoupement de son périmètre", (await inspecteur!.appel("GET", "/plateforme/recoupement")).statut, 200);
+verifier("Dictionnaire national : public par choix (aucune donnée personnelle)", (await anonyme.appel("GET", "/dictionnaire")).statut, 200);
 verifier("Vérification publique d'un diplôme", (await anonyme.appel("GET", "/certificats/CERT-CEP-2024-000001/verification")).statut, 200);
 verifier("Identifiant de diplôme mal formé", (await anonyme.appel("GET", "/certificats/abc'--/verification")).statut, 400);
 // Deux régimes dans le service public : l'identifiant seul atteste l'existence du diplôme, jamais son
@@ -403,6 +421,13 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
   verifier("Bureau du supérieur : catalogue de pilotage", (await central!.appel("GET", "/enseignement-superieur/filieres")).statut, 200);
   verifier("Étudiant·e : catalogue de pilotage refusé", (await etudiantIfri!.appel("GET", "/enseignement-superieur/filieres")).statut, 403);
   verifier("Étudiant·e : son contrat pédagogique", (await etudiantIfri!.appel("GET", "/moi/contrat")).statut, 200);
+  {
+    const offres = await etudiantIfri!.appel("GET", "/moi/contrat/offres");
+    verifier("Étudiant·e : offres d'UE ouvertes à son contrat (sa filière, son année)", offres.statut === 200 && !!offres.json?.inscription && Array.isArray(offres.json?.offres), true, `HTTP ${offres.statut}`);
+    verifier("Étudiant·e : ses stages", (await etudiantIfri!.appel("GET", "/moi/stages")).statut, 200);
+    verifier("Élève du secondaire : pas d'offre d'UE (aucune inscription dans le supérieur)", (await apprenante!.appel("GET", "/moi/contrat/offres")).json?.inscription == null, true);
+    verifier("Élève : ses vœux d'orientation", (await apprenante!.appel("GET", "/moi/voeux")).statut, 200);
+  }
   verifier("Étudiant·e : ses démarches", (await etudiantIfri!.appel("GET", "/moi/actes")).statut, 200);
   verifier("Enseignante : notes d'une offre d'une autre enseignante refusées", (await enseignanteSup!.appel("POST", "/moi/enseignements/notes-ue", { offreUeId: "OFU-inexistante", notes: [{ apprenantId: "APP-900001", note: 12 }] })).statut, 404);
 
@@ -435,6 +460,40 @@ titre("Enseignement supérieur : catalogue public, portes et intégrité (lectur
   }
 }
 
+titre("Boucle d'action : une alerte se prend en charge, se suit, se clôt");
+{
+  const al = await departement!.appel("GET", "/pilotage/alertes");
+  const rapport = await departement!.appel("GET", "/rapports/mensuel");
+  verifier("Direction départementale : rapport mensuel tiré du registre", rapport.statut === 200 && rapport.json?.source === "registre", true, `HTTP ${rapport.statut}`);
+  verifier("Hors tutelle : rapport mensuel refusé", (await enseignant!.appel("GET", "/rapports/mensuel")).statut, 403);
+  verifier("Rapport d'un mois à venir : 422", (await departement!.appel("GET", "/rapports/mensuel?mois=2099-01")).statut, 422);
+  verifier("Chef : responsables sans NPI de son établissement", (await directrice!.appel("GET", `/etablissements/${PILOTE}/familles/responsables-provisoires`)).statut, 200);
+  verifier("Enseignant : attester un responsable sans NPI refusé", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/familles/responsable-provisoire`, { apprenantId: "APP-000001", nomAffiche: "Recette Refus", telephone: "+22901970000", nature: "parent", pieceVue: "Recette : pièce" })).statut, 403);
+  verifier("Rattachement d'un NPI inconnu du registre : refusé", (await directrice!.appel("POST", `/etablissements/${PILOTE}/familles/PRV-AAAAAAAAAA/rattacher-npi`, { npi: "0000000000" })).statut >= 400, true);
+  verifier("Inspection : écoles non connectées de sa circonscription", (await inspecteur!.appel("GET", "/inspection/ecoles-non-connectees")).statut, 200);
+  verifier("Hors inspection : écoles non connectées refusées", (await departement!.appel("GET", "/inspection/ecoles-non-connectees")).statut, 403);
+  verifier("École connectée : la saisie pour son compte est refusée (409), elle lui revient", (await inspecteur!.appel("POST", `/inspection/etablissements/${PILOTE}/absences`, { classeId: "CLS-PAR-5eA-S", date: AUJOURDHUI, apprenantIds: ["APP-000001"], piece: "Recette : feuille d'appel" })).statut, 409);
+  verifier("Enseignant : saisie pour le compte d'une école refusée", (await enseignant!.appel("POST", `/inspection/etablissements/${PILOTE}/absences`, { classeId: "CLS-PAR-5eA-S", date: AUJOURDHUI, apprenantIds: ["APP-000001"], piece: "Recette : feuille d'appel" })).statut, 403);
+  verifier("Direction départementale : statuts d'emploi des enseignants du territoire", (await departement!.appel("GET", "/tutelle/personnels")).statut, 200);
+  verifier("Hors tutelle : statuts des personnels refusés", (await enseignant!.appel("GET", "/tutelle/personnels")).statut, 403);
+  verifier("Inspection : lecture seule, l'écriture d'un statut est refusée", (await inspecteur!.appel("POST", "/enseignants/ENS-00001/statut", { statut: "ape", motif: "Recette : inspection sans droit" })).statut, 403);
+  verifier("Chef d'établissement : ne déclare pas le statut de son personnel", (await directrice!.appel("POST", "/enseignants/ENS-00001/statut", { statut: "ape", motif: "Recette : auto-déclaration" })).statut, 403);
+  verifier("Statut hors liste : 422", (await departement!.appel("POST", "/enseignants/ENS-00001/statut", { statut: "titulaire", motif: "Recette : valeur inventée" })).statut, 422);
+  verifier("Inspection : visites annoncées (rappels du poste de pilotage)", (await inspecteur!.appel("GET", "/visites/a-venir")).statut, 200);
+  verifier("Hors tutelle : visites annoncées refusées", (await enseignant!.appel("GET", "/visites/a-venir")).statut, 403);
+  verifier("Alertes : état de suivi et droit de suivre renvoyés", al.statut === 200 && al.json?.peutSuivre === true && typeof al.json?.suivis === "object", true, `HTTP ${al.statut}`);
+  verifier("Hors tutelle : prise en charge refusée", (await enseignant!.appel("POST", "/pilotage/alertes/suivi", { alerteId: "taux_abandon|parakou|ecart", note: "Hors tutelle", echeanceJours: 30 })).statut, 403);
+  verifier("Alerte inventée : 404", (await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: "taux_abandon|commune-imaginaire|ecart", note: "Alerte qui n'existe pas", echeanceJours: 30 })).statut, 404);
+  const libre = liste(al.json?.alertes).find((a) => !(al.json?.suivis as Record<string, unknown>)[String(a.id)]);
+  if (ECRITURES && libre) {
+    const p = await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: libre.id, note: "Recette : visite des écoles de la commune.", echeanceJours: 30 });
+    verifier("Direction départementale : prise en charge d'une alerte", p.statut, 201);
+    verifier("Une seule prise en charge ouverte par alerte", (await departement!.appel("POST", "/pilotage/alertes/suivi", { alerteId: libre.id, note: "Doublon refusé", echeanceJours: 30 })).statut, 409);
+    verifier("Clôture motivée du suivi", (await departement!.appel("POST", `/pilotage/alertes/suivi/${p.json.demandeId}/cloture`, { issue: "traitee", constat: "Recette : écoles visitées, remédiation engagée." })).statut, 200);
+    verifier("Un suivi clos ne se rouvre pas par une seconde clôture", (await departement!.appel("POST", `/pilotage/alertes/suivi/${p.json.demandeId}/cloture`, { issue: "traitee", constat: "Seconde clôture refusée" })).statut, 409);
+  }
+}
+
 titre("Interopérabilité : connecteurs signés des systèmes partenaires");
 if (!process.env.BEILE_PARTENAIRES) {
   console.log("   (BEILE_PARTENAIRES absent : connecteurs non provisionnés, cas ignorés)");
@@ -464,6 +523,11 @@ if (!process.env.BEILE_PARTENAIRES) {
     const premier = await envoyer("dbau", "/interop/dbau/allocations", corps, { lot });
     verifier("DBAU → décision d'allocation reçue par le connecteur", premier.statut === 201 && premier.json.enregistres === 1, true, `HTTP ${premier.statut}`);
     verifier("Rejeu du même lot → rien ne se double", (await envoyer("dbau", "/interop/dbau/allocations", corps, { lot })).json.deja === true, true);
+    // Un PV rejeté (session inconnue) n'est pas « reçu » : renvoyé sous le même lot, il est retraité, pas pris pour un rejeu.
+    const lotPv = `REC-PV-${Date.now()}`;
+    const pv = { examen: "BEPC", session: "Session-inexistante", pvReference: "PV-RECETTE", decisions: [{ numeroTable: "T-0001", decision: "admis", moyenne: 12 }] };
+    verifier("eRESULTATS → PV sur une session inconnue : 404", (await envoyer("eresultats", "/interop/eresultats/pv-examen", pv, { lot: lotPv })).statut, 404);
+    verifier("Le même lot renvoyé après rejet : retraité (404), pas un faux rejeu (409)", (await envoyer("eresultats", "/interop/eresultats/pv-examen", pv, { lot: lotPv })).statut, 404);
   }
 }
 
@@ -636,6 +700,94 @@ titre("Administration déléguée (cascade, plafond, cumul, double validation)")
       verifier("Révocation : la session du compte est coupée", (await nouveau.appel("GET", "/auth/session")).statut, 401);
     }
   }
+}
+
+titre("Balayage en lecture : chaque route GET exercée par son profil, refus de contrôle");
+{
+  // Toute route de lecture livrée est appelée au moins une fois par le profil qui la sert (200), et les plus
+  // sensibles par un profil qui n'y a pas droit (403). Une lecture jamais appelée n'est pas une lecture testée.
+  const [dirIfri, etudiantIfri, enseignanteSup] = await Promise.all(["prosper.ahouandjinou", "etudiant.ifri", "sena.hounkpatin"].map(async (id) => {
+    const s = new Session(); await s.connexion(id); return s;
+  }));
+  const lit = async (nom: string, s: Session, chemin: string, attendu = 200) => verifier(nom, (await s.appel("GET", chemin)).statut, attendu);
+  const IFRI = "ETB-SUP-UAC-IFRI";
+  const ETU = "APP-900001";
+
+  // Public et session
+  await lit("Référentiel : départements (public)", anonyme, "/referentiels/departements");
+  await lit("Référentiel : communes (public)", anonyme, "/referentiels/communes");
+  const codes = liste((await anonyme.appel("GET", "/dictionnaire")).json).map((d) => String(d.code));
+  await lit("Dictionnaire : une fiche (public)", anonyme, `/dictionnaire/${codes[0]}`);
+  await lit("Dictionnaire : fiche inconnue → 404", anonyme, "/dictionnaire/indicateur_inexistant", 404);
+  await lit("Dictionnaire : impact d'une version publiée (réussite aux examens)", central!, "/dictionnaire/taux_reussite_examen/impact?examen=BEPC");
+  await lit("Dictionnaire : aucune comparaison publiée pour un autre indicateur → 404", central!, `/dictionnaire/${codes.find((x) => x !== "taux_reussite_examen")}/impact`, 404);
+  await lit("Dictionnaire : impact sans session → 401", anonyme, "/dictionnaire/taux_reussite_examen/impact?examen=BEPC", 401);
+  await lit("Ma session : profil courant", enseignant!, "/moi");
+  await lit("État d'authentification", enseignant!, "/auth/etat");
+  await lit("Priorités nationales", central!, "/priorites");
+
+  // Établissement (chef) et classe (enseignant)
+  for (const [nom, chemin] of [["absences", "absences"], ["enseignants", "enseignants"], ["justificatifs", "justificatifs"], ["personnel", "personnel"], ["demandes", "demandes"]] as const) {
+    await lit(`Directrice → ${nom} de l'établissement`, directrice!, `/etablissements/${PILOTE}/${chemin}`);
+  }
+  await lit("Enseignant → personnel de l'établissement refusé", enseignant!, `/etablissements/${PILOTE}/personnel`, 403);
+  await lit("Directrice → dossier de gestion d'un apprenant", directrice!, "/apprenants/APP-000001/dossier-gestion");
+  await lit("Parent → dossier de gestion refusé", parent!, "/apprenants/APP-000001/dossier-gestion", 403);
+  await lit("Directrice → classes d'accueil d'un apprenant", directrice!, "/apprenants/APP-000001/classes-accueil");
+  await lit("Enseignant → historique de sa classe", enseignant!, "/classes/CLS-PAR-5eA-S/historique");
+  const aTraiter = await directrice!.appel("GET", "/demandes/a-traiter");
+  verifier("Directrice → demandes à traiter", aTraiter.statut, 200);
+  const premiereDemande = liste(aTraiter.json)[0]?.id as string | undefined;
+  if (premiereDemande) await lit("Directrice → détail d'une demande", directrice!, `/demandes/${premiereDemande}`);
+  await lit("Parent → ses demandes d'exercice des droits", parent!, "/droits/mes-demandes");
+
+  // Pilotage et tutelle
+  await lit("Direction départementale → alertes", departement!, "/pilotage/alertes");
+  await lit("Direction départementale → priorités du territoire", departement!, "/pilotage/priorites");
+  await lit("Direction départementale → flux du jour", departement!, "/pilotage/flux");
+  await lit("Direction départementale → compléments de la console", departement!, "/pilotage/territoire/complements");
+  await lit("Direction départementale → absences du territoire", departement!, "/pilotage/territoire/absences");
+  await lit("Enseignant → flux du pilotage refusé", enseignant!, "/pilotage/flux", 403);
+  await lit("Direction départementale → transmissions d'une commune", departement!, "/plateforme/qualite/communes/parakou");
+  await lit("Direction départementale → relances suivies", departement!, "/plateforme/relances");
+  await lit("Administration centrale → journal d'interopérabilité", central!, "/plateforme/interoperabilite");
+  await lit("Enseignant → journal d'interopérabilité refusé", enseignant!, "/plateforme/interoperabilite", 403);
+
+  // Gouvernance (DPO) et administration
+  await lit("DPO → journal d'audit", dpo!, "/audit/journal");
+  await lit("DPO → statistiques d'audit", dpo!, "/audit/statistiques");
+  await lit("Enseignant → journal d'audit refusé", enseignant!, "/audit/journal", 403);
+  await lit("Autorité → délégations à valider", admin!, "/delegation/a-valider");
+  await lit("Administrateur → calendrier", admin!, "/admin/calendrier");
+  await lit("Administrateur → référentiel des départements", admin!, "/admin/referentiels/departements");
+  await lit("Administrateur → référentiel des circonscriptions", admin!, "/admin/referentiels/circonscriptions");
+  await lit("Administrateur → recherche d'établissement", admin!, "/admin/referentiels/etablissements?q=CEG");
+  await lit("Administrateur → identifiant proposé", admin!, "/admin/identifiant?nom=Recette%20Balayage");
+  const npiInconnu = await admin!.appel("GET", "/admin/referentiels/npi/0000000009");
+  verifier("Administrateur → recherche d'un NPI inconnu : réponse vide, rien d'inventé", npiInconnu.statut === 200 && npiInconnu.json?.personne == null && npiInconnu.json?.apprenant == null, true, `HTTP ${npiInconnu.statut}`);
+  await lit("Administrateur → tickets d'assistance", admin!, "/assistance/tickets");
+  const comptes = liste((await admin!.appel("GET", "/admin/comptes")).json);
+  if (comptes[0]?.id) await lit("Administrateur → fiche d'un compte", admin!, `/admin/comptes/${comptes[0].id as string}`);
+  await lit("Administrateur → fiche d'un compte à identifiant composé (CPT-directeur-ifri)", admin!, "/admin/comptes/CPT-directeur-ifri");
+  await lit("Administrateur → identifiant de compte mal formé → 422", admin!, "/admin/comptes/CPT-Robert'--", 422);
+  await lit("Enseignant → administration des comptes refusée", enseignant!, "/admin/calendrier", 403);
+
+  // Enseignement supérieur : bureau national, établissement, étudiant, enseignant
+  for (const chemin of ["concours", "echeances", "etablissements", "actes/delais", "allocations/effectifs", "stages/effectifs", "scolarite/effectifs", "scolarite/credits-ects"]) {
+    await lit(`Bureau du supérieur → ${chemin}`, central!, `/enseignement-superieur/${chemin}`);
+  }
+  for (const chemin of ["filieres", "periodes", "offres", "unites-enseignement", "groupes", "regles-validation", "equivalences", "statut-administratif", "scolarite/credits-ects", "stages", "actes", "actes/delais", `contrat/${ETU}`]) {
+    await lit(`Direction IFRI → ${chemin}`, dirIfri!, `/etablissements/${IFRI}/${chemin}`);
+  }
+  const periodeIfri = liste((await dirIfri!.appel("GET", `/etablissements/${IFRI}/periodes`)).json)[0]?.id as string | undefined;
+  if (periodeIfri) await lit("Direction IFRI → validations préparables d'une période", dirIfri!, `/etablissements/${IFRI}/validations/preparables?periodeId=${periodeIfri}`);
+  await lit("Direction IFRI → validations préparables sans période → 422", dirIfri!, `/etablissements/${IFRI}/validations/preparables`, 422);
+  await lit("Étudiant·e → filières de gestion de l'établissement refusées", etudiantIfri!, `/etablissements/${IFRI}/offres`, 403);
+  await lit("Étudiant·e → son attestation de scolarité", etudiantIfri!, "/moi/attestation-scolarite");
+  await lit("Étudiant·e → ses allocations", etudiantIfri!, "/moi/allocations");
+  await lit("Étudiant·e → son dossier d'allocation", etudiantIfri!, "/moi/dossier-allocation");
+  await lit("Enseignante du supérieur → ses offres d'UE", enseignanteSup!, "/moi/enseignements/offres");
+  await lit("Enseignante du supérieur → stages qu'elle encadre", enseignanteSup!, "/moi/stages/encadres");
 }
 
 titre("Fin de session");

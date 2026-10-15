@@ -273,6 +273,12 @@ export const enseignants = core.table("enseignants", {
   etablissementId: text("etablissement_id").notNull().references(() => etablissements.id),
   grade: text("grade").notNull(),
   dateRecrutement: date("date_recrutement").notNull(),
+  /**
+   * Statut d'emploi : Agent permanent de l'État (APE), Agent contractuel de l'État (ACE), Aspirant au métier
+   * d'enseignant (AME), vacataire. Nul = non renseigné : rien n'est déduit du grade. Tenu par la gestion des
+   * personnels (direction départementale, administration centrale), jamais déclaré par l'établissement.
+   */
+  statut: text("statut", { enum: ["ape", "ace", "ame", "vacataire"] }),
 });
 
 export const liensFamiliaux = core.table("liens_familiaux", {
@@ -617,7 +623,8 @@ export const messagesSortants = core.table("messages_sortants", {
   objet: text("objet").notNull(),
   texte: text("texte").notNull(),
   fournisseur: text("fournisseur").notNull(),
-  statut: text("statut", { enum: ["envoye", "echec"] }).notNull(),
+  /** « prepare » : avis SMS préparé et tracé sans envoi (BEILE_AVIS_SMS=journal). */
+  statut: text("statut", { enum: ["envoye", "echec", "prepare"] }).notNull(),
   erreur: text("erreur"),
   creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("messages_compte_idx").on(t.compteId, t.creeLe)]);
@@ -634,12 +641,17 @@ export const clesFido = core.table("cles_fido", {
   utiliseeLe: timestamp("utilisee_le", { withTimezone: true }),
 }, (t) => [index("cles_fido_compte_idx").on(t.compteId)]);
 
-/** Lots reçus des systèmes partenaires : un lot signé ne se rejoue pas (PV d'examen, publication). */
+/**
+ * Lots reçus des systèmes partenaires : un lot signé ne se rejoue pas (PV d'examen, publication).
+ * Le statut sépare ce qui a été traité de ce qui a été rejeté : un lot rejeté n'est pas « reçu » à l'écran,
+ * et son identifiant redevient disponible pour le renvoi corrigé du partenaire.
+ */
 export const lotsInterop = core.table("lots_interop", {
   partenaire: text("partenaire").notNull(),
   lot: text("lot").notNull(),
   message: text("message").notNull(),
   recuLe: timestamp("recu_le", { withTimezone: true }).notNull().defaultNow(),
+  statut: text("statut", { enum: ["en_cours", "accepte", "rejete"] }).notNull().default("accepte"),
 }, (t) => [primaryKey({ columns: [t.partenaire, t.lot] })]);
 
 /** Défis WebAuthn à usage unique (supprimés à la consommation), liés à une session et à une intention. */
@@ -712,6 +724,8 @@ export const notes = core.table("notes", {
   noteInitiale: doublePrecision("note_initiale").notNull(),
   corrigee: boolean("corrigee").notNull().default(false),
   survenuLe: timestamp("survenu_le", { withTimezone: true }).notNull(),
+  /** Interrogation, devoir, composition — nul pour les notes antérieures. Pas encore pondéré. */
+  typeEvaluation: text("type_evaluation", { enum: ["interrogation", "devoir", "composition"] }),
 }, (t) => [index("notes_apprenant_idx").on(t.apprenantId, t.matiere, t.survenuLe), index("notes_classe_idx").on(t.classeId, t.matiere)]);
 
 /* ------------------------------------------------------------------ Assistance (support aux utilisateurs) */

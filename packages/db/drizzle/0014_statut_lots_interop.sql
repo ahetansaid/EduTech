@@ -1,0 +1,1 @@
+ALTER TABLE "core"."lots_interop" ADD COLUMN "statut" text DEFAULT 'accepte' NOT NULL;

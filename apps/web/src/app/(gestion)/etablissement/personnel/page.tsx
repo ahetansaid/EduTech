@@ -4,7 +4,7 @@ import { BadgeCheck, CircleAlert, GraduationCap, Search, Star, UserX, Users, X }
 import { useMemo, useState } from "react";
 import { Cascade, Element, EntreePage } from "@/components/motion";
 import { Badge, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
-import { usePersonnel, type MembrePersonnel } from "@/lib/api/etablissement";
+import { COURT_STATUT_EMPLOI, provenancePeriode, usePersonnel, type MembrePersonnel } from "@/lib/api/etablissement";
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
@@ -66,7 +66,7 @@ export default function PagePersonnel() {
                 <Chiffre libelle="Enseignants" valeur={entier(synthese.total)} detail={`${synthese.femmes} femme${synthese.femmes > 1 ? "s" : ""}`} icone={Users} />
                 <Chiffre libelle="Élèves en charge" valeur={nombre(synthese.charge, 0)} detail="en moyenne, par enseignant en service" icone={GraduationCap} />
                 <Chiffre libelle="Sans formation obligatoire" valeur={entier(synthese.sansFormation.length)} detail={p.formationObligatoire} icone={BadgeCheck} alerte={synthese.sansFormation.length > 0} />
-                <Chiffre libelle="Classes sans note" valeur={entier(synthese.sansNote.length)} detail={`trimestre ${p.trimestre}, par matière`} icone={CircleAlert} alerte={synthese.sansNote.length > 0} />
+                <Chiffre libelle="Classes sans note" valeur={entier(synthese.sansNote.length)} detail={`trimestre ${p.trimestre}, par matière${provenancePeriode(p.periode) ? ` · ${provenancePeriode(p.periode)}` : ""}`} icone={CircleAlert} alerte={synthese.sansNote.length > 0} />
               </dl>
 
               {(synthese.sansService.length > 0 || synthese.sansNote.length > 0) && (
@@ -128,7 +128,7 @@ function CarteEnseignant({ m }: { m: MembrePersonnel }) {
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-soft font-display text-[15px] font-bold text-accent-ink">{initiales}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-ink">{m.prenoms} {m.nom}</p>
-          <p className="truncate text-[12.5px] text-ink-muted">{[m.grade, m.anciennete != null ? `${m.anciennete} an${m.anciennete > 1 ? "s" : ""} de service` : null].filter(Boolean).join(" · ")}</p>
+          <p className="truncate text-[12.5px] text-ink-muted">{[m.statut ? COURT_STATUT_EMPLOI[m.statut] : "statut non renseigné", m.grade, m.anciennete != null ? `${m.anciennete} an${m.anciennete > 1 ? "s" : ""} de service` : null].filter(Boolean).join(" · ")}</p>
         </div>
         {m.formationObligatoire
           ? <Badge ton="succes" icone={BadgeCheck}>Formé</Badge>

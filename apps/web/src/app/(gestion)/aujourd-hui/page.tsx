@@ -7,7 +7,8 @@ import { Cascade, Compteur, Element, EntreePage } from "@/components/motion";
 import { TuileIndicateur } from "@/components/ui/donnees";
 import { Badge, Card, CardHeader, EtatVide, PageHeader, Squelette, type Ton } from "@/components/ui/primitives";
 import { useDemandes, useDemandesATraiter, useJustificatifs, useTableau } from "@/lib/api/etablissement";
-import { AUJOURDHUI_TS, ROLES_FILE, tachesEtablissement, tachesFile, type Tache, type Urgence } from "@/lib/taches";
+import { AUJOURDHUI_TS, ROLES_FILE, tachesEtablissement, tachesFile, tachesVisites, type Tache, type Urgence } from "@/lib/taches";
+import { useVisitesAVenir } from "@/lib/api/visites";
 import { cn } from "@/lib/cn";
 import { entier } from "@/lib/format";
 import { useEtablissementCourant, useRoles } from "@/lib/session";
@@ -34,11 +35,12 @@ export default function PageAujourdhui() {
   const justificatifs = useJustificatifs(etabId);
   const demandesEtab = useDemandes(etabId);
   const demandesFile = useDemandesATraiter(isFile);
+  const visitesAVenir = useVisitesAVenir(isFile);
 
   const taches = useMemo(
-    () => [...(isChef ? tachesEtablissement(tableau.data, justificatifs.data, demandesEtab.data) : []), ...(isFile ? tachesFile(demandesFile.data) : [])]
+    () => [...(isChef ? tachesEtablissement(tableau.data, justificatifs.data, demandesEtab.data) : []), ...(isFile ? tachesFile(demandesFile.data) : []), ...(isFile ? tachesVisites(visitesAVenir.data?.visites) : [])]
       .sort((a, b) => a.urgence - b.urgence || a.ts - b.ts),
-    [isChef, isFile, tableau.data, justificatifs.data, demandesEtab.data, demandesFile.data],
+    [isChef, isFile, tableau.data, justificatifs.data, demandesEtab.data, demandesFile.data, visitesAVenir.data],
   );
 
   if (!isChef && !isFile) return <EntreePage><HorsRole /></EntreePage>;

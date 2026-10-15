@@ -252,7 +252,8 @@ export function calculer(couches: CouchesNationales, requete: RequeteSemantique,
           cle: k,
           libelle: parties.map((p, i) => libelleCle(requete.ventilation[i]!, p)).join(" · "),
           valeur: masquee ? null : valeurDe(g.num, g.den),
-          effectif: Math.round(g.effectif),
+          // « 3 élèves » dans une case commune × sexe × niveau est exactement ce que le seuil doit taire.
+          effectif: masquee ? null : Math.round(g.effectif),
           masquee,
         };
       }).sort((a, b) => (["annee", "niveau", "cycle", "examen"].includes(requete.ventilation[0] ?? "") ? 0 : (b.valeur ?? -1) - (a.valeur ?? -1)))

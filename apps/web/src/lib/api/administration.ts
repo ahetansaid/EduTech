@@ -1,5 +1,6 @@
 "use client";
 
+import { rafraichir } from "@/lib/economie";
 import type { Habilitation, Role } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Ton } from "@/components/ui/primitives";
@@ -191,7 +192,7 @@ export function useDeverrouillerMutation() {
 /* ================================================================== Assistance — utilisateur */
 
 export function useMesDemandes() {
-  return useQuery({ queryKey: CLES_ASSISTANCE.mesDemandes, queryFn: ({ signal }) => lire<Ticket[]>("/assistance/tickets", signal), refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLES_ASSISTANCE.mesDemandes, queryFn: ({ signal }) => lire<Ticket[]>("/assistance/tickets", signal), refetchInterval: rafraichir(30_000) });
 }
 /** Détail d'une demande et fil de messages ; rafraîchi toutes les 15 s tant qu'il est ouvert. */
 export function useDemande(id: string | null) {
@@ -199,7 +200,7 @@ export function useDemande(id: string | null) {
     queryKey: CLES_ASSISTANCE.detail(id ?? ""),
     queryFn: ({ signal }) => lire<DetailTicket>(`/assistance/tickets/${encodeURIComponent(id!)}`, signal),
     enabled: !!id,
-    refetchInterval: 15_000,
+    refetchInterval: rafraichir(15_000),
   });
 }
 
@@ -258,7 +259,7 @@ export function useFileTickets(f: FiltresTickets) {
       if (f.q.trim()) p.set("q", f.q.trim());
       return lire<FileTickets>(`/admin/tickets?${p}`, signal);
     },
-    refetchInterval: 20_000,
+    refetchInterval: rafraichir(20_000),
     placeholderData: keepPreviousData,
   });
 }

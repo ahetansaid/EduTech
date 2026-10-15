@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { authentifie, base, cleUtilisateur, corps, ErreurCodee, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
+import { aujourdhui } from "@beile/simulation/scolarite";
+import { authentifie, base, cleUtilisateur, corps, dateCalendaire, ErreurCodee, journaliser, limiteDebit, limiteDebitPartage, type Variables } from "./commun";
+import { periodesDesClasses, enTete } from "./periode";
 import { parcours } from "./parcours";
 import { classesCourantes, dejaSaisi, ID_SAISIE, inscrireAuRegistre } from "./ecriture";
 import { auth } from "./auth";
@@ -21,6 +23,10 @@ import { publique } from "./public";
 import { interop } from "./interop";
 import { droits } from "./droits";
 import { visites } from "./visites";
+import { rapports } from "./rapports";
+import { personnels } from "./personnels";
+import { saisieTutelle } from "./saisie-tutelle";
+import { familles } from "./familles";
 import { delegation } from "./delegation";
 import { filtrePortail } from "./portails";
 import { securiteComptes } from "./securite-comptes";
@@ -105,6 +111,8 @@ app.get("/sante", async (c) => {
   return c.json({ statut: "ok", service: "beile-api", version: "0.3.0", base: r ? "connectée" : "vide", horodatage: new Date().toISOString() });
 });
 
+// Publics PAR CHOIX (transparence) : la maille administrative et le dictionnaire national ne contiennent aucune
+// donnée personnelle, et la page /donnees/definitions les sert à tous. Seul l'impact d'une version est réservé.
 app.get("/referentiels/departements", (c) => c.json(DEPARTEMENTS));
 app.get("/referentiels/communes", (c) => c.json(COMMUNES.map(({ cx: _cx, cy: _cy, ...commune }) => commune)));
 app.get("/dictionnaire", (c) => c.json(Object.values(DICTIONNAIRE)));
@@ -241,13 +249,16 @@ app.get("/apprenants/:id", authentifie, async (c) => {
   if (!decision.autorise || !ctx.apprenant) return c.json({ decision }, 403);
 
   const situation = situationApprenant(ctx.monde, ctx.evenements, apprenantId);
+  const classe = situation.classe;
+  const periode = classe ? (await periodesDesClasses([{ id: classe.id, anneeScolaire: classe.anneeScolaire }])).get(classe.anneeScolaire) ?? null : null;
   const parMatiere = new Map<string, number[]>();
-  for (const n of notesApprenant(ctx.evenements, apprenantId)) if (n.trimestre === 2) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
+  for (const n of notesApprenant(ctx.evenements, apprenantId)) if (periode && n.trimestre === periode.trimestre && n.anneeScolaire === periode.anneeScolaire) parMatiere.set(n.matiere, [...(parMatiere.get(n.matiere) ?? []), n.note]);
   return c.json({
     decision,
     apprenant: { id: ctx.apprenant.id, nom: ctx.apprenant.nom, prenoms: ctx.apprenant.prenoms, dateNaissance: ctx.apprenant.dateNaissance, statutIdentite: ctx.apprenant.statutIdentite },
     situation: { classe: situation.classe?.libelle ?? null, etablissementId: situation.etablissementId, statut: situation.statut },
-    moyennesTrimestre2: [...parMatiere].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, x) => s + x, 0) / notes.length })),
+    ...enTete(periode),
+    moyennesTrimestre: [...parMatiere].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, x) => s + x, 0) / notes.length })),
     parcours: ctx.evenements.filter((e) => e.type !== "EVALUATION").map((e) => ({ id: e.id, type: e.type, survenuLe: e.survenuLe, source: e.source })),
   });
 });
@@ -257,7 +268,8 @@ app.post("/evenements/absences", authentifie, async (c) => {
   const profil = c.get("profil");
   const saisie = await corps(c, z.object({
     classeId: z.string().regex(/^CLS-[A-Za-z0-9-]+$/),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    // Un appel se fait le jour même ou se rattrape : jamais pour un jour qui n'existe pas, ni pour demain.
+    date: z.string().refine(dateCalendaire, "date du calendrier attendue (AAAA-MM-JJ)").refine((d) => d <= aujourdhui(), "un appel ne se fait pas pour un jour à venir"),
     apprenantIds: z.array(z.string().regex(/^APP-\d{6}$/)).min(1).max(80),
     idSaisie: ID_SAISIE,
   }).strict());
@@ -331,6 +343,10 @@ app.route("/", publique);
 app.route("/", interop);
 app.route("/", droits);
 app.route("/", visites);
+app.route("/", rapports);
+app.route("/", personnels);
+app.route("/", saisieTutelle);
+app.route("/", familles);
 app.route("/", delegation);
 app.route("/", securiteComptes);
 app.route("/", vigie);

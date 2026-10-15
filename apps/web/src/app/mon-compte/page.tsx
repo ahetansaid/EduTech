@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Fingerprint, KeyRound, LifeBuoy, Mail, Phone, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
+import { ArrowLeft, Fingerprint, Gauge, KeyRound, LifeBuoy, Mail, Phone, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,8 @@ import { EASE, motion } from "@/components/motion";
 import { CodesSecours } from "@/components/securite/CodesSecours";
 import { Modale } from "@/components/ui/Modale";
 import { notifier } from "@/components/ui/Notifications";
-import { BandeNationale, Badge, Button, Card, Logo, Squelette } from "@/components/ui/primitives";
+import { BandeNationale, Badge, Button, Card, Logo, Segmente, Squelette } from "@/components/ui/primitives";
+import { choisirEconomie, useEconomie, type ChoixEconomie } from "@/lib/economie";
 import { CLES_SECURITE, enregistrerCle, useCoordonnees, useEtatMfa, type Coordonnee } from "@/lib/api/securite";
 import { ErreurApi, ecrire } from "@/lib/http";
 import { accueilDeSession, useSession } from "@/lib/session";
@@ -39,8 +40,31 @@ function MonCompte() {
           <div><p className="font-semibold text-ink">Mot de passe</p><p className="text-[13px] text-ink-2">Le changer ferme vos autres sessions.</p></div>
           <Link href="/mot-de-passe" className="inline-flex h-10 items-center rounded-md px-4 text-[14px] font-semibold text-ink ring-1 ring-inset ring-line hover:bg-surface-2">Changer</Link>
         </Card>
+        <EconomieDonnees />
       </motion.main>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Économie de données (réglage de cet appareil) */
+
+function EconomieDonnees() {
+  const { actif, choix, auto } = useEconomie();
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-semibold text-ink"><Gauge size={17} aria-hidden /> Économie de données</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">
+            {actif ? "Active : rien ne se télécharge en arrière-plan ; vos écrans se mettent à jour quand vous y revenez." : "Inactive : certains écrans se mettent à jour seuls toutes les 15 à 60 secondes."}
+            {auto ? " Activée d'elle-même : votre téléphone signale l'économie de données ou un réseau lent." : ""}
+          </p>
+        </div>
+        <Segmente label="Économie de données" valeur={choix} onChange={(v) => choisirEconomie(v as ChoixEconomie)}
+          options={[{ valeur: "auto", libelle: "Automatique" }, { valeur: "active", libelle: "Activée" }, { valeur: "desactive", libelle: "Désactivée" }]} />
+      </div>
+      <p className="mt-2 text-xs text-ink-muted">Réglage de cet appareil seulement.</p>
+    </Card>
   );
 }
 

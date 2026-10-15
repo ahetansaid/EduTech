@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
+import { communesDuPerimetre } from "@beile/simulation/semantique";
 import { communeById } from "@beile/simulation/territoire";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
@@ -9,7 +10,8 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
-import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
+import { enBaisse, scolarisesEtablissement } from "./lectures";
+import { bilansAuTrimestre, bornesDuTrimestre, enTete, periodePrincipale, periodesDesClasses } from "./periode";
 
 /**
  * Espace établissement : tableau de bord, apprenants, transitions, examens, accompagnement.
@@ -19,7 +21,6 @@ import { bilans, enBaisse, scolarisesEtablissement } from "./lectures";
 export const etablissement = new Hono<{ Variables: Variables }>();
 
 const ID_ETAB = z.string().regex(/^ETB-[A-Z0-9-]+$/);
-const TRIMESTRE_COURANT = 2;
 const FORMATION_OBLIGATOIRE = "Évaluation formative en mathématiques";
 const moyenneDe = (v: (number | null)[]) => { const x = v.filter((n): n is number => n != null); return x.length ? x.reduce((s, n) => s + n, 0) / x.length : null; };
 
@@ -41,7 +42,7 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, etab, finalite } = await acces(c, id);
   const jour = aujourdhui();
-  const [classes, eleves, enseignants, formes, absentsDuJour, seances] = await Promise.all([
+  const [classes, eleves, enseignants, formes, absentsDuJour, seances, [parInspection]] = await Promise.all([
     base().select().from(schema.classes).where(eq(schema.classes.etablissementId, id)),
     scolarisesEtablissement(id),
     base().select({ id: schema.enseignants.id, nom: schema.enseignants.nom, prenoms: schema.enseignants.prenoms }).from(schema.enseignants).where(eq(schema.enseignants.etablissementId, id)),
@@ -61,8 +62,11 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
       .where(and(eq(schema.evenements.type, "CONSEIL_DE_CLASSE"), eq(schema.evenements.etablissementId, id)))
       // Le « dernier conseil » est celui de la séance la plus récente, pas le dernier enregistré (saisie antidatée).
       .orderBy(sql`${schema.evenements.donnees}->>'dateSeance'`, schema.evenements.survenuLe),
+    // Faits saisis par l’inspection pour le compte de l’école quand elle n’était pas connectée : l’école le voit.
+    base().execute<{ n: number; derniere: string | null }>(sql`select count(*)::int as n, max(survenu_le)::text as derniere from ledger.evenements where etablissement_id = ${id} and donnees ? 'saisiePour'`),
   ]);
-  const b = await bilans(eleves.map((e) => e.id), TRIMESTRE_COURANT);
+  const periodes = await periodesDesClasses(classes);
+  const b = await bilansAuTrimestre(eleves, periodes);
   const nom = new Map(eleves.map((a) => [a.id, `${a.prenoms} ${a.nom}`]));
   const formesIds = new Set(formes.map((f) => f.id));
   const derniereSeance = new Map(seances.filter((s) => s.classeId).map((s) => [s.classeId as string, { dateSeance: s.dateSeance, nombreDeMembres: s.nombreDeMembres }]));
@@ -83,12 +87,13 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
   return c.json({
     etablissement: { id: etab.id, nom: etab.nom, communeId: etab.communeId, circonscription: etab.circonscription, capacite: etab.capacite, cycle: etab.cycle },
     date: jour,
-    trimestre: TRIMESTRE_COURANT,
+    ...enTete(periodePrincipale(periodes, eleves)),
     chiffres: { apprenants: eleves.length, capacite: etab.capacite, enseignants: enseignants.length, moyenne: moyenneDe(eleves.map((e) => b.get(e.id)?.moyenneTrimestre ?? null)), absentsDuJour: absentsDuJour.length },
     classes: lignesClasses,
     alertes: {
       baisse,
       regularisations: eleves.filter((a) => a.statutIdentite === "regularisation_en_cours").map((a) => ({ id: a.id, nom: nom.get(a.id) })),
+      saisiesParInspection: { faits: parInspection?.n ?? 0, derniere: parInspection?.derniere ?? null },
       enseignantsSansFormation: enseignants.filter((e) => !formesIds.has(e.id)).length,
       formationObligatoire: FORMATION_OBLIGATOIRE,
       surcharges: lignesClasses.filter((x) => x.effectif > x.capacite).map((x) => ({ classe: x.libelle, effectif: x.effectif, capacite: x.capacite })),
@@ -103,12 +108,59 @@ etablissement.get("/etablissements/:id/eleves", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, finalite } = await acces(c, id);
   const eleves = await scolarisesEtablissement(id);
-  const b = await bilans(eleves.map((e) => e.id), TRIMESTRE_COURANT);
+  const periodes = await periodesDesClasses([...new Map(eleves.map((e) => [e.classeId, { id: e.classeId, anneeScolaire: e.anneeScolaire }])).values()]);
+  const b = await bilansAuTrimestre(eleves, periodes);
   await journaliser(profil, "Consultation de la liste des apprenants", id, finalite, true, null);
   return c.json(eleves.map((a) => {
     const x = b.get(a.id);
     return { id: a.id, nom: a.nom, prenoms: a.prenoms, sexe: a.sexe, dateNaissance: a.dateNaissance, statutIdentite: a.statutIdentite, classeId: a.classeId, classe: a.classe, moyenne: x?.moyenneTrimestre ?? null, absences: x?.absences ?? 0, baisseMaths: enBaisse(x) != null ? x!.dernieresMaths : null };
   }).sort((x, y) => comparerFr(x.classe, y.classe) || comparerFr(x.nom, y.nom)));
+});
+
+/**
+ * Bulletins d'une classe, en une requête : pour chaque élève scolarisé, ses moyennes par matière au trimestre de
+ * référence de l'année de la classe (règle unique de periode.ts), sa moyenne générale non pondérée et ses
+ * absences (dont justifiées). La fin de trimestre se joue ici : une impression groupée, pas trente dossiers.
+ */
+etablissement.get("/etablissements/:id/classes/:classeId/bulletins", authentifie, async (c) => {
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const classeId = z.string().regex(/^CLS-[A-Za-z0-9-]+$/).parse(c.req.param("classeId"));
+  const { profil, etab, finalite } = await acces(c, id);
+  const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, classeId));
+  if (!classe || classe.etablissementId !== id) throw new HTTPException(404, { message: "Classe inconnue ou hors de cet établissement" });
+  const periode = (await periodesDesClasses([{ id: classe.id, anneeScolaire: classe.anneeScolaire }])).get(classe.anneeScolaire) ?? null;
+  const trimestre = periode?.trimestre ?? 1;
+  // Absences du trimestre quand le calendrier en donne les dates ; sinon, celles de l'année de la classe (dit tel quel).
+  const bornes = await bornesDuTrimestre(classe.anneeScolaire, trimestre);
+  const dansLaPeriode = bornes ? sql`and e.donnees->>'date' between ${bornes.debut} and ${bornes.fin}` : sql``;
+  const [eleves, notes, absences] = await Promise.all([
+    base().select({ id: schema.apprenants.id, nom: schema.apprenants.nom, prenoms: schema.apprenants.prenoms })
+      .from(schema.scolarites).innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.scolarites.apprenantId))
+      .where(and(eq(schema.scolarites.classeId, classeId), eq(schema.scolarites.statut, "scolarise"))),
+    base().execute<{ apprenant_id: string; matiere: string; moyenne: number; nb: number }>(sql`
+      select apprenant_id, matiere, avg(note)::float as moyenne, count(*)::int as nb from core.notes
+      where classe_id = ${classeId} and trimestre = ${trimestre} group by 1, 2`),
+    base().execute<{ apprenant_id: string; total: number; justifiees: number }>(sql`
+      select e.apprenant_id, count(*)::int as total,
+             count(*) filter (where coalesce((e.donnees->>'justifiee')::boolean, false) or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id))::int as justifiees
+      from ledger.evenements e where e.type = 'ABSENCE' and e.donnees->>'classeId' = ${classeId} ${dansLaPeriode} group by 1`),
+  ]);
+  const parEleve = new Map<string, { matiere: string; moyenne: number; nb: number }[]>();
+  for (const n of notes) parEleve.set(n.apprenant_id, [...(parEleve.get(n.apprenant_id) ?? []), { matiere: n.matiere, moyenne: n.moyenne, nb: n.nb }]);
+  const abs = new Map(absences.map((a) => [a.apprenant_id, a]));
+  await journaliser(profil, "Édition des bulletins d'une classe", `${classeId} (${classe.libelle}) · T${trimestre} · ${eleves.length} élève(s)`, finalite, true, null);
+  return c.json({
+    etablissement: etab.nom, classe: { id: classe.id, libelle: classe.libelle, anneeScolaire: classe.anneeScolaire }, ...enTete(periode),
+    absencesSur: bornes ? `du ${bornes.debut} au ${bornes.fin}` : `année ${classe.anneeScolaire}`,
+    bulletins: eleves.sort((a, b) => comparerFr(a.nom, b.nom) || comparerFr(a.prenoms, b.prenoms)).map((e) => {
+      const matieres = (parEleve.get(e.id) ?? []).sort((a, b) => comparerFr(a.matiere, b.matiere));
+      return {
+        apprenant: { id: e.id, nom: e.nom, prenoms: e.prenoms }, matieres,
+        moyenneGenerale: matieres.length ? matieres.reduce((s, m) => s + m.moyenne, 0) / matieres.length : null,
+        absences: { total: abs.get(e.id)?.total ?? 0, justifiees: abs.get(e.id)?.justifiees ?? 0 },
+      };
+    }),
+  });
 });
 
 /* ------------------------------------------------------------------ Organisation pédagogique (classes) */
@@ -132,6 +184,10 @@ etablissement.get("/etablissements/:id/enseignants", authentifie, async (c) => {
 etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, finalite } = await acces(c, id);
+  // Le suivi des notes se lit, classe par classe, au trimestre de référence de l'année de la classe.
+  const classesEtab = await base().select({ id: schema.classes.id, anneeScolaire: schema.classes.anneeScolaire }).from(schema.classes).where(eq(schema.classes.etablissementId, id));
+  const periodes = await periodesDesClasses(classesEtab);
+  const trimestreDe = JSON.stringify(Object.fromEntries(classesEtab.map((cl) => [cl.id, periodes.get(cl.anneeScolaire)?.trimestre ?? 1])));
   const [enseignants, enseignements, effectifs, notes, formations] = await Promise.all([
     base().select().from(schema.enseignants).where(eq(schema.enseignants.etablissementId, id)),
     base().select({ enseignantId: schema.enseignements.enseignantId, classeId: schema.enseignements.classeId, matiere: schema.enseignements.matiere, libelle: schema.classes.libelle, niveau: schema.classes.niveau, principal: schema.classes.enseignantPrincipalId })
@@ -140,7 +196,7 @@ etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
     base().execute<{ classe_id: string; n: number }>(sql`select classe_id, count(*)::int as n from core.scolarites where statut = 'scolarise' and classe_id in (select id from core.classes where etablissement_id = ${id}) group by classe_id`),
     base().execute<{ classe_id: string; matiere: string; n: number; derniere: string | null }>(sql`
       select n.classe_id, n.matiere, count(*)::int as n, max(n.survenu_le)::text as derniere from core.notes n
-      where n.trimestre = ${TRIMESTRE_COURANT} and n.classe_id in (select id from core.classes where etablissement_id = ${id})
+      join jsonb_each_text(${trimestreDe}::jsonb) as tr(classe_id, t) on tr.classe_id = n.classe_id and n.trimestre = tr.t::int
       group by n.classe_id, n.matiere`),
     base().select({ enseignantId: schema.evenements.enseignantId, formation: sql<string>`${schema.evenements.donnees}->>'formation'`, le: schema.evenements.survenuLe })
       .from(schema.evenements).where(and(eq(schema.evenements.type, "FORMATION_ENSEIGNANT"), eq(schema.evenements.etablissementId, id))),
@@ -156,7 +212,7 @@ etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
     }).sort((a, b) => comparerFr(a.classe, b.classe));
     const suivies = formations.filter((f) => f.enseignantId === e.id).sort((a, b) => b.le.toISOString().localeCompare(a.le.toISOString()));
     return {
-      id: e.id, nom: e.nom, prenoms: e.prenoms, sexe: e.sexe, grade: e.grade, matieres: e.matieres,
+      id: e.id, nom: e.nom, prenoms: e.prenoms, sexe: e.sexe, grade: e.grade, matieres: e.matieres, statut: e.statut,
       anciennete: e.dateRecrutement ? Math.max(0, annee - Number(String(e.dateRecrutement).slice(0, 4))) : null,
       classes: tenues,
       eleves: [...new Set(tenues.map((t) => t.classeId))].reduce((s, cid) => s + (effectif.get(cid) ?? 0), 0),
@@ -164,7 +220,8 @@ etablissement.get("/etablissements/:id/personnel", authentifie, async (c) => {
       formationObligatoire: suivies.some((f) => f.formation?.startsWith(FORMATION_OBLIGATOIRE)),
     };
   }).sort((a, b) => comparerFr(a.nom, b.nom));
-  return c.json({ trimestre: TRIMESTRE_COURANT, formationObligatoire: FORMATION_OBLIGATOIRE, personnel });
+  const scolarisesParAnnee = classesEtab.flatMap((cl) => Array.from({ length: effectif.get(cl.id) ?? 0 }, () => ({ anneeScolaire: cl.anneeScolaire })));
+  return c.json({ ...enTete(periodePrincipale(periodes, scolarisesParAnnee)), formationObligatoire: FORMATION_OBLIGATOIRE, personnel });
 });
 
 /**
@@ -525,6 +582,22 @@ function couvreEtab(h: Habilitation, etab: { id: string; communeId: string; circ
   return false;
 }
 
+/**
+ * Périmètre d'une demande, une seule règle pour la file, la lecture et la décision : l'établissement qu'elle
+ * vise ; à défaut la commune qu'elle porte (`donnees.communeId`, un suivi d'alerte territoriale) ; à défaut le
+ * seul niveau national. Sans cette règle, une demande sans établissement se décidait par tout porteur du
+ * rôle, où qu'il soit, alors que la file ne la montrait qu'au national.
+ */
+function couvreDemande(h: Habilitation, etab: { id: string; communeId: string; circonscription: string } | null, donnees: unknown) {
+  if (etab) return couvreEtab(h, etab);
+  const communeId = (donnees as { communeId?: unknown } | null)?.communeId;
+  if (typeof communeId === "string") {
+    const autorisees = communesDuPerimetre(h.perimetre);
+    return autorisees ? autorisees.has(communeId) : h.perimetre.niveau === "national";
+  }
+  return h.perimetre.niveau === "national";
+}
+
 type EtapeCircuit = { ordre: number; code: string; role: string; delaiJours: number };
 
 /**
@@ -615,16 +688,24 @@ etablissement.get("/demandes/a-traiter", authentifie, async (c) => {
   const lignes = ouvertes.flatMap((l) => {
     const etape = etapesParModele.get(l.d.modele)?.find((e) => e.code === l.d.etapeCourante);
     if (!etape || !roles.has(etape.role)) return [];
-    const hab = profil.habilitations.find((h) => h.role === etape.role);
-    if (!hab) return [];
-    const couvert = l.d.ressource && l.nom && l.communeId && l.circonscription
-      ? couvreEtab(hab, { id: l.d.ressource, communeId: l.communeId, circonscription: l.circonscription })
-      : hab.perimetre.niveau === "national";
-    if (!couvert) return [];
-    return [{ ...l.d, etablissement: l.nom ?? null, modeleLibelle: modeles.find((m) => m.code === l.d.modele)?.libelle ?? l.d.modele, etapeRole: etape.role }];
-  }).sort((a, b) => b.creeeLe.getTime() - a.creeeLe.getTime());
-  await journaliser(profil, "Consultation des demandes à traiter", `${lignes.length} demande(s)`, "gestion", true, null);
-  return c.json(lignes);
+    const etab = l.d.ressource && l.nom && l.communeId && l.circonscription ? { id: l.d.ressource, communeId: l.communeId, circonscription: l.circonscription } : null;
+    // Toutes les habilitations du rôle, pas la première : un inspecteur de deux circonscriptions voit les deux.
+    if (!profil.habilitations.some((h) => h.role === etape.role && couvreDemande(h, etab, l.d.donnees))) return [];
+    return [{ ...l.d, etablissement: l.nom ?? null, modeleLibelle: modeles.find((m) => m.code === l.d.modele)?.libelle ?? l.d.modele, etapeRole: etape.role, escalade: false }];
+  });
+  // Escalade : ce que J'AI demandé (une relance, un suivi) et qui a dépassé son échéance chez quelqu'un d'autre
+  // remonte dans ma file. Sans cela, une relance échue restait dans la file du chef d'établissement, invisible
+  // pour l'autorité qui l'avait envoyée.
+  const maintenant = Date.now();
+  const dejaLa = new Set(lignes.map((x) => x.id));
+  const escalades = ouvertes.flatMap((l) => {
+    if (l.d.demandeurId !== profil.id || dejaLa.has(l.d.id) || !l.d.echeance || l.d.echeance.getTime() >= maintenant) return [];
+    const etape = etapesParModele.get(l.d.modele)?.find((e) => e.code === l.d.etapeCourante);
+    return [{ ...l.d, etablissement: l.nom ?? null, modeleLibelle: modeles.find((m) => m.code === l.d.modele)?.libelle ?? l.d.modele, etapeRole: etape?.role ?? "", escalade: true }];
+  });
+  const toutes = [...lignes, ...escalades].sort((a, b) => b.creeeLe.getTime() - a.creeeLe.getTime());
+  await journaliser(profil, "Consultation des demandes à traiter", `${lignes.length} demande(s), ${escalades.length} échue(s) chez autrui`, "gestion", true, null);
+  return c.json(toutes);
 });
 
 /** Contexte d'une demande : modèle, étape courante, établissement ressource, et droit d'agir de l'utilisateur. */
@@ -638,7 +719,7 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
   const [etab] = demande.ressource
     ? await base().select({ id: schema.etablissements.id, communeId: schema.etablissements.communeId, circonscription: schema.etablissements.circonscription, nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, demande.ressource))
     : [];
-  const hab = etape ? profil.habilitations.find((h) => h.role === etape.role && (!etab || couvreEtab(h, etab))) : undefined;
+  const hab = etape ? profil.habilitations.find((h) => h.role === etape.role && couvreDemande(h, etab ?? null, demande.donnees)) : undefined;
   return { demande, modele, etapes, etape, etab: etab ?? null, peutStatuer: !!hab && ["ouverte", "en_cours"].includes(demande.statut) };
 }
 
@@ -649,7 +730,7 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
  */
 function peutLireDemande(profil: import("@beile/contracts").Profil, ctx: Awaited<ReturnType<typeof contexteDemande>>) {
   if (ctx.demande.demandeurId === profil.id) return true;
-  return ctx.etapes.some((e) => profil.habilitations.some((h) => h.role === e.role && (ctx.etab ? couvreEtab(h, ctx.etab) : h.perimetre.niveau === "national")));
+  return ctx.etapes.some((e) => profil.habilitations.some((h) => h.role === e.role && couvreDemande(h, ctx.etab, ctx.demande.donnees)));
 }
 
 /** Détail d'une demande : circuit, décisions déjà rendues (ajout seul), et droit d'agir de l'utilisateur. */

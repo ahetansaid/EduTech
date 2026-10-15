@@ -13,6 +13,18 @@ import { indexer } from "@beile/simulation/projections";
 
 /* ------------------------------------------------------------------ Cube national (couche sémantique) */
 
+/**
+ * Origine des chiffres du cube, dite à l'écran : il est aujourd'hui GÉNÉRÉ (packages/db/src/peupler.ts,
+ * genererCoucheNationale), pas agrégé depuis le registre. Seuls le flux du jour, les absences du jour et les
+ * visites sont lus en direct dans le registre. Le jour où analytics.* est alimenté par le registre, cette
+ * déclaration change ici — et la mention affichée en tête du pilotage avec elle.
+ */
+export const ORIGINE_DES_CHIFFRES = {
+  indicateurs: "simulation" as "simulation" | "registre",
+  periode: `${ANNEES[0]} à ${ANNEES[ANNEES.length - 1]}`,
+  lusAuRegistre: ["flux des faits du jour", "absences du jour", "visites d'inspection"],
+};
+
 let cache: { couches: CouchesNationales; charge: number } | null = null;
 const DUREE_CACHE_MS = 5 * 60_000;
 

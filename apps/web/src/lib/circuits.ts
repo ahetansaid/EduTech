@@ -36,6 +36,7 @@ export const CIRCUIT_LIBELLE: Record<string, string> = {
   TRANSFERT: "Transfert d'établissement",
   RECLAMATION: "Réclamation sur une donnée",
   AFFECTATION: "Affectation d'un enseignant",
+  SUIVI_ALERTE: "Suivi d'une alerte territoriale",
 };
 
 export const LIBELLE_ROLE_CIRCUIT: Record<string, string> = {

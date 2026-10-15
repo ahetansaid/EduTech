@@ -1,6 +1,8 @@
 "use client";
 
-import type { Matiere } from "@beile/contracts";
+import { rafraichir } from "@/lib/economie";
+import type { Matiere, TypeEvaluation } from "@beile/contracts";
+import type { Periode } from "./etablissement";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { notifier } from "@/components/ui/Notifications";
@@ -19,14 +21,14 @@ export interface ClasseEnseignant {
 export interface MesClasses { enseignant: EnseignantResume; trimestre?: number; date?: string; classes: ClasseEnseignant[] }
 
 /** GET /classes/:id */
-export interface NoteCarnet { id: string; matiere: Matiere; trimestre: number; note: number; corrigee: boolean; le: string }
+export interface NoteCarnet { id: string; matiere: Matiere; trimestre: number; note: number; corrigee: boolean; le: string; typeEvaluation?: TypeEvaluation | null }
 export interface EleveCarnet {
   id: string; nom: string; prenoms: string; sexe: "M" | "F"; besoinsParticuliers: boolean;
   notes: NoteCarnet[]; absences: number; absentAujourdhui: boolean; moyenneTrimestre: number | null;
 }
 export interface Carnet {
   classe: { id: string; libelle: string; niveau: string; capacite: number; etablissementId: string; anneeScolaire: string };
-  matieres: Matiere[]; lecture: boolean; trimestre: number; date: string; eleves: EleveCarnet[];
+  matieres: Matiere[]; lecture: boolean; trimestre: number; periode: Periode | null; date: string; eleves: EleveCarnet[];
 }
 
 /** GET /classes/:id/historique (complément enseignant) */
@@ -70,7 +72,7 @@ export const dateDuJour = () => new Date().toISOString().slice(0, 10);
 /* ================================================================== Lectures */
 
 export function useMesClasses(actif = true) {
-  return useQuery({ queryKey: CLES.classes, queryFn: ({ signal }) => lire<MesClasses>("/moi/classes", signal), enabled: actif, refetchInterval: 30_000 });
+  return useQuery({ queryKey: CLES.classes, queryFn: ({ signal }) => lire<MesClasses>("/moi/classes", signal), enabled: actif, refetchInterval: rafraichir(30_000) });
 }
 
 export function useCarnet(classeId: string) {
@@ -80,7 +82,7 @@ export function useCarnet(classeId: string) {
       const c = await lire<Carnet>(`/classes/${encodeURIComponent(classeId)}`, signal);
       return { ...c, eleves: c.eleves.map((e) => ({ ...e, notes: e.notes.map((n) => ({ ...n, le: versIso(n.le) })) })) };
     },
-    refetchInterval: 30_000,
+    refetchInterval: rafraichir(30_000),
   });
 }
 
@@ -159,7 +161,7 @@ export function useAppelMutation(classeId: string, libelleClasse: string) {
   });
 }
 
-export interface CorpsNotes { classeId: string; matiere: Matiere; trimestre: number; notes: { apprenantId: string; note: number }[] }
+export interface CorpsNotes { classeId: string; matiere: Matiere; trimestre: number; typeEvaluation?: TypeEvaluation; notes: { apprenantId: string; note: number }[] }
 
 export function useNotesMutation(classeId: string, libelleClasse: string) {
   const client = useQueryClient();

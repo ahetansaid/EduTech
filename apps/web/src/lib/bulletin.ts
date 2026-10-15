@@ -2,7 +2,7 @@ import {
   absencesParJour, anneeCourante, moyenneGenerale, moyennesParMatiere, notesEffectives,
   type Dossier,
 } from "@/lib/api/parcours";
-import type { DossierGestion } from "@/lib/api/etablissement";
+import type { BulletinsClasse, DossierGestion } from "@/lib/api/etablissement";
 
 /**
  * Bulletin trimestriel : modèle d'affichage unique, calculé à partir de données déjà autorisées.
@@ -29,6 +29,8 @@ export interface BulletinView {
   matieres: LigneBulletin[];
   moyenneGenerale: number | null;
   absences: { total: number; justifiees: number };
+  /** Période sur laquelle les absences sont comptées (« du … au … »), quand elle est connue. */
+  absencesSur?: string;
   genereLe: string;
 }
 
@@ -82,6 +84,20 @@ export function periodesBulletin(d: Dossier): { annee: string; trimestre: number
 }
 
 /** Bulletin du dossier de gestion (chef d'établissement) : moyennes déjà calculées par l'API. */
+/** Bulletins d'une classe (une seule réponse serveur) → une vue par élève, même modèle que le bulletin individuel. */
+export function bulletinsDepuisClasse(b: BulletinsClasse): BulletinView[] {
+  const genereLe = new Date().toISOString();
+  return b.bulletins.map((x) => ({
+    apprenant: { id: x.apprenant.id, nom: x.apprenant.nom, prenoms: x.apprenant.prenoms, classe: b.classe.libelle, etablissement: b.etablissement, anneeScolaire: b.classe.anneeScolaire },
+    trimestre: b.trimestre,
+    matieres: x.matieres.map((m) => ({ matiere: m.matiere, moyenne: m.moyenne, nb: m.nb })),
+    moyenneGenerale: x.moyenneGenerale,
+    absences: x.absences,
+    absencesSur: b.absencesSur,
+    genereLe,
+  }));
+}
+
 export function bulletinDepuisGestion(d: DossierGestion): BulletinView {
   const generale = d.moyennes.length ? d.moyennes.reduce((s, m) => s + m.moyenne, 0) / d.moyennes.length : null;
   return {

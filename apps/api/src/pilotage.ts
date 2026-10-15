@@ -6,12 +6,12 @@ import { ANNEE_COURANTE, ANNEES } from "@beile/simulation/macro";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { calculer, communesDuPerimetre, priorites } from "@beile/simulation/semantique";
 import { communeById, departementById } from "@beile/simulation/territoire";
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, journaliser, refuser, type Variables } from "./commun";
-import { chargerCouches, memo } from "./donnees";
+import { chargerCouches, memo, ORIGINE_DES_CHIFFRES } from "./donnees";
 
 /**
  * Pilotage : cockpit national, console territoriale, fiche commune.
@@ -21,6 +21,16 @@ import { chargerCouches, memo } from "./donnees";
 export const pilotage = new Hono<{ Variables: Variables }>();
 
 const ROLES_PILOTAGE = ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"] as const;
+/** Agents de tutelle : seuls à écrire et lire les visites d'inspection. */
+export const ROLES_TUTELLE = ["inspecteur", "direction_departementale", "administration_centrale"] as const;
+
+/**
+ * Filtre du flux des faits pour ce profil. Une visite d'inspection se lit entre agents de tutelle : hors tutelle
+ * (un chercheur), elle est retirée du flux ET du décompte, sinon « VISITE · CEG X · 10 h 12 » dirait quelle
+ * école est inspectée aujourd'hui à qui ne lit pas les visites.
+ */
+export const filtreFluxDuProfil = (profil: Profil) =>
+  profil.habilitations.some((h) => (ROLES_TUTELLE as readonly string[]).includes(h.role)) ? undefined : ne(schema.evenements.type, "VISITE_D_INSPECTION");
 
 export function perimetrePilotage(profil: Profil): Perimetre {
   const h = profil.habilitations.find((x) => (ROLES_PILOTAGE as readonly string[]).includes(x.role));
@@ -75,14 +85,15 @@ pilotage.get("/pilotage/synthese", authentifie, async (c) => {
   // Flux des faits enregistrés aujourd'hui dans le périmètre (anonymes : type, établissement, heure) — lu en direct.
   const debut = new Date(`${aujourdhui()}T00:00:00Z`);
   const dansPerimetre = autorisees ? dansCommunes(autorisees) : undefined;
+  const filtre = and(gte(schema.evenements.enregistreLe, debut), dansPerimetre, filtreFluxDuProfil(profil));
   const [flux, [{ n: faitsDuJour } = { n: 0 }]] = await Promise.all([
     base()
       .select({ id: schema.evenements.id, type: schema.evenements.type, etablissementId: schema.evenements.etablissementId, enregistreLe: schema.evenements.enregistreLe })
       .from(schema.evenements)
-      .where(and(gte(schema.evenements.enregistreLe, debut), dansPerimetre))
+      .where(filtre)
       .orderBy(desc(schema.evenements.enregistreLe))
       .limit(12),
-    base().select({ n: sql<number>`count(*)::int` }).from(schema.evenements).where(and(gte(schema.evenements.enregistreLe, debut), dansPerimetre)),
+    base().select({ n: sql<number>`count(*)::int` }).from(schema.evenements).where(filtre),
     journaliser(profil, "Consultation du cockpit", libellePerimetre(perimetre), "statistique", true, null),
   ]);
   return c.json({
@@ -92,6 +103,12 @@ pilotage.get("/pilotage/synthese", authentifie, async (c) => {
     ...agregats.corps,
     flux: { total: faitsDuJour, derniers: flux.map((f) => ({ ...f, etablissement: f.etablissementId ? nomsEtab.get(f.etablissementId) ?? null : null })) },
   });
+});
+
+/** D'où viennent les chiffres du pilotage : la mention affichée en tête de chaque écran. */
+pilotage.get("/pilotage/origine", authentifie, (c) => {
+  perimetrePilotage(c.get("profil"));
+  return c.json(ORIGINE_DES_CHIFFRES);
 });
 
 /** Valeurs d'un indicateur par commune (couches de la carte). */
