@@ -62,17 +62,17 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
       <header className="sticky top-0 z-30 border-b border-line/50 bg-bg/80 backdrop-blur-xl">
         <div className={cn("mx-auto flex h-16 items-center gap-3 px-4", largeur === "large" ? "max-w-6xl" : "max-w-3xl")}>
           <Link href="/" aria-label="Accueil BEILE"><Logo compact /></Link>
-          <div className="min-w-0 leading-tight">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--acc)" }}>{a.nom}</p>
+          <div className="min-w-0 shrink-0 leading-tight md:hidden xl:block">
+            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--acc)" }}>{a.nom}</p>
             <p className="truncate text-[13px] text-ink-muted">{profil.nomAffiche}</p>
           </div>
-          <nav data-guide="onglets" className="ml-6 hidden items-center gap-1 md:flex" aria-label="Sections de l'espace">
+          <nav data-guide="onglets" className="ml-2 hidden min-w-0 items-center gap-1 overflow-x-auto md:flex xl:ml-6" aria-label="Sections de l'espace">
             {visibles.map((o) => (
               <Link
                 key={o.href}
                 href={o.href}
                 aria-current={actif(o.href) ? "page" : undefined}
-                className={cn("relative rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors duration-200", actif(o.href) ? "text-white" : "text-ink-2 hover:bg-surface-2")}
+                className={cn("relative shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors duration-200", actif(o.href) ? "text-white" : "text-ink-2 hover:bg-surface-2")}
               >
                 {actif(o.href) && <IndicateurActif id={`onglet-${espace}`} className="absolute inset-0 rounded-md shadow-sm" style={{ background: "var(--acc)" }} />}
                 <span className="relative">{o.libelle}</span>
@@ -98,9 +98,9 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
       </main>
 
       {/* Onglets en bas d'écran (téléphone) */}
-      <nav data-guide="onglets" className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
+      <nav data-guide="onglets" className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around gap-0.5 overflow-x-auto rounded-xl border border-line/70 bg-surface/90 p-1.5 shadow-pop backdrop-blur-xl md:hidden" aria-label="Sections de l'espace">
         {visibles.map((o) => (
-          <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
+          <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex min-w-[64px] flex-1 shrink-0 flex-col items-center gap-0.5 whitespace-nowrap rounded-md px-1 py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
             {actif(o.href) && <IndicateurActif id={`onglet-mobile-${espace}`} className="absolute inset-0 rounded-md" style={{ background: "var(--acc-doux)" }} />}
             <o.icone size={20} aria-hidden className="relative" />
             <span className="relative">{o.libelle}</span>
