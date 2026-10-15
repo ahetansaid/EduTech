@@ -42,7 +42,7 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
   const id = ID_ETAB.parse(c.req.param("id"));
   const { profil, etab, finalite } = await acces(c, id);
   const jour = aujourdhui();
-  const [classes, eleves, enseignants, formes, absentsDuJour, seances] = await Promise.all([
+  const [classes, eleves, enseignants, formes, absentsDuJour, seances, [parInspection]] = await Promise.all([
     base().select().from(schema.classes).where(eq(schema.classes.etablissementId, id)),
     scolarisesEtablissement(id),
     base().select({ id: schema.enseignants.id, nom: schema.enseignants.nom, prenoms: schema.enseignants.prenoms }).from(schema.enseignants).where(eq(schema.enseignants.etablissementId, id)),
@@ -62,6 +62,8 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
       .where(and(eq(schema.evenements.type, "CONSEIL_DE_CLASSE"), eq(schema.evenements.etablissementId, id)))
       // Le « dernier conseil » est celui de la séance la plus récente, pas le dernier enregistré (saisie antidatée).
       .orderBy(sql`${schema.evenements.donnees}->>'dateSeance'`, schema.evenements.survenuLe),
+    // Faits saisis par l’inspection pour le compte de l’école quand elle n’était pas connectée : l’école le voit.
+    base().execute<{ n: number; derniere: string | null }>(sql`select count(*)::int as n, max(survenu_le)::text as derniere from ledger.evenements where etablissement_id = ${id} and donnees ? 'saisiePour'`),
   ]);
   const periodes = await periodesDesClasses(classes);
   const b = await bilansAuTrimestre(eleves, periodes);
@@ -91,6 +93,7 @@ etablissement.get("/etablissements/:id/tableau", authentifie, async (c) => {
     alertes: {
       baisse,
       regularisations: eleves.filter((a) => a.statutIdentite === "regularisation_en_cours").map((a) => ({ id: a.id, nom: nom.get(a.id) })),
+      saisiesParInspection: { faits: parInspection?.n ?? 0, derniere: parInspection?.derniere ?? null },
       enseignantsSansFormation: enseignants.filter((e) => !formesIds.has(e.id)).length,
       formationObligatoire: FORMATION_OBLIGATOIRE,
       surcharges: lignesClasses.filter((x) => x.effectif > x.capacite).map((x) => ({ classe: x.libelle, effectif: x.effectif, capacite: x.capacite })),

@@ -42,6 +42,8 @@ export interface Tableau {
   alertes: {
     baisse: EleveEnBaisse[];
     regularisations: { id: string; nom?: string }[];
+    /** Faits saisis par l'inspection pour le compte de l'école quand elle n'était pas connectée. */
+    saisiesParInspection?: { faits: number; derniere: string | null };
     enseignantsSansFormation: number;
     formationObligatoire: string;
     surcharges: { classe: string; effectif: number; capacite: number }[];
