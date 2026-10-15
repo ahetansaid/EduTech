@@ -60,9 +60,10 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
       <BandeNationale className="relative z-40 h-[3px]" />
 
       <header className="sticky top-0 z-30 border-b border-line/50 bg-bg/80 backdrop-blur-xl">
-        <div className={cn("mx-auto flex h-16 items-center gap-3 px-4", largeur === "large" ? "max-w-6xl" : "max-w-3xl")}>
+        {/* L'en-tête prend toute la largeur utile, même quand le contenu reste étroit : sinon les onglets ne tiennent pas. */}
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4">
           <Link href="/" aria-label="Accueil BEILE"><Logo compact /></Link>
-          <div className="min-w-0 shrink-0 leading-tight md:hidden xl:block">
+          <div className="min-w-0 shrink-0 leading-tight md:hidden 2xl:block">
             <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--acc)" }}>{a.nom}</p>
             <p className="truncate text-[13px] text-ink-muted">{profil.nomAffiche}</p>
           </div>
@@ -103,7 +104,7 @@ function Enveloppe({ espace, onglets, roles, largeur = "etroite", children }: Pr
           <Link key={o.href} href={o.href} aria-current={actif(o.href) ? "page" : undefined} className="relative flex min-w-[64px] flex-1 shrink-0 flex-col items-center gap-0.5 whitespace-nowrap rounded-md px-1 py-1.5 text-[10.5px] font-medium" style={{ color: actif(o.href) ? "var(--acc)" : "var(--text-muted)" }}>
             {actif(o.href) && <IndicateurActif id={`onglet-mobile-${espace}`} className="absolute inset-0 rounded-md" style={{ background: "var(--acc-doux)" }} />}
             <o.icone size={20} aria-hidden className="relative" />
-            <span className="relative">{o.libelle}</span>
+            <span className="relative block max-w-[64px] truncate">{o.libelle}</span>
           </Link>
         ))}
       </nav>
