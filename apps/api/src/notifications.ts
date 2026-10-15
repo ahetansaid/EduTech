@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { LIBELLE_ACTE } from "@beile/contracts";
 import { schema } from "@beile/db";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { base } from "./commun";
 
 /**
@@ -64,6 +64,44 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
     for (const npi of destinataires) lignes.push({ id: `NOT-${randomUUID()}`, destinataireNpi: npi, titre, texte, evenementId: f.id });
   }
   if (lignes.length) await base().insert(schema.notifications).values(lignes);
+  await avisSms(lignes, utiles);
+}
+
+/**
+ * Avis SMS : seulement pour une absence (au plus un par compte et par jour) et un diplôme délivré, seulement vers
+ * un numéro VÉRIFIÉ (preuve de possession par code). Le texte ne nomme pas l'enfant et ne donne aucune note : un
+ * téléphone se partage. Préparés sans envoi tant que BEILE_AVIS_SMS vaut « journal » (voir messagerie.ts).
+ */
+const TEXTE_AVIS: Record<string, [string, string]> = {
+  ABSENCE: ["avis-absence", "BEILE : une absence a été enregistrée aujourd'hui pour un enfant dont vous êtes responsable. Connectez-vous pour la consulter ou la justifier."],
+  CERTIFICATION: ["avis-diplome", "BEILE : un diplôme a été délivré. Il est consultable et vérifiable dans votre espace."],
+};
+
+async function avisSms(lignes: (typeof schema.notifications.$inferInsert)[], faits: FaitNotifiable[]) {
+  const typeDe = new Map(faits.map((f) => [f.id, f.type]));
+  const parNpi = new Map<string, Set<string>>();
+  for (const l of lignes) {
+    const t = typeDe.get(String(l.evenementId));
+    if (t && TEXTE_AVIS[t]) parNpi.set(l.destinataireNpi, (parNpi.get(l.destinataireNpi) ?? new Set()).add(t));
+  }
+  if (!parNpi.size) return;
+  const comptes = await base().select({ id: schema.comptes.id, npi: schema.profils.npi, telephone: schema.comptes.telephone })
+    .from(schema.comptes).innerJoin(schema.profils, eq(schema.profils.id, schema.comptes.profilId))
+    .where(and(inArray(schema.profils.npi, [...parNpi.keys()]), eq(schema.comptes.actif, true), eq(schema.comptes.telephoneVerifie, true)));
+  if (!comptes.length) return;
+  const debutJour = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
+  const dejaAvises = new Set((await base().select({ c: schema.messagesSortants.compteId, o: schema.messagesSortants.objet }).from(schema.messagesSortants)
+    .where(and(inArray(schema.messagesSortants.compteId, comptes.map((c) => c.id)), gte(schema.messagesSortants.creeLe, debutJour)))).map((x) => `${x.c}|${x.o}`));
+  const { preparerAvisSms } = await import("./messagerie");
+  for (const c of comptes) {
+    if (!c.telephone || !c.npi) continue;
+    for (const t of parNpi.get(c.npi) ?? []) {
+      const [objet, texte] = TEXTE_AVIS[t]!;
+      if (dejaAvises.has(`${c.id}|${objet}`)) continue;
+      dejaAvises.add(`${c.id}|${objet}`);
+      await preparerAvisSms({ compteId: c.id, destinataire: c.telephone, objet, texte });
+    }
+  }
 }
 
 export async function notificationsDe(npi: string, limite = 50) {

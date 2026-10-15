@@ -42,6 +42,8 @@ const Schema = z.object({
   BEILE_SMS_URL: z.string().url().optional(),
   BEILE_SMS_CLE: z.string().min(16).optional(),
   BEILE_SMS_EXPEDITEUR: z.string().max(11).default("BEILE"),
+  /** Avis SMS aux familles (absence, diplôme) : « journal » = préparés et tracés, jamais envoyés ; « actif » = envoi réel par la passerelle. */
+  BEILE_AVIS_SMS: z.enum(["journal", "actif"]).default("journal"),
   BEILE_SMTP_URL: z.string().optional(),
   BEILE_COURRIEL_EXPEDITEUR: z.string().email().optional(),
   /** Relying Party FIDO2 : domaine du portail (sans schéma), et nom affiché par l'authentificateur. */
@@ -122,6 +124,7 @@ return {
   MANDATAIRES: v.BEILE_MANDATAIRES,
   CLE_MAITRESSE: v.BEILE_CLE_MAITRESSE ?? v.BEILE_CLE_SEAU ?? null,
   SMS: v.BEILE_SMS_URL ? { url: v.BEILE_SMS_URL, cle: v.BEILE_SMS_CLE!, expediteur: v.BEILE_SMS_EXPEDITEUR } : null,
+  AVIS_SMS: v.BEILE_AVIS_SMS,
   SMTP: v.BEILE_SMTP_URL ? { url: v.BEILE_SMTP_URL, expediteur: v.BEILE_COURRIEL_EXPEDITEUR! } : null,
   RP_ID: v.BEILE_WEBAUTHN_RP_ID ?? null,
   PORTAIL: v.BEILE_PORTAIL,

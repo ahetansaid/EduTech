@@ -623,7 +623,8 @@ export const messagesSortants = core.table("messages_sortants", {
   objet: text("objet").notNull(),
   texte: text("texte").notNull(),
   fournisseur: text("fournisseur").notNull(),
-  statut: text("statut", { enum: ["envoye", "echec"] }).notNull(),
+  /** « prepare » : avis SMS préparé et tracé sans envoi (BEILE_AVIS_SMS=journal). */
+  statut: text("statut", { enum: ["envoye", "echec", "prepare"] }).notNull(),
   erreur: text("erreur"),
   creeLe: timestamp("cree_le", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("messages_compte_idx").on(t.compteId, t.creeLe)]);

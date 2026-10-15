@@ -55,3 +55,18 @@ export async function envoyer(m: { canal: Canal; destinataire: string; objet: st
   });
   return statut === "envoye";
 }
+
+/**
+ * Avis aux familles par SMS (absence, diplôme). Tant que BEILE_AVIS_SMS vaut « journal » (défaut), l'avis est
+ * PRÉPARÉ et tracé, jamais envoyé : la file existe, le coût et le fournisseur restent à décider. En « actif », et
+ * seulement avec une passerelle configurée, il part réellement. Le numéro est toujours masqué dans la trace.
+ */
+export async function preparerAvisSms(m: { compteId: string; destinataire: string; objet: string; texte: string }) {
+  const e = lireEnv();
+  if (e.AVIS_SMS === "actif" && e.SMS) return envoyer({ canal: "sms", destinataire: m.destinataire, objet: m.objet, texte: m.texte, compteId: m.compteId });
+  await base().insert(schema.messagesSortants).values({
+    id: `MSG-${randomUUID()}`, compteId: m.compteId, canal: "sms", destinataire: masquer(m.destinataire),
+    objet: m.objet, texte: m.texte, fournisseur: "journal-avis", statut: "prepare", erreur: null,
+  });
+  return false;
+}
