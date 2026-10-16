@@ -54,7 +54,7 @@ export default function PageCarriere() {
           titre={`${e.prenoms} ${e.nom}`}
           sousTitre="Votre carrière se reconstitue à partir des événements du registre : aucun dossier papier à recomposer lors d'une mutation."
           actions={
-            <Button variante="secondaire" icone={Download} onClick={() => { const l = passeport(data); exporterCsv(`passeport_${e.npi}`, l, COLONNES_PASSEPORT); notifier({ ton: "succes", titre: "Passeport exporté", texte: `${entier(l.length)} jalon(s) du recrutement à aujourd'hui.` }); }} title="Exporter tout le parcours (recrutement, affectations, formations) au format CSV">
+            <Button variante="secondaire" icone={Download} onClick={() => { const l = passeport(data); exporterCsv(`passeport_${e.id}`, l, COLONNES_PASSEPORT); notifier({ ton: "succes", titre: "Passeport exporté", texte: `${entier(l.length)} jalon(s) du recrutement à aujourd'hui.` }); }} title="Exporter tout le parcours (recrutement, affectations, formations) au format CSV">
               Exporter le parcours
             </Button>
           }

@@ -37,7 +37,8 @@ export default function FicheEtablissement({ params }: { params: Promise<{ id: s
   }
 
   const statut = libelleStatut(e.statut);
-  const sources = e.source.split("|").map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s));
+  // Une source mal formée (« https:// » seul) ne fait pas planter la fiche publique : elle est simplement écartée.
+  const sources = e.source.split("|").map((s) => s.trim()).filter((s) => { if (!/^https?:\/\//.test(s)) return false; try { return !!new URL(s).hostname; } catch { return false; } });
   return (
     <PagePublique large surtitre={[e.typeLibelle, statut].filter(Boolean).join(" · ")} titre={e.sigle && !e.nom.includes(e.sigle) ? `${e.nom} (${e.sigle})` : e.nom}
       intro={<span className="inline-flex items-center gap-1.5"><MapPin size={16} aria-hidden /> {e.commune ? `${e.commune}${e.departement ? `, ${e.departement}` : ""}` : "Commune non renseignée"}</span>}>

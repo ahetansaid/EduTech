@@ -39,6 +39,11 @@ function rediriger(chemin: string, motif?: string) {
   const ici = window.location.pathname + window.location.search;
   if (ici.startsWith(chemin)) return;
   redirectionEnCours = true;
+  // Session expirée ou inactivité : les brouillons de notes (identifiants d'élèves et notes) ne restent pas sur
+  // l'appareil, comme à la déconnexion volontaire. La file hors connexion, elle, reste attachée à son auteur.
+  try {
+    for (const cle of Object.keys(localStorage)) if (cle.startsWith("beile.brouillon-notes.")) localStorage.removeItem(cle);
+  } catch { /* stockage indisponible */ }
   // Rechargement complet volontaire : on repart d'un état client vierge (cache de requêtes vidé).
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(`${chemin}?retour=${encodeURIComponent(ici)}${motif ? `&motif=${motif}` : ""}`);

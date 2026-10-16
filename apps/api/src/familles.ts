@@ -108,6 +108,19 @@ familles.post("/etablissements/:id/familles/:prv/rattacher-npi", authentifie, li
     await journaliser(profil, "Rattachement du NPI d'un responsable", `${prv} → NPI refusé (registre)`, "gestion", false, "identite");
     throw new HTTPException(422, { message: "Ce NPI n'est pas celui du responsable attesté (inconnu du registre national ou identité différente) : rattachement refusé" });
   }
+  // Le nom comparé ci-dessus a été saisi par le chef lui-même : il ne prouve rien seul. La preuve est au registre
+  // national : ce NPI doit y figurer comme PARENT de chacun des enfants rattachés à ce responsable provisoire.
+  // Sinon, la filiation n'est pas établie par l'État et le rattachement passe par l'administration.
+  const enfants = await base().execute<{ apprenant_id: string; parents: string[] | null }>(sql`
+    select l.apprenant_id, p.parents_npi as parents
+    from core.liens_familiaux l join core.apprenants a on a.id = l.apprenant_id
+    left join registre_simule.personnes p on p.npi = a.npi
+    where l.responsable_npi = ${prv}`);
+  const filiationProuvee = enfants.length > 0 && enfants.every((e) => (e.parents ?? []).includes(npi));
+  if (!filiationProuvee) {
+    await journaliser(profil, "Rattachement du NPI d'un responsable", `${prv} → NPI refusé (filiation non inscrite au registre)`, "gestion", false, "relation");
+    throw new HTTPException(422, { message: "Le registre national n'inscrit pas ce NPI comme parent de l'enfant : le rattachement passe par l'administration" });
+  }
   await base().transaction(async (tx) => {
     // Sous verrou sur ce NPI : deux rattachements simultanés ne peuvent pas l'attribuer deux fois.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`npi:${npi}`}))`);

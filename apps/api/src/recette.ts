@@ -291,7 +291,11 @@ if (ECRITURES) {
   verifier("Enseignant : notes de mathématiques", notes.statut, 201);
   const idNote = (notes.json.enregistres as string[] | undefined)?.[0] ?? "EVT-inexistant";
   verifier("Directrice : correction de la note d'un collègue", (await directrice!.appel("POST", "/evenements/corrections", { evenementCorrigeId: idNote, nouvelleNote: 20, motif: "Tentative non autorisée" })).statut, 403);
-  verifier("Enseignant : correction motivée", (await enseignant!.appel("POST", "/evenements/corrections", { evenementCorrigeId: idNote, nouvelleNote: 15, motif: "Erreur de report" })).statut, 201);
+  const correction = { evenementCorrigeId: idNote, nouvelleNote: 15, motif: "Erreur de report", idSaisie: `RECETTE-CORR-${Date.now()}` };
+  const corr1 = await enseignant!.appel("POST", "/evenements/corrections", correction);
+  verifier("Enseignant : correction motivée", corr1.statut, 201);
+  const corr2 = await enseignant!.appel("POST", "/evenements/corrections", correction);
+  verifier("Correction rejouée (réponse perdue) : renvoyée, pas réécrite", corr2.statut === 200 && corr2.json.deja === true && corr2.json.enregistre === corr1.json.enregistre, true);
   const carnet = await enseignant!.appel("GET", "/classes/CLS-PAR-5eA-S");
   const note = liste(carnet.json.eleves).find((e) => e.id === "APP-000001")?.notes as { id: string; note: number; corrigee: boolean }[] | undefined;
   const corrigee = note?.find((n) => n.id === idNote);

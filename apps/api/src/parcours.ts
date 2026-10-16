@@ -120,6 +120,8 @@ parcours.post("/evenements/corrections", authentifie, async (c) => {
     evenementCorrigeId: z.string().regex(/^EVT-[A-Za-z0-9-]+$/),
     nouvelleNote: z.number().min(0).max(20).refine((n) => Number.isInteger(n * 4), "au quart de point"),
     motif: z.string().trim().min(5).max(140),
+    // Une correction rejouée après une réponse perdue (réseau 2G) ne doit pas s'inscrire deux fois.
+    idSaisie: ID_SAISIE,
   }).strict());
   const [origine] = await base().select().from(schema.evenements).where(and(eq(schema.evenements.id, saisie.evenementCorrigeId), eq(schema.evenements.type, "EVALUATION")));
   if (!origine) throw new HTTPException(404, { message: "Évaluation introuvable" });
@@ -130,9 +132,11 @@ parcours.post("/evenements/corrections", authentifie, async (c) => {
     await journaliser(profil, "Correction de note", saisie.evenementCorrigeId, "evaluation", false, !enseignant ? "role" : "relation");
     refuser("Correction réservée à l'enseignant de la matière dans cette classe");
   }
+  const deja = await dejaSaisi(saisie.idSaisie, "CORRECTION_EVALUATION");
+  if (deja) return c.json({ enregistre: deja[0], deja: true }, 200);
   const [id] = await inscrireAuRegistre([{
     type: "CORRECTION_EVALUATION", auteurId: enseignant!.id, etablissementId: origine.etablissementId, apprenantId: d.apprenantId,
-    donnees: { apprenantId: d.apprenantId, evenementCorrigeId: saisie.evenementCorrigeId, nouvelleNote: saisie.nouvelleNote, motif: saisie.motif, classeId: d.classeId },
+    donnees: { apprenantId: d.apprenantId, evenementCorrigeId: saisie.evenementCorrigeId, nouvelleNote: saisie.nouvelleNote, motif: saisie.motif, classeId: d.classeId, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
   }]);
   await journaliser(profil, "Correction de note", `${saisie.evenementCorrigeId} → ${saisie.nouvelleNote}`, "evaluation", true, null);
   return c.json({ enregistre: id }, 201);

@@ -9,7 +9,7 @@ import { Badge, Button, Card, CardHeader, EtatVide, Segmente } from "@/component
 import { cn } from "@/lib/cn";
 import { date, heure, nombre } from "@/lib/format";
 import { analyserNote, useCorrectionMutation, useHistorique, useNotesMutation, type Carnet, type CorpsNotes, type CorrectionHistorique, type NoteCarnet } from "@/lib/api/enseignant";
-import { useFileHorsConnexion } from "@/lib/fileHorsConnexion";
+import { compteActuel, useFileHorsConnexion } from "@/lib/fileHorsConnexion";
 import { BadgePoint, BarreAction, Confirmation, FeuilleModale, nomComplet } from "../../communs";
 
 /* ------------------------------------------------------------------ Brouillon local (appel téléphonique, écran verrouillé…) */
@@ -17,7 +17,8 @@ import { BadgePoint, BarreAction, Confirmation, FeuilleModale, nomComplet } from
 /** Libellés des natures d'évaluation. La moyenne reste non pondérée tant que les coefficients officiels ne sont pas fournis. */
 const LIBELLE_TYPE_EVALUATION: Record<TypeEvaluation, string> = { interrogation: "Interrogation", devoir: "Devoir", composition: "Composition" };
 
-const cleBrouillon = (classeId: string, matiere: string, trimestre: number) => `beile.brouillon-notes.${classeId}.${matiere}.${trimestre}`;
+// Le brouillon porte le compte : sur un téléphone partagé, un autre enseignant ne relit jamais (ni n'envoie) les notes d'autrui.
+const cleBrouillon = (classeId: string, matiere: string, trimestre: number) => `beile.brouillon-notes.${compteActuel() ?? "sans-compte"}.${classeId}.${matiere}.${trimestre}`;
 function lireBrouillon(cle: string): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(cle) ?? "{}") as Record<string, string>; } catch { return {}; }
 }

@@ -53,10 +53,10 @@ export function telechargerCsv(nom: string, csv: string) {
  *  `provenance` (optionnel) ajoute une dernière ligne de pied de page — périmètre, date, finalité —
  *  pour tracer le cadre d'usage lorsque le fichier contient des données personnelles et quitte la plateforme. */
 /**
- * Produire un fichier : l'export est d'abord DÉCLARÉ au serveur (journal d'audit : auteur, fichier,
- * colonnes, volume). Si la trace ne peut pas être écrite, aucun fichier n'est produit — un fichier
- * nominatif ne quitte jamais la plateforme sans laisser de trace. Le pied de provenance est toujours
- * présent : il dit d'où vient le fichier et qu'il a été journalisé.
+ * Produire un fichier : l'export est d'abord DÉCLARÉ au serveur (journal d'audit : auteur, nom du fichier,
+ * colonnes, nombre de lignes, caractère nominatif). Si la trace ne peut pas être écrite, l'interface ne produit
+ * aucun fichier. Limite assumée : cette déclaration vient du navigateur. La LECTURE des données est journalisée
+ * par l'API sur chaque route ; la transformation en fichier, elle, ne se prouve que côté client.
  */
 export async function exporterCsv<T>(nom: string, lignes: readonly T[], colonnes: readonly Colonne<T>[], provenance?: string, nominatif = true) {
   try {

@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { useEffect } from "react";
 import { notifier } from "@/components/ui/Notifications";
 import { ecrire, ErreurApi, lire } from "@/lib/http";
-import { declarerVerification, estErreurReseau, lireFile, mettreEnFile, synchroniser, type SaisieEnAttente } from "@/lib/fileHorsConnexion";
+import { declarerVerification, estErreurReseau, fileDuCompte, mettreEnFile, nouvelIdentifiantSaisie, synchroniser, type SaisieEnAttente } from "@/lib/fileHorsConnexion";
 
 /* ================================================================== Types (reflet exact des réponses de l'API) */
 
@@ -107,16 +107,19 @@ const horsLigne = () => typeof navigator !== "undefined" && !navigator.onLine;
 /** Envoi direct si le réseau est là ; sinon (ou si l'envoi échoue faute de réseau) : mise en file persistée. */
 async function envoyerOuMettreEnFile(s: Pick<SaisieEnAttente, "type" | "chemin" | "corps" | "libelle" | "classeId">): Promise<Resultat> {
   // Des saisies plus anciennes attendent : on respecte l'ordre de saisie en passant derrière elles.
-  if (horsLigne() || lireFile().length > 0) {
-    const saisie = mettreEnFile(s);
+  // La clé d'idempotence naît avant le premier envoi : si la réponse se perd (2G, passerelle 504), le rejeu
+  // depuis la file porte la MÊME clé et le serveur ne compte pas l'évaluation deux fois.
+  const id = nouvelIdentifiantSaisie();
+  if (horsLigne() || fileDuCompte().length > 0) {
+    const saisie = mettreEnFile(s, id);
     if (!horsLigne()) void synchroniser();
     return { etat: "en_attente", saisie };
   }
   try {
-    const r = await ecrire<{ enregistres?: string[]; enregistre?: string }>(s.chemin, s.corps);
+    const r = await ecrire<{ enregistres?: string[]; enregistre?: string }>(s.chemin, { ...s.corps, idSaisie: id });
     return { etat: "enregistre", ids: r.enregistres ?? (r.enregistre ? [r.enregistre] : []) };
   } catch (e) {
-    if (estErreurReseau(e)) return { etat: "en_attente", saisie: mettreEnFile(s) };
+    if (estErreurReseau(e)) return { etat: "en_attente", saisie: mettreEnFile(s, id) };
     throw e;
   }
 }
@@ -239,7 +242,7 @@ declarerVerification("appel", async (s) => {
 
 let vidageEnCours = false;
 async function vider(client: QueryClient) {
-  if (vidageEnCours || !lireFile().length || horsLigne()) return;
+  if (vidageEnCours || !fileDuCompte().length || horsLigne()) return;
   vidageEnCours = true;
   try {
     const bilan = await synchroniser();
