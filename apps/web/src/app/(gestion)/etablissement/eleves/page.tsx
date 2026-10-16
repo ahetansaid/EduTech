@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, FileText, Fingerprint, Printer, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
+import { Activity, ArrowDownAZ, ArrowRight, ChevronDown, Download, FileSpreadsheet, FileText, Fingerprint, Printer, ShieldAlert, TrendingDown, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
@@ -151,6 +151,7 @@ function Liste() {
             <Button variante="secondaire" icone={Printer} disabled={!liste.length} onClick={() => setImpression(true)} title="Imprimer un état nominatif, une feuille d'appel ou un PV de conseil">Imprimer</Button>
             {classeId && <Button variante="secondaire" icone={FileText} chargement={bulletins && bulletinsClasse.isFetching} onClick={() => setBulletins(true)} title={`Tous les bulletins de ${classe}, un par page`}>Bulletins de la classe</Button>}
             {bulletins && bulletinsClasse.isError && <span role="alert" className="text-[13px] text-critical">{bulletinsClasse.error.message}</span>}
+            <LienBouton href="/etablissement/import" variante="secondaire" icone={FileSpreadsheet}>Importer une liste</LienBouton>
             <LienBouton href="/etablissement/inscription" icone={UserPlus}>Inscrire un apprenant</LienBouton>
           </div>
         }
