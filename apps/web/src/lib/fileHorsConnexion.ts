@@ -116,8 +116,17 @@ function identifiant() {
 
 /* ------------------------------------------------------------------ Opérations */
 
-export function mettreEnFile(s: Pick<SaisieEnAttente, "type" | "chemin" | "corps" | "libelle" | "classeId">): SaisieEnAttente {
-  const saisie: SaisieEnAttente = { ...s, id: identifiant(), saisiLe: new Date().toISOString(), tentatives: 0, compte: compteCourant ?? undefined };
+/** Clé d'idempotence d'une saisie : créée AVANT le premier envoi, réutilisée telle quelle si elle part en file. */
+export const nouvelIdentifiantSaisie = () => identifiant();
+
+/** Saisies en attente du compte connecté seulement (celles d'un autre compte ne le concernent pas). */
+export const fileDuCompte = () => lireFile().filter((s) => !!compteCourant && s.compte === compteCourant);
+
+/** Compte courant (clé des brouillons : un brouillon n'est jamais relu par un autre compte sur un appareil partagé). */
+export const compteActuel = () => compteCourant;
+
+export function mettreEnFile(s: Pick<SaisieEnAttente, "type" | "chemin" | "corps" | "libelle" | "classeId">, id = identifiant()): SaisieEnAttente {
+  const saisie: SaisieEnAttente = { ...s, id, saisiLe: new Date().toISOString(), tentatives: 0, compte: compteCourant ?? undefined };
   ecrireFile([...lireFile(), saisie]);
   return saisie;
 }
@@ -171,7 +180,7 @@ export function synchroniser(): Promise<BilanSynchronisation> {
         const verification = verifications.get(saisie.type);
         const corps = verification ? await avecDelai(verification(saisie)) : saisie.corps;
         // L'identifiant de la saisie sert de clé d'idempotence côté serveur (rejeu sans doublon).
-        const idempotent = saisie.type === "appel" || saisie.type === "notes";
+        const idempotent = saisie.type === "appel" || saisie.type === "notes" || saisie.type === "correction";
         if (corps) await avecDelai(ecrire(saisie.chemin, idempotent ? { ...corps, idSaisie: saisie.id } : corps));
         marquerAcceptee(saisie.id);
         retirerDeLaFile(saisie.id);

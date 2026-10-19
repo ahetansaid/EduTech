@@ -1,6 +1,6 @@
 import type { Profil, Role } from "@beile/contracts";
 import {
-  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Compass, Database, Download, FileSearch, GraduationCap,
+  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Compass, Database, Download, FileSearch, FileSpreadsheet, GraduationCap,
   Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Siren, Sparkles, UsersRound, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
@@ -42,6 +42,7 @@ export const NAVIGATION: EntreeNav[] = [
 
   { href: "/etablissement", libelle: "Mon établissement", icone: Building2, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5" , cycles: K12 },
   { href: "/etablissement/inscription", libelle: "Inscrire un apprenant", icone: UserPlus, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6" , cycles: K12 },
+  { href: "/etablissement/import", libelle: "Importer une liste", icone: FileSpreadsheet, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6", cycles: K12 },
   { href: "/etablissement/eleves", libelle: "Apprenants", icone: Users, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7 · P9" , cycles: K12 },
   { href: "/etablissement/familles", libelle: "Familles sans NPI", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6", cycles: K12 },
   { href: "/etablissement/personnel", libelle: "Personnel enseignant", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
