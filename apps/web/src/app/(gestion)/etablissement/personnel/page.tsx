@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, CircleAlert, GraduationCap, Search, Star, UserX, Users, X } from "lucide-react";
+import { BadgeCheck, CircleAlert, GraduationCap, ListChecks, Search, Star, UserX, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Cascade, Element, EntreePage } from "@/components/motion";
 import { Badge, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
@@ -8,7 +8,7 @@ import { COURT_STATUT_EMPLOI, provenancePeriode, usePersonnel, type MembrePerson
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
 import { useEtablissementCourant } from "@/lib/session";
-import { EtatErreur } from "../_composants";
+import { EtatErreur, LienBouton } from "../_composants";
 
 /**
  * Personnel enseignant : qui enseigne quoi, à combien d'élèves, avec quelles formations, et où les notes
@@ -53,7 +53,7 @@ export default function PagePersonnel() {
   return (
     <EntreePage>
       <div className="space-y-5">
-        <PageHeader surtitre="Mon établissement" titre="Personnel enseignant" />
+        <PageHeader surtitre="Mon établissement" titre="Personnel enseignant" actions={<LienBouton href="/etablissement/import-services" variante="secondaire" icone={ListChecks}>Importer les services</LienBouton>} />
         {q.isError ? <Card><EtatErreur erreur={q.error} reessayer={() => q.refetch()} /></Card>
           : !p || !synthese ? (
             <>

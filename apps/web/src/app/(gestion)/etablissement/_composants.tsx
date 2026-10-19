@@ -218,7 +218,7 @@ export const LIBELLE_EVENEMENT: Record<string, string> = {
   INSCRIPTION: "Inscription", EVALUATION: "Évaluation", CORRECTION_EVALUATION: "Correction de note", ABSENCE: "Absence",
   PASSAGE: "Passage de niveau", TRANSFERT: "Transfert", ABANDON: "Abandon", REPRISE: "Reprise de scolarité",
   RESULTAT_EXAMEN: "Résultat d'examen", CERTIFICATION: "Diplôme délivré", REGULARISATION_IDENTITE_DEMANDEE: "Régularisation d'identité",
-  AFFECTATION_ENSEIGNANT: "Affectation", FORMATION_ENSEIGNANT: "Formation",
+  AFFECTATION_ENSEIGNANT: "Affectation", FORMATION_ENSEIGNANT: "Formation", SERVICE_ENSEIGNEMENT: "Service d’enseignement",
   JUSTIFICATION_ABSENCE: "Justificatif d'absence", DECISION_JUSTIFICATION: "Décision sur justificatif",
 };
 export const TON_EVENEMENT: Record<string, TonStatut> = {

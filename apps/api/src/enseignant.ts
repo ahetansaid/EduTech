@@ -89,7 +89,9 @@ enseignant.get("/classes/:id", authentifie, async (c) => {
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, classeId));
   if (!classe) throw new HTTPException(404, { message: "Classe inconnue" });
   const e = await enseignantDe(profil);
-  const matieres = e ? (await base().select({ m: schema.enseignements.matiere }).from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, e.id), eq(schema.enseignements.classeId, classeId)))).map((x) => x.m) : [];
+  // Défense en profondeur : un service n'ouvre le carnet que dans l'établissement où l'enseignant est affecté
+  // (un service oublié après une mutation ne donne plus rien).
+  const matieres = e && e.etablissementId === classe.etablissementId ? (await base().select({ m: schema.enseignements.matiere }).from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, e.id), eq(schema.enseignements.classeId, classeId)))).map((x) => x.m) : [];
   const chef = profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === classe.etablissementId);
   if (!matieres.length && !chef) {
     await journaliser(profil, "Consultation d'un carnet de classe", classeId, "evaluation", false, e ? "relation" : "role");

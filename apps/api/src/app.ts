@@ -27,6 +27,7 @@ import { rapports } from "./rapports";
 import { personnels } from "./personnels";
 import { saisieTutelle } from "./saisie-tutelle";
 import { importEleves } from "./import-eleves";
+import { importServices } from "./import-services";
 import { familles } from "./familles";
 import { delegation } from "./delegation";
 import { filtrePortail } from "./portails";
@@ -66,8 +67,9 @@ app.use("*", cors({ origin: (origine) => (lireEnv().ORIGINES.includes(origine) ?
 const corpsCourant = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ erreur: "Requête trop volumineuse" }, 413) });
 const corpsVerdicts = bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ erreur: "Lot de verdicts trop volumineux : 5 000 lignes au plus" }, 413) });
 // Import d'une liste d'élèves : 1 500 lignes au plus (≈ 250 octets, jusqu’à 400 avec des champs pleins accentués), le contrat zod borne le reste.
-const corpsImport = bodyLimit({ maxSize: 640 * 1024, onError: (c) => c.json({ erreur: "Liste trop volumineuse : 1 500 élèves au plus par import" }, 413) });
-app.use("*", (c, next) => (/\/examens\/sessions\/[^/]+\/deliberation$|\/interop\//.test(c.req.path) ? corpsVerdicts : /^\/api\/v1\/etablissements\/[^/]+\/import\/eleves$/.test(c.req.path) ? corpsImport : corpsCourant)(c, next));
+// Services d'enseignement : 800 lignes au plus, même plafond.
+const corpsImport = bodyLimit({ maxSize: 640 * 1024, onError: (c) => c.json({ erreur: "Liste trop volumineuse : 1 500 élèves (ou 800 services) au plus par import" }, 413) });
+app.use("*", (c, next) => (/\/examens\/sessions\/[^/]+\/deliberation$|\/interop\//.test(c.req.path) ? corpsVerdicts : /^\/api\/v1\/etablissements\/[^/]+\/import\/(?:eleves|services)$/.test(c.req.path) ? corpsImport : corpsCourant)(c, next));
 // Deux plafonds : par IP (large — un établissement entier peut partager une IP publique) et par utilisateur.
 // Portail servi par cette instance (lot D) : réseau autorisé et surface exposée, avant toute route.
 app.use("*", filtrePortail);
@@ -350,6 +352,7 @@ app.route("/", rapports);
 app.route("/", personnels);
 app.route("/", saisieTutelle);
 app.route("/", importEleves);
+app.route("/", importServices);
 app.route("/", familles);
 app.route("/", delegation);
 app.route("/", securiteComptes);

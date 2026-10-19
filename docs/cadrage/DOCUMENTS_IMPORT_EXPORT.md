@@ -90,11 +90,29 @@ du même fichier → tout « déjà inscrit », **aucune** nouvelle ligne. Néga
 
 | Lot | Contenu | Dépend de |
 |---|---|---|
-| 1 bis | Import des services d'enseignement | — |
+| 1 bis | Import des services d'enseignement — **livré** (voir § 6 bis) | — |
 | 2 | Bulletin et certificat de scolarité en **PDF scellé** vérifiable (réutilise le scellé des actes) | Choix de la bibliothèque PDF côté serveur |
 | 3 | Import de notes depuis un tableur (même moteur vérifier/importer, idempotence par `idSaisie`) | Grille des coefficients pour les moyennes |
 | 4 | Pièces justificatives et scans | Décision de stockage (commune avec la bibliothèque), avis du DPO (données de santé) |
 | 5 | Format `.xlsx` en entrée | Bibliothèque de lecture auditée (pas de `xlsx` npm non maintenu) |
+
+## 6 bis. Lot 1 bis — services d'enseignement (livré)
+
+Écran `/etablissement/import-services`, route `POST /etablissements/:id/import/services`. Un service ouvre à
+l'enseignant le carnet de la classe : c'est un **droit d'accès**, traité comme tel.
+
+- Seuls les enseignants **déjà affectés** à l'établissement sont reconnus (par NPI ou nom) ; un enseignant d'une autre
+  école et un NPI inexistant reçoivent le même motif. Classes de l'année, de l'établissement uniquement.
+- Chaque attribution, retrait, désignation ou fin de professeur principal est un fait `SERVICE_ENSEIGNEMENT` au
+  registre, avec son auteur ; chaque refus est journalisé avec son critère.
+- Mode **remplacer** : les classes du fichier reçoivent exactement les services listés ; les retraits sont annoncés
+  avant l'import ; une classe dont une ligne est refusée est bloquée en entier (rien n'y est retiré).
+- **Séparation des rôles** : un chef qui enseigne ne peut pas s'attribuer une classe et une matière où des notes
+  existent déjà (il pourrait corriger celles d'un collègue) ; cette reprise passe par l'inspection.
+- Verrou par établissement ; sous verrou, on revérifie les services et l'appartenance des enseignants (une mutation
+  acceptée entre-temps fait échouer l'import en 409, journalisé). L'accès au carnet exige en outre que l'enseignant
+  soit affecté à l'établissement de la classe.
+- Audit indépendant du lot (5 constats, dont 2 moyens), tous corrigés et couverts par un test.
 
 ## 7. Décisions à prendre
 
