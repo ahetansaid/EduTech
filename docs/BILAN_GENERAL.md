@@ -1,9 +1,14 @@
 # BEILE — Bilan général, audit et reste à faire
 
-> État au **16 octobre 2026**. Document versionné : **aucun mot de passe ni secret ici**. Les mots de passe des
-> comptes cités sont dans `COMPTES.local.md` (fichier local, jamais commité).
+> État au **19 octobre 2026** (mise à jour du bilan du 16/10). Document versionné : **aucun mot de passe ni secret
+> ici**. Les mots de passe des comptes cités sont dans `COMPTES.local.md` (fichier local, jamais commité).
 > Complète [SECURITE.md](SECURITE.md), [SECURITE_COMPTES.md](SECURITE_COMPTES.md), [DEPLOIEMENT.md](DEPLOIEMENT.md)
-> et la note de cadrage [cadrage/BIBLIOTHEQUE_NUMERIQUE.md](cadrage/BIBLIOTHEQUE_NUMERIQUE.md).
+> et les notes de cadrage [cadrage/BIBLIOTHEQUE_NUMERIQUE.md](cadrage/BIBLIOTHEQUE_NUMERIQUE.md) et
+> [cadrage/DOCUMENTS_IMPORT_EXPORT.md](cadrage/DOCUMENTS_IMPORT_EXPORT.md).
+>
+> **Depuis le 16/10** : correctifs de l'audit général (`1d6e7a4`), note de cadrage des documents importés et
+> exportés, et **import des listes d'élèves** par le chef d'établissement (`01babf8`). Rien de cela n'est encore
+> en production.
 
 ---
 
@@ -15,11 +20,14 @@
 | API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 15/10/2026 depuis le même état |
 | Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016), vérifiées en base le 15/10 |
 | Sauvegarde avant la dernière mise en production | 70 tables, 15/10/2026 13 h 29 |
-| Intégration continue | Recette **402/402** cas conformes, écritures comprises (commit `1d6e7a4`) |
-| **En attente de mise en production** | `1d6e7a4` : correctifs de l'audit général (section 4.2). **Aucune migration.** Déploiement sur feu vert. |
+| Intégration continue (`dev`) | Recette **405/405** cas conformes, écritures comprises (commit `01babf8`) |
+| **En attente de mise en production** | `1d6e7a4` (correctifs de l'audit, section 4.2) et `01babf8` (import des listes, section 2 bis). **Aucune migration.** Déploiement sur feu vert. |
 
-**Volume** : 248 routes d'API, 77 écrans, 317 vérifications dans la recette automatique (certaines sont des
-boucles, d'où 402 cas comptés), 28 commits livrés depuis le début des vagues.
+**Volume** : 249 routes d'API, 78 écrans, 320 vérifications dans la recette automatique (certaines sont des
+boucles, d'où 405 cas comptés), 30 commits livrés depuis le début des vagues.
+
+**Point de vigilance CI** : le cas « essais de date plafonnés par candidat » (résultats d'examens) a échoué une
+fois sur `01babf8` puis réussi à la relance, sans changement de code. Il est instable : à fiabiliser (voir 5.4).
 
 ### Données : réelles ou simulées
 
@@ -45,7 +53,7 @@ démonstration, le code s'affiche au-dessus du formulaire.
 | **Apprenant** (`aicha.zannou`) | Passeport éducatif, bulletins par trimestre (trimestre tiré du calendrier officiel), preuves et diplômes, cursus, offres et vœux d'orientation, démarches, droits sur ses données, notifications | `/apprenant`, `/apprenant/bulletins`, `/apprenant/cursus`, `/apprenant/orientation`, `/apprenant/preuves`, `/apprenant/droits` |
 | **Famille** (`chantal.dossou`) | Enfants dans plusieurs établissements, notes, absences, justificatifs, notifications ; **responsable sans NPI** possible (attesté par l'école, activé par SMS, borné à son enfant) | `/famille`, `/famille/documents`, `/famille/notifications` |
 | **Enseignant** (`idrissou.sanni`) | Appel (hors connexion), notes avec **nature de l'évaluation** (interrogation, devoir, composition — sans pondération pour l'instant), corrections motivées, carnet, passeport professionnel et **statut d'emploi** (APE, ACE, AME, vacataire) | `/enseignant`, `/enseignant/classe/[id]`, `/enseignant/carriere` |
-| **Chef d'établissement** (`hortense.guera`) | Tableau de bord, inscription (registre national), élèves, personnel, familles (dont **responsables sans NPI** et rattachement ultérieur du NPI), justificatifs, examens | `/etablissement/*`, `/etablissement/familles` |
+| **Chef d'établissement** (`hortense.guera`) | Tableau de bord, inscription (registre national), élèves, personnel, familles (dont **responsables sans NPI** et rattachement ultérieur du NPI), justificatifs, examens, **import d'une liste d'élèves** (CSV) | `/etablissement/*`, `/etablissement/familles`, `/etablissement/import` |
 | **Inspecteur** (`nestor.orou`) 🔐 | Poste de pilotage territorial, alertes, **saisie pour le compte d'une école non connectée** (feuille d'appel papier), **visites à venir**, demandes avec escalade | `/territoire`, `/alertes`, `/saisie-ecoles`, `/visites`, `/demandes` |
 | **Direction départementale** (`bertrand.chabi`) 🔐 | Console du département, **rapport mensuel** tiré du registre, **statuts d'emploi** des enseignants du territoire, **suivi des alertes** (prise en charge → clôture), escalade des demandes | `/rapport`, `/personnels`, `/alertes`, `/demandes` |
 | **Cabinet / pilotage national** (`felicite.akakpo`) 🔐 | Cockpit national, carte, analyses, jeux de données sous **secret statistique** | `/cockpit`, `/cockpit/carte`, `/ask`, `/jeux-de-donnees` |
@@ -58,6 +66,28 @@ démonstration, le code s'affiche au-dessus du formulaire.
 **Transverse** : mode **économie de données** (aucun rafraîchissement en arrière-plan, automatique en 2G ;
 réglage dans `/mon-compte`), file hors connexion rattachée au compte, exports CSV journalisés et protégés contre
 l'injection de formules, avis SMS aux familles (absence, diplôme) préparés sans envoi.
+
+## 2 bis. Import des listes d'élèves (lot 1 des documents, `01babf8`, pas encore en production)
+
+Premier lot de la note [DOCUMENTS_IMPORT_EXPORT.md](cadrage/DOCUMENTS_IMPORT_EXPORT.md) : une école bascule ses
+élèves en une séance au lieu de les inscrire un par un.
+
+- **Écran** `/etablissement/import` (chef d'établissement) : modèle CSV téléchargeable ; le fichier est lu **dans
+  le navigateur** (UTF-8 ou Windows-1252 d'Excel, séparateur `;` `,` ou tabulation, en-têtes tolérants, dates
+  JJ/MM/AAAA) ; l'API ne reçoit que des lignes typées.
+- **Deux temps** : « Vérifier » rend un verdict par ligne sans rien écrire ; « Importer » refait toutes les
+  vérifications et n'inscrit que les lignes valides. Les lignes refusées s'exportent pour correction.
+- **Règles** : classe reconnue par son libellé, ou créée si le niveau est donné et le chef l'accepte ; capacité
+  respectée ; élève scolarisé ailleurs → renvoi au transfert ; enfant sans acte → régularisation d'identité ;
+  rejouable sans doublon.
+- **Sécurité** : même motif pour un NPI inconnu ou d'une autre personne (pas d'oracle sur le registre) ; âge
+  2–30 ans, y compris avec NPI ; verrou par établissement contre les imports simultanés ; 20 appels par heure et
+  par compte ; corps de requête à 640 Ko pour cette seule route ; chaque inscription est un fait au registre marqué
+  de l'identifiant d'import ; opération journalisée.
+- **Ce qui ne s'importe pas** : les enseignants, dont l'affectation passe par le circuit de la direction
+  départementale.
+- **Preuves** : test d'API 28/28 (nominal, rejeu, oracle, adulte, concurrence 201/409, 1 500 lignes, 403, 422,
+  429) ; lecture CSV 15/15 ; parcours navigateur 12/12 à 1 280 et 390 px ; recette CI 3 cas.
 
 ---
 
@@ -143,7 +173,8 @@ local, exports, file hors connexion). Chaque constat a été vérifié dans le c
 
 | # | Tâche | Comment tester |
 |---|---|---|
-| 1 | **Mettre en production `1d6e7a4`** (sans migration) : sauvegarde, fusion `dev` → `main` (front), déploiement de l'API | ① CI verte sur `1d6e7a4`. ② Après déploiement : `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/evenements/corrections` → **401** (route vivante, session exigée). ③ `idrissou.sanni` : corriger une note, puis rejouer la même requête (outil réseau du navigateur, « Rejouer ») → la note n'apparaît **qu'une fois** corrigée au carnet. ④ `hortense.guera` → `/etablissement/familles` : rattacher un NPI dont le registre n'inscrit pas la filiation → **refus** avec le message « Le registre national n'inscrit pas ce NPI comme parent… ». ⑤ Ouvrir une fiche `/etablissements/[id]` : elle s'affiche. |
+| 0 | **Import des listes** (`01babf8`, déployé avec le point 1) | `hortense.guera` → `/etablissement/import` : télécharger le modèle, y mettre 5 lignes (un élève avec NPI, un enfant sans acte, un NPI au nom faux, une ligne sans prénom, un élève déjà inscrit) → « Vérifier » : 2 à inscrire, 1 déjà inscrit, 2 refusées ; le NPI faux dit « NPI et identité ne concordent pas au registre national ». « Importer » → 2 inscrits, visibles dans `/etablissement/eleves`. Redéposer le même fichier → tout « déjà inscrit », bouton Importer désactivé. Négatifs : `idrissou.sanni` sur la route → 403 ; un adulte du registre → refusé (âge). |
+| 1 | **Mettre en production `1d6e7a4` et `01babf8`** (sans migration) : sauvegarde, fusion `dev` → `main` (front), déploiement de l'API | ① CI verte sur `01babf8` (405/405). ② Après déploiement : `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/evenements/corrections` → **401** (route vivante, session exigée). ③ `idrissou.sanni` : corriger une note, puis rejouer la même requête (outil réseau du navigateur, « Rejouer ») → la note n'apparaît **qu'une fois** corrigée au carnet. ④ `hortense.guera` → `/etablissement/familles` : rattacher un NPI dont le registre n'inscrit pas la filiation → **refus** avec le message « Le registre national n'inscrit pas ce NPI comme parent… ». ⑤ Ouvrir une fiche `/etablissements/[id]` : elle s'affiche. |
 | 2 | **Vérifier les brouillons par compte** | Sur un même navigateur : `idrissou.sanni` commence une saisie de notes sans l'envoyer, se déconnecte ; `hortense.guera` se connecte → aucun brouillon proposé. Contrôle : `idrissou.sanni` reconnecté, avant toute expiration de session → son brouillon revient. Puis laisser la session expirer (ou supprimer le cookie) → au retour, le brouillon a disparu (`localStorage`, clés `beile.brouillon-notes.*`). |
 | 3 | **File hors connexion d'un seul compte** | Outils du navigateur → réseau « Hors ligne ». `idrissou.sanni` fait l'appel → « en attente ». Se déconnecter, se connecter avec un autre compte enseignant → **aucun** message « saisies conservées » ; revenir à `idrissou.sanni`, repasser en ligne → l'appel part et le compteur tombe à 0. |
 
@@ -167,6 +198,7 @@ local, exports, file hors connexion). Chaque constat a été vérifié dans le c
 | **Opérateur USSD** | Consultation des notes et absences sans smartphone | Session USSD de bout en bout sur un numéro de test ; refus pour un numéro non rattaché |
 | **Bibliothèque numérique** (voir la note de cadrage, § 8) : droits, stockage, valideurs, stock d'annales, programme officiel | Démarrage de la phase 1 | Défini dans la note : critères par phase |
 | **Portails cloisonnés** (public, usagers, gestion, national) | Prêts dans le code, servis aujourd'hui depuis une seule adresse ; demande DNS et hébergement | Chaque portail sur son nom : un compte de gestion refusé sur le portail des usagers et inversement |
+| **Modèle officiel des bulletins et certificats** (en-tête, mentions légales, qui signe) et **stockage des pièces justificatives** | Lots 2 et 4 des documents | Un certificat émis se vérifie par QR ; modifié d'un octet, il est déclaré « altéré » ; une pièce n'est lisible que par le chef de l'établissement |
 | **Registre national réel (ANIP)** | Remplacement de `registre_simule` | Recherche, filiation et décès lus à la source ; plafond de 200 recherches par jour et par chef conservé |
 
 ### 5.4 Technique restant
@@ -176,6 +208,8 @@ local, exports, file hors connexion). Chaque constat a été vérifié dans le c
 | **Pagination côté serveur** des grandes listes (élèves d'un département, journal d'audit, personnels) | Liste de plus de 1 000 lignes : la première page arrive en moins de 1 s en 3G simulée ; page 2 sans doublon ni trou ; un filtre ne fait pas fuir de lignes hors périmètre |
 | Test de charge après les vagues 1 à 3 (le dernier date d'avant) | 100 utilisateurs simultanés sur un parcours mixte : 0 erreur, 95ᵉ centile sous 1,5 s |
 | Parcours navigateur automatisés pour les nouveaux écrans (`/saisie-ecoles`, `/rapport`, `/personnels`, `/visites`, `/etablissement/familles`) | Exécution sans erreur en 1 280 px et 390 px, sans défilement horizontal |
+| **Fiabiliser le cas CI « essais de date plafonnés »** (échec isolé le 16/10, réussite à la relance) | Rejouer la recette 10 fois de suite : 10 succès. Piste : le cas dépend d'un compteur en base partagé ; vérifier qu'aucun autre cas n'interroge le même candidat dans la même heure |
+| **Lots suivants des documents** (note de cadrage, § 6) : 1 bis services d'enseignement ; 2 bulletin et certificat de scolarité en PDF scellé ; 3 notes depuis un tableur ; 4 pièces justificatives ; 5 `.xlsx` | Chaque lot avec son test : rejeu sans doublon, périmètre (403 hors établissement), document scellé déclaré « altéré » après une modification d'un octet |
 
 ---
 
