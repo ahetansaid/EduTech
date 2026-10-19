@@ -7,8 +7,8 @@
 > [cadrage/DOCUMENTS_IMPORT_EXPORT.md](cadrage/DOCUMENTS_IMPORT_EXPORT.md).
 >
 > **Depuis le 16/10** : correctifs de l'audit général (`1d6e7a4`), note de cadrage des documents importés et
-> exportés, et **import des listes d'élèves** par le chef d'établissement (`01babf8`). Rien de cela n'est encore
-> en production.
+> exportés, et **import des listes d'élèves** par le chef d'établissement (`01babf8`). **En production depuis le
+> 19/10/2026** (`main` à `4ab70fd`).
 
 ---
 
@@ -16,12 +16,12 @@
 
 | Élément | État |
 |---|---|
-| Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `f059aa6`, déployée automatiquement |
-| API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 15/10/2026 depuis le même état |
-| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016), vérifiées en base le 15/10 |
-| Sauvegarde avant la dernière mise en production | 70 tables, 15/10/2026 13 h 29 |
-| Intégration continue (`dev`) | Recette **405/405** cas conformes, écritures comprises (commit `01babf8`) |
-| **En attente de mise en production** | `1d6e7a4` (correctifs de l'audit, section 4.2) et `01babf8` (import des listes, section 2 bis). **Aucune migration.** Déploiement sur feu vert. |
+| Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `4ab70fd`, déployée le 19/10/2026 |
+| API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 19/10/2026 depuis le même état |
+| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016) ; aucune nouvelle le 19/10 |
+| Sauvegarde avant la dernière mise en production | 70 tables, 19/10/2026 11 h 17 |
+| Intégration continue | Recette **405/405** cas conformes, écritures comprises (commit `01babf8`) |
+| Contrôle après mise en production (19/10) | Route d'import vivante (401 sans session), corps de 20 Ko accepté sur l'import et refusé ailleurs (413) ; écran d'import en navigateur à 1 280 et 390 px, vérification d'une ligne fictive refusée sans rien inscrire ; en-têtes 5/5 ; page protégée → 307 ; écriture sans session → 401 |
 
 **Volume** : 249 routes d'API, 78 écrans, 320 vérifications dans la recette automatique (certaines sont des
 boucles, d'où 405 cas comptés), 30 commits livrés depuis le début des vagues.
@@ -67,7 +67,7 @@ démonstration, le code s'affiche au-dessus du formulaire.
 réglage dans `/mon-compte`), file hors connexion rattachée au compte, exports CSV journalisés et protégés contre
 l'injection de formules, avis SMS aux familles (absence, diplôme) préparés sans envoi.
 
-## 2 bis. Import des listes d'élèves (lot 1 des documents, `01babf8`, pas encore en production)
+## 2 bis. Import des listes d’élèves (lot 1 des documents, `01babf8`, en production depuis le 19/10)
 
 Premier lot de la note [DOCUMENTS_IMPORT_EXPORT.md](cadrage/DOCUMENTS_IMPORT_EXPORT.md) : une école bascule ses
 élèves en une séance au lieu de les inscrire un par un.
@@ -173,8 +173,8 @@ local, exports, file hors connexion). Chaque constat a été vérifié dans le c
 
 | # | Tâche | Comment tester |
 |---|---|---|
-| 0 | **Import des listes** (`01babf8`, déployé avec le point 1) | `hortense.guera` → `/etablissement/import` : télécharger le modèle, y mettre 5 lignes (un élève avec NPI, un enfant sans acte, un NPI au nom faux, une ligne sans prénom, un élève déjà inscrit) → « Vérifier » : 2 à inscrire, 1 déjà inscrit, 2 refusées ; le NPI faux dit « NPI et identité ne concordent pas au registre national ». « Importer » → 2 inscrits, visibles dans `/etablissement/eleves`. Redéposer le même fichier → tout « déjà inscrit », bouton Importer désactivé. Négatifs : `idrissou.sanni` sur la route → 403 ; un adulte du registre → refusé (âge). |
-| 1 | **Mettre en production `1d6e7a4` et `01babf8`** (sans migration) : sauvegarde, fusion `dev` → `main` (front), déploiement de l'API | ① CI verte sur `01babf8` (405/405). ② Après déploiement : `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/evenements/corrections` → **401** (route vivante, session exigée). ③ `idrissou.sanni` : corriger une note, puis rejouer la même requête (outil réseau du navigateur, « Rejouer ») → la note n'apparaît **qu'une fois** corrigée au carnet. ④ `hortense.guera` → `/etablissement/familles` : rattacher un NPI dont le registre n'inscrit pas la filiation → **refus** avec le message « Le registre national n'inscrit pas ce NPI comme parent… ». ⑤ Ouvrir une fiche `/etablissements/[id]` : elle s'affiche. |
+| 0 | **Import des listes** (`01babf8`, **en production depuis le 19/10**) | `hortense.guera` → `/etablissement/import` : télécharger le modèle, y mettre 5 lignes (un élève avec NPI, un enfant sans acte, un NPI au nom faux, une ligne sans prénom, un élève déjà inscrit) → « Vérifier » : 2 à inscrire, 1 déjà inscrit, 2 refusées ; le NPI faux dit « NPI et identité ne concordent pas au registre national ». « Importer » → 2 inscrits, visibles dans `/etablissement/eleves`. Redéposer le même fichier → tout « déjà inscrit », bouton Importer désactivé. Négatifs : `idrissou.sanni` sur la route → 403 ; un adulte du registre → refusé (âge). |
+| 1 | **Fait le 19/10** — `1d6e7a4` et `01babf8` en production ; recette fonctionnelle à rejouer par l’équipe | ① CI verte sur `01babf8` (405/405). ② Après déploiement : `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/evenements/corrections` → **401** (route vivante, session exigée). ③ `idrissou.sanni` : corriger une note, puis rejouer la même requête (outil réseau du navigateur, « Rejouer ») → la note n'apparaît **qu'une fois** corrigée au carnet. ④ `hortense.guera` → `/etablissement/familles` : rattacher un NPI dont le registre n'inscrit pas la filiation → **refus** avec le message « Le registre national n'inscrit pas ce NPI comme parent… ». ⑤ Ouvrir une fiche `/etablissements/[id]` : elle s'affiche. |
 | 2 | **Vérifier les brouillons par compte** | Sur un même navigateur : `idrissou.sanni` commence une saisie de notes sans l'envoyer, se déconnecte ; `hortense.guera` se connecte → aucun brouillon proposé. Contrôle : `idrissou.sanni` reconnecté, avant toute expiration de session → son brouillon revient. Puis laisser la session expirer (ou supprimer le cookie) → au retour, le brouillon a disparu (`localStorage`, clés `beile.brouillon-notes.*`). |
 | 3 | **File hors connexion d'un seul compte** | Outils du navigateur → réseau « Hors ligne ». `idrissou.sanni` fait l'appel → « en attente ». Se déconnecter, se connecter avec un autre compte enseignant → **aucun** message « saisies conservées » ; revenir à `idrissou.sanni`, repasser en ligne → l'appel part et le compteur tombe à 0. |
 
