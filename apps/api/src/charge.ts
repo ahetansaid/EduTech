@@ -26,6 +26,7 @@ const roles = Object.keys(PARCOURS).filter((r) => COMPTES[r] && (!filtre || filt
 
 const latences: number[] = [];
 const statuts = new Map<number, number>();
+const parRoute = new Map<string, number[]>();
 let enCours = true;
 
 /**
@@ -59,11 +60,14 @@ async function naviguer(u: { s: Session; identifiant: string; ip: string }) {
     const parcours = PARCOURS[u.identifiant]!;
     const chemin = parcours[k++ % parcours.length]!;
     const t0 = performance.now();
-    const x = APPEL && u.identifiant === "idrissou.sanni" && k % 3 === 0
-      ? await u.s.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: new Date().toISOString().slice(0, 10), apprenantIds: ["APP-000001"] }, { "x-forwarded-for": u.ip })
-      : await u.s.appel("GET", chemin, undefined, { "x-forwarded-for": u.ip });
+    // Une requête refusée par le réseau (connexion impossible, délai dépassé) est une erreur mesurée, pas un arrêt du test.
+    const x = await (APPEL && u.identifiant === "idrissou.sanni" && k % 3 === 0
+      ? u.s.appel("POST", "/evenements/absences", { classeId: "CLS-PAR-5eA-S", date: new Date().toISOString().slice(0, 10), apprenantIds: ["APP-000001"] }, { "x-forwarded-for": u.ip })
+      : u.s.appel("GET", chemin, undefined, { "x-forwarded-for": u.ip })).catch(() => ({ statut: 0 }));
     if (!enCours) break;
     latences.push(performance.now() - t0);
+    const route = chemin.replace(/ETB-[A-Z0-9-]+|CLS-[A-Za-z0-9-]+/g, ":id").split("?")[0]!;
+    parRoute.set(route, [...(parRoute.get(route) ?? []), performance.now() - t0]);
     statuts.set(x.statut, (statuts.get(x.statut) ?? 0) + 1);
     await new Promise((ok) => setTimeout(ok, REFLEXION_MS * (0.5 + Math.random())));
   }
@@ -84,5 +88,8 @@ const erreurs = [...statuts].filter(([s]) => s < 200 || s >= 400).reduce((n, [, 
 console.log(`requêtes : ${latences.length} · débit : ${(latences.length / duree).toFixed(1)} req/s`);
 console.log(`latence  : p50 ${q(0.5)} ms · p95 ${q(0.95)} ms · p99 ${q(0.99)} ms · max ${q(1)} ms`);
 console.log(`statuts  : ${[...statuts].map(([s, n]) => `${s}×${n}`).join(" · ")}${connectes.length < UTILISATEURS ? ` · connexions échouées ×${UTILISATEURS - connectes.length}` : ""}`);
+// Où passe le temps : médiane et p95 par route, la plus lente d'abord.
+const parMediane = [...parRoute].map(([r, l]) => { l.sort((a, b) => a - b); return { r, n: l.length, p50: Math.round(l[Math.floor(l.length / 2)]!), p95: Math.round(l[Math.floor(l.length * 0.95)]!) }; }).sort((a, b) => b.p50 - a.p50);
+for (const x of parMediane) console.log(`  ${x.r.padEnd(40)} ×${String(x.n).padStart(5)} · p50 ${x.p50} ms · p95 ${x.p95} ms`);
 console.log(erreurs ? `✘ ${erreurs} erreur(s)` : "✔ aucune erreur");
 process.exit(erreurs ? 1 : 0);
