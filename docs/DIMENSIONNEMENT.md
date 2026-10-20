@@ -47,6 +47,31 @@ L'aller-retour API → base ne coûte plus qu'environ 12 ms (API et base dans la
 Le reste est le trajet réseau Bénin → point d'entrée Vercel (Le Cap) → Francfort : c'est lui qu'une infrastructure
 hébergée au Bénin (ou un point d'entrée ouest-africain) réduirait.
 
+### 1 000 utilisateurs simultanés (19/10/2026, machine CI GitHub à 4 vCPU)
+
+Une seule instance de l'API, PostgreSQL et le générateur de charge sur la **même** machine (donc un plancher).
+Chaque utilisateur virtuel a sa vraie session, son adresse, et rejoue le parcours de son rôle (direction,
+enseignant, famille, élève, inspection, direction départementale, cabinet). Lancement manuel de la CI
+(`workflow_dispatch`, paramètres `utilisateurs`, `duree`, `reflexion`).
+
+| Scénario | Connexions | Débit | Latence p50 / p95 / p99 | Erreurs |
+|---|---|---|---|---|
+| 100 utilisateurs, un clic par seconde (CI à chaque envoi) | 100/100 en 23 s | 99 req/s | 9 / 42 / 61 ms | 0 |
+| **1 000 utilisateurs, un clic toutes les ~10 s (usage réel)** | **1 000/1 000 en 34 s** | **100 req/s** | **13 / 58 / 91 ms** | **0** |
+| 1 000 utilisateurs, un clic par seconde (≈ 10 × l'usage réel) | 1 000/1 000 en 25 s | 345 req/s | 1 779 / 3 967 / 4 389 ms | 0 |
+
+Lecture : à 1 000 utilisateurs réels, une instance répond en quelques dizaines de millisecondes. Sous dix fois
+cette charge, elle **ralentit sans tomber** (aucune erreur) : c'est le signal d'ajouter des instances, ce que
+l'architecture sans état permet. Routes les plus coûteuses sous saturation : carnet de classe, classes de
+l'enseignant, liste des élèves, tableau de bord d'établissement.
+
+**Adresse partagée (box d'école, CGNAT mobile)** : les utilisateurs virtuels ont chacun leur adresse ; dans la
+réalité, une école entière arrive par une seule. Mesuré le 19/10 : l'ancien plafond (60 connexions/min par adresse)
+refusait 40 % de 100 connexions légitimes d'une même adresse. Corrigé (`ba84815`) : plafond des **échecs** par
+adresse (100 par 15 min) et plafond global anti-inondation (300/min) ; mesuré après correctif : 100/100 acceptées,
+et un bourrage d'identifiants depuis une adresse est bloqué au 101ᵉ échec (même avec le bon mot de passe ensuite),
+sans toucher les autres adresses.
+
 ## 3. Ordres de grandeur pour le déploiement
 
 - **Lecture** : l'API est le facteur limitant (CPU), pas PostgreSQL. Elle se met à l'échelle horizontalement
