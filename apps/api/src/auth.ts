@@ -9,7 +9,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   adresseIp, authentifie, base, type CompteSession, comptePrivilegie, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, cookieSecurise, corps, exigerElevation, journaliser, limiteDebit,
-  limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
+  incrementerCompteur, lireCompteur, limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
 } from "./commun";
 import { exigerPortail } from "./portails";
 import { signaler, surConnexionAdministrateur, surVerrouillage } from "./vigie";
@@ -32,17 +32,33 @@ function poserCookies(c: Context, jeton: string) {
   setCookie(c, COOKIE_CSRF, randomBytes(24).toString("base64url"), { httpOnly: false, secure, sameSite: "Strict", path: "/", maxAge: DUREE_SESSION_MS / 1000 });
 }
 
-// Limite par IP large : établissements et réseaux mobiles partagent souvent une IP (NAT). La force brute
-// est bornée par le verrouillage par compte (5 échecs → 15 min).
-auth.post("/auth/connexion", limiteDebitPartage("connexion", 60, 60_000), async (c) => {
+/**
+ * Plafonds de connexion par adresse. Un lycée derrière une seule box, ou les abonnés d'un opérateur mobile derrière
+ * un CGNAT, arrivent tous de la MÊME adresse au début des cours : plafonner chaque connexion par adresse (60/min,
+ * mesuré : 40 % de refus sur 100 connexions légitimes) bloquait des élèves honnêtes. On plafonne donc :
+ *  - les ÉCHECS par adresse (signature de la force brute et du bourrage d'identifiants), vérifiés AVANT le calcul
+ *    scrypt : 100 échecs par fenêtre de 15 min ;
+ *  - toutes les tentatives par adresse, seulement contre l'inondation (chaque scrypt coûte ~100 ms de CPU) :
+ *    300/min ;
+ *  - et, inchangé, chaque compte : 5 échecs → verrou de 15 min.
+ */
+const ECHECS_PAR_ADRESSE = 100;
+const FENETRE_ECHECS_MS = 15 * 60_000;
+auth.post("/auth/connexion", limiteDebitPartage("connexion", 300, 60_000), async (c) => {
   controlerOrigine(c);
   const { identifiant, motDePasse } = await corps(c, z.object({ identifiant: z.string().trim().toLowerCase().min(3).max(80), motDePasse: z.string().min(1).max(200) }).strict());
+  const ip = adresseIp(c);
+  if ((await lireCompteur("connexion-echec", ip, FENETRE_ECHECS_MS)) >= ECHECS_PAR_ADRESSE) {
+    c.header("Retry-After", String(Math.ceil((FENETRE_ECHECS_MS - (Date.now() % FENETRE_ECHECS_MS)) / 1000)));
+    throw new HTTPException(429, { message: "Trop de tentatives de connexion échouées depuis ce réseau : réessayez dans quelques minutes." });
+  }
   const [compte] = await base().select().from(schema.comptes).where(eq(schema.comptes.identifiant, identifiant));
   const [profil] = compte ? await base().select().from(schema.profils).where(eq(schema.profils.id, compte.profilId)) : [];
 
   const valide = await verifierMotDePasse(motDePasse, compte?.motDePasseHash ?? HASH_FACTICE);
   // Compte verrouillé : seul celui qui donne le BON mot de passe l'apprend (423). Pour tout autre, la réponse
   // est celle d'un identifiant inconnu : le verrou ne révèle pas qu'un compte existe.
+  if (!valide || !compte || !profil || !compte.actif) await incrementerCompteur("connexion-echec", ip, FENETRE_ECHECS_MS);
   if (compte?.verrouilleJusquA && compte.verrouilleJusquA > new Date()) {
     if (profil) await journaliser(profil, "Connexion — compte verrouillé", identifiant, "gestion", false, "role");
     if (!valide) throw new HTTPException(401, { message: "Identifiant ou mot de passe incorrect" });

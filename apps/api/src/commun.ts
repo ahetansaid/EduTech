@@ -73,8 +73,7 @@ export function limiteDebitPartage(nom: string, max: number, fenetreMs: number, 
         .onConflictDoUpdate({ target: [schema.compteursDebit.cle, schema.compteursDebit.fenetre], set: { n: sql`${schema.compteursDebit.n} + 1` } })
         .returning({ n: schema.compteursDebit.n });
       n = r?.n ?? 1;
-      // Purge paresseuse des fenêtres échues (une requête sur cent), sans jamais retarder la réponse.
-      if (Math.random() < 0.01) void base().delete(schema.compteursDebit).where(lt(schema.compteursDebit.fenetre, fenetre - 2)).catch(() => {});
+      if (Math.random() < 0.01) purgerEchues(nom, fenetre);
     } catch (e) {
       // Repli sur le plafond de l'instance : la base ne répond pas. Tracé, car un repli fréquent affaiblit le plafond.
       console.error(JSON.stringify({ niveau: "avertissement", message: `Plafond partagé « ${nom} » indisponible, repli local`, code: (e as { code?: string }).code ?? null }));
@@ -86,6 +85,40 @@ export function limiteDebitPartage(nom: string, max: number, fenetreMs: number, 
     }
     await next();
   };
+}
+
+/**
+ * Purge paresseuse des fenêtres échues, sans jamais retarder la réponse — limitée aux lignes de CE plafond.
+ * Les numéros de fenêtre dépendent de la durée de la fenêtre (minute ≈ 29 M, quart d'heure ≈ 2 M, heure ≈ 0,5 M) :
+ * une purge non filtrée par nom, lancée par un plafond à la minute, effaçait tous les compteurs à fenêtre longue
+ * (essais de date de naissance par candidat, échecs de connexion par adresse, imports par heure) et les remettait
+ * à zéro au hasard.
+ */
+function purgerEchues(nom: string, fenetre: number) {
+  void base().delete(schema.compteursDebit)
+    .where(and(sql`starts_with(${schema.compteursDebit.cle}, ${`${nom}|`})`, lt(schema.compteursDebit.fenetre, fenetre - 2)))
+    .catch(() => {});
+}
+
+/**
+ * Compteur partagé lu ou incrémenté à la demande (même table que `limiteDebitPartage`), pour plafonner un
+ * ÉVÉNEMENT précis plutôt que chaque requête — par exemple les seuls échecs de connexion d'une adresse.
+ * Base indisponible : on ne bloque pas (0), le verrouillage par compte reste la barrière.
+ */
+export async function lireCompteur(nom: string, cle: string, fenetreMs: number) {
+  const fenetre = Math.floor(Date.now() / fenetreMs);
+  try {
+    const [r] = await base().select({ n: schema.compteursDebit.n }).from(schema.compteursDebit)
+      .where(and(eq(schema.compteursDebit.cle, `${nom}|${cle}`), eq(schema.compteursDebit.fenetre, fenetre)));
+    return r?.n ?? 0;
+  } catch { return 0; }
+}
+export async function incrementerCompteur(nom: string, cle: string, fenetreMs: number) {
+  const fenetre = Math.floor(Date.now() / fenetreMs);
+  await base().insert(schema.compteursDebit).values({ cle: `${nom}|${cle}`, fenetre, n: 1 })
+    .onConflictDoUpdate({ target: [schema.compteursDebit.cle, schema.compteursDebit.fenetre], set: { n: sql`${schema.compteursDebit.n} + 1` } })
+    .catch((e) => console.error(JSON.stringify({ niveau: "avertissement", message: `Compteur « ${nom} » non incrémenté`, code: (e as { code?: string }).code ?? null })));
+  if (Math.random() < 0.01) purgerEchues(nom, fenetre);
 }
 
 /** Clé « utilisateur » : empreinte du cookie de session s'il existe, sinon l'adresse IP. */
