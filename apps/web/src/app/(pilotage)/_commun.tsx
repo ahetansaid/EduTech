@@ -78,6 +78,7 @@ export const LIBELLE_FAIT: Record<string, string> = {
   REGULARISATION_IDENTITE_DEMANDEE: "Régularisation d'identité",
   AFFECTATION_ENSEIGNANT: "Affectation d'enseignant",
   FORMATION_ENSEIGNANT: "Formation d'enseignant",
+  SERVICE_ENSEIGNEMENT: "Service d’enseignement",
   VISITE_D_INSPECTION: "Visite d'inspection",
 };
 export const TON_FAIT: Record<string, Ton> = {

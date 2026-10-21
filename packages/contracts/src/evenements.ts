@@ -221,6 +221,17 @@ export const Evenement = z.discriminatedUnion("type", [
     formation: z.string(),
     statut: z.enum(["inscrit", "validee"]),
   }),
+  /* Service d'enseignement : qui enseigne quelle matière dans quelle classe. Attribuer un service ouvre à
+   * l'enseignant le carnet de la classe (élèves, notes, absences) ; le retirer le ferme. Chaque mouvement est
+   * donc un fait, avec son auteur : on sait toujours qui a donné ou retiré l'accès à une classe. */
+  Base.extend({
+    type: z.literal("SERVICE_ENSEIGNEMENT"),
+    enseignantId: z.string(),
+    classeId: z.string(),
+    // Absente pour la désignation (ou la fin) du professeur principal, qui porte sur la classe entière.
+    matiere: z.string().optional(),
+    action: z.enum(["attribue", "retire", "principal", "principal_retire"]),
+  }),
 
   /* -------------------------------------------------- Visites d'inspection.
    * Un fait sur un établissement, jamais sur une personne : la visite rend compte de ce qui s'est vu dans

@@ -5,6 +5,18 @@ on:
     branches: [main, staging, dev, "feature/**", "hotfix/**"]
   pull_request:
     branches: [main, staging, dev]
+  # Lancement manuel : même chaîne, avec un test de charge dimensionné à la demande (base jetable, aucune donnée de production).
+  workflow_dispatch:
+    inputs:
+      utilisateurs:
+        description: "Utilisateurs virtuels du test de charge"
+        default: "100"
+      duree:
+        description: "Durée du régime établi (s)"
+        default: "30"
+      reflexion:
+        description: "Temps de réflexion moyen entre deux clics (ms)"
+        default: "1000"
 
 permissions:
   contents: read
@@ -134,8 +146,14 @@ jobs:
         run: npm run interop:demo --workspace=@beile/api
       - name: Recette complète, écritures multi-utilisateurs comprises
         run: npm run recette:ecritures --workspace=@beile/api
-      - name: Test de charge (100 utilisateurs, 30 s)
-        run: npm run charge --workspace=@beile/api -- --utilisateurs 100 --duree 30
+      - name: Test de charge (100 utilisateurs, 30 s ; dimensionné à la demande en lancement manuel)
+        env:
+          UTILISATEURS: ${{ inputs.utilisateurs || '100' }}
+          DUREE: ${{ inputs.duree || '30' }}
+          REFLEXION: ${{ inputs.reflexion || '1000' }}
+        run: |
+          nproc
+          npm run charge --workspace=@beile/api -- --utilisateurs "$UTILISATEURS" --duree "$DUREE" --reflexion "$REFLEXION"
       - name: Journal de l'API en cas d'échec
         if: failure()
         run: tail -n 200 api.log

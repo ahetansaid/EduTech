@@ -51,11 +51,11 @@ type Statut = "a_inscrire" | "deja_inscrit" | "erreur";
 interface Resultat { n: number; statut: Statut; motif?: string; classe: string; apprenantId?: string; nouvelleClasse?: boolean }
 
 /** Majuscules, sans accents ni espaces superflus : « Adjoa-Mèlè » et « ADJOA MELE » concordent. */
-const normaliser = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+export const normaliser = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 /** Libellé de classe : « 6ème A », « 6e A », « 6EA » désignent la même division. */
-const cleClasse = (s: string) => normaliser(s).replace(/(\d)\s*(?:EME|IEME|E|ERE|RE)\b/g, "$1E").replace(/\s+/g, "");
+export const cleClasse = (s: string) => normaliser(s).replace(/(\d)\s*(?:EME|IEME|E|ERE|RE)\b/g, "$1E").replace(/\s+/g, "");
 
-function chefDe(profil: Profil, etablissementId: string) {
+export function chefDe(profil: Profil, etablissementId: string) {
   return profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === etablissementId);
 }
 
@@ -158,7 +158,7 @@ async function analyser(etablissementId: string, saisie: z.infer<typeof Requete>
 }
 
 /** Années admises : celles où l'établissement a déjà des classes, plus l'année en cours et la suivante. */
-async function anneeAdmise(etablissementId: string, annee: string) {
+export async function anneeAdmise(etablissementId: string, annee: string) {
   const j = aujourdhui();
   const debut = Number(j.slice(0, 4)) - (Number(j.slice(5, 7)) < 9 ? 1 : 0);
   if (annee === `${debut}-${debut + 1}` || annee === `${debut + 1}-${debut + 2}`) return true;
@@ -166,7 +166,7 @@ async function anneeAdmise(etablissementId: string, annee: string) {
   return !!x;
 }
 
-const cleProfil = (c: Context) => `p:${(c.get("profil") as Profil | undefined)?.id ?? "anonyme"}`;
+export const cleProfil = (c: Context) => `p:${(c.get("profil") as Profil | undefined)?.id ?? "anonyme"}`;
 
 importEleves.post("/etablissements/:id/import/eleves", authentifie, limiteDebitPartage("import-eleves", 20, 3_600_000, cleProfil), async (c) => {
   const profil = c.get("profil");

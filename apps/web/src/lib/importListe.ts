@@ -24,8 +24,8 @@ export const MODELE_CSV = [
   "6e A;6e;;HOUNSOU;Kossi;M;05/11/2013;Tante : Mme Hounsou",
 ].join("\r\n");
 
-const sansAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
-const cleEntete = (s: string) => sansAccents(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+export const sansAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const cleEntete = (s: string) => sansAccents(s).toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const ALIAS: Record<string, (typeof COLONNES_MODELE)[number]> = {
   classe: "classe", division: "classe", salle: "classe",
@@ -45,7 +45,7 @@ export function decoder(octets: ArrayBuffer): { texte: string; encodage: string 
 }
 
 /** Analyse CSV (guillemets, séparateur dans un champ, sauts de ligne protégés). */
-function lireCsv(texte: string, sep: string): string[][] {
+export function lireCsv(texte: string, sep: string): string[][] {
   const lignes: string[][] = [];
   let champ = "", ligne: string[] = [], entre = false;
   for (let i = 0; i < texte.length; i++) {
