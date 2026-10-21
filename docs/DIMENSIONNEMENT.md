@@ -76,6 +76,16 @@ lectures parcouraient toutes les absences du pays ou tout le registre d'un étab
 | Bilans d'un établissement (liste des élèves, tableau de bord) | 115 ms | 3,9 ms |
 | Tableau de bord : saisies faites pour le compte de l'école | 9,9 ms | 0,4 ms |
 
+**Avant / après l'allègement des lectures (21/10/2026, `e52a5b3`)** — deux tests lancés **en même temps** sur deux
+machines CI identiques (les machines varient d'environ 70 % d'un jour à l'autre : une comparaison n'a de sens que
+simultanée). 1 000 utilisateurs, un clic par seconde :
+
+| | Avant (`a1774b7`) | Après (`e52a5b3`) |
+|---|---|---|
+| Débit | 200 req/s | **305 req/s (+52 %)** |
+| Latence p50 / p95 | 3,8 s / 7,6 s | **2,1 s / 4,6 s** |
+| Erreurs | 0 | 0 |
+
 **Adresse partagée (box d'école, CGNAT mobile)** : les utilisateurs virtuels ont chacun leur adresse ; dans la
 réalité, une école entière arrive par une seule. Mesuré le 19/10 : l'ancien plafond (60 connexions/min par adresse)
 refusait 40 % de 100 connexions légitimes d'une même adresse. Corrigé (`ba84815`) : plafond des **échecs** par
