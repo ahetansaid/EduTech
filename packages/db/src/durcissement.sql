@@ -80,6 +80,10 @@ CREATE INDEX IF NOT EXISTS evenements_absences_date_idx ON ledger.evenements ((d
 CREATE INDEX IF NOT EXISTS evenements_absences_apprenant_idx ON ledger.evenements (apprenant_id) WHERE type = 'ABSENCE';
 CREATE INDEX IF NOT EXISTS evenements_absences_classe_idx ON ledger.evenements ((donnees->>'classeId'), apprenant_id) WHERE type = 'ABSENCE';
 CREATE INDEX IF NOT EXISTS evenements_saisie_pour_idx ON ledger.evenements (etablissement_id, survenu_le) WHERE donnees ? 'saisiePour';
+-- Faits d'un TYPE pour UNE école (formations des enseignants, conseils de classe du tableau de bord) : sans cet index,
+-- on lisait tous les événements de l'école, qui s'accumulent d'année en année. Mesuré (600 000 faits simulés, transaction
+-- annulée) : formations 42,6 → 0,19 ms ; conseils 2,4 → 0,66 ms.
+CREATE INDEX IF NOT EXISTS evenements_type_etablissement_idx ON ledger.evenements (type, etablissement_id, survenu_le);
 
 -- Projection des notes effectives (CQRS) : lecture, ajout, correction par l'API.
 GRANT SELECT, INSERT, UPDATE ON core.notes TO beile_app;

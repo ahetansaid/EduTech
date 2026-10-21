@@ -22,8 +22,8 @@
 |---|---|
 | Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `d5f27fd`, déployée le 21/10/2026 |
 | API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 21/10/2026 depuis le même état |
-| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016) ; aucune nouvelle depuis le 15/10 |
-| Sauvegarde avant la dernière mise en production | 70 tables, 21/10/2026 09 h 14 |
+| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016) ; **3 index du registre ajoutés le 21/10** (absences par élève, par classe, saisies pour le compte d'une école), valides, utilisés par le carnet de classe (2 ms en production) |
+| Sauvegarde avant la dernière modification de la base | 70 tables, 21/10/2026 11 h 27 |
 | Contrôle après mise en production (21/10) | Route des services vivante (401 sans session), corps de 20 Ko accepté sur l'import ; écran des services en navigateur à 1 280 et 390 px, ligne fictive refusée sans rien écrire ; en-têtes 5/5 ; page protégée → 307 ; écriture sans session → 401 ; connexion inconnue → 401 |
 | Intégration continue (`dev`) | Recette **408/408** cas conformes, écritures comprises (commit `ba84815`) |
 | Tenue en charge (CI, 4 vCPU, une instance) | **1 000 utilisateurs simultanés** à l'usage réel : 0 erreur, p50 13 ms, p95 58 ms ; sous 10 × cette charge : 0 erreur, p50 1,8 s (détail : [DIMENSIONNEMENT.md](DIMENSIONNEMENT.md)) |
@@ -218,6 +218,7 @@ local, exports, file hors connexion). Chaque constat a été vérifié dans le c
 | **Pagination côté serveur** des grandes listes (élèves d'un département, journal d'audit, personnels) | Liste de plus de 1 000 lignes : la première page arrive en moins de 1 s en 3G simulée ; page 2 sans doublon ni trou ; un filtre ne fait pas fuir de lignes hors périmètre |
 | ~~Test de charge après les vagues 1 à 3~~ **Fait le 19/10** : 1 000 utilisateurs simultanés, 0 erreur (voir 1.) | Relancer à la demande : Actions › « Intégration continue » › *Run workflow* (utilisateurs, durée, réflexion) |
 | **Charge en conditions réelles** : la mesure est faite sur une instance unique, avec une base locale | Sur un déploiement de préproduction (jamais la production) : 1 000 utilisateurs, base Neon, fonctions Vercel ; mêmes seuils (0 erreur, p95 < 1,5 s), et observer le nombre d'instances et de connexions à la base |
+| ~~Index du registre à l'échelle nationale~~ **Fait le 21/10** : carnet 14 209 → 0,7 ms sur 2 millions d'événements simulés | Rejouer `echelle-index` (transaction annulée) après toute nouvelle requête sur `ledger.evenements` : aucun parcours de toutes les absences du pays |
 | **Carnet et tableau de bord sous forte charge** (routes les plus coûteuses mesurées) | Sous 10 × l'usage réel, p50 > 3 s sur `/classes/:id`, `/moi/classes`, `/etablissements/:id/eleves` : mettre en cache par classe ou précalculer ; refaire le test « 1 000 utilisateurs, un clic par seconde » et viser p95 < 1,5 s |
 | Parcours navigateur automatisés pour les nouveaux écrans (`/saisie-ecoles`, `/rapport`, `/personnels`, `/visites`, `/etablissement/familles`) | Exécution sans erreur en 1 280 px et 390 px, sans défilement horizontal |
 | **Lots suivants des documents** (note de cadrage, § 6 ; 1 bis livré) : 2 bulletin et certificat de scolarité en PDF scellé ; 3 notes depuis un tableur ; 4 pièces justificatives ; 5 `.xlsx` | Chaque lot avec son test : rejeu sans doublon, périmètre (403 hors établissement), document scellé déclaré « altéré » après une modification d'un octet |
