@@ -72,6 +72,14 @@ GRANT DELETE ON core.sessions TO beile_app;
 GRANT SELECT, INSERT, UPDATE ON core.scolarites TO beile_app;
 -- Index d'accès aux absences par date déclarée (appel du jour, à l'échelle nationale).
 CREATE INDEX IF NOT EXISTS evenements_absences_date_idx ON ledger.evenements ((donnees->>'date'), etablissement_id) WHERE type = 'ABSENCE';
+-- Absences par élève et par classe, saisies faites pour le compte d'une école. Sans eux, le carnet de classe, les
+-- bilans et le tableau de bord parcouraient TOUTES les absences du pays (ou tout le registre d'un établissement).
+-- Mesuré sur 2 millions d'événements simulés (21/10/2026) : carnet 14 209 ms → 0,7 ms ; bilans 115 → 3,9 ms ;
+-- saisies pour le compte d'une école 9,9 → 0,4 ms. Sur une base déjà volumineuse, les créer à part avec
+-- CREATE INDEX CONCURRENTLY (hors transaction) pour ne pas bloquer les écritures.
+CREATE INDEX IF NOT EXISTS evenements_absences_apprenant_idx ON ledger.evenements (apprenant_id) WHERE type = 'ABSENCE';
+CREATE INDEX IF NOT EXISTS evenements_absences_classe_idx ON ledger.evenements ((donnees->>'classeId'), apprenant_id) WHERE type = 'ABSENCE';
+CREATE INDEX IF NOT EXISTS evenements_saisie_pour_idx ON ledger.evenements (etablissement_id, survenu_le) WHERE donnees ? 'saisiePour';
 
 -- Projection des notes effectives (CQRS) : lecture, ajout, correction par l'API.
 GRANT SELECT, INSERT, UPDATE ON core.notes TO beile_app;

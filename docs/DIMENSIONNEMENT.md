@@ -65,6 +65,17 @@ cette charge, elle **ralentit sans tomber** (aucune erreur) : c'est le signal d'
 l'architecture sans état permet. Routes les plus coûteuses sous saturation : carnet de classe, classes de
 l'enseignant, liste des élèves, tableau de bord d'établissement.
 
+**Volume national (21/10/2026)** : 2 millions d'événements simulés (1 million d'absences dans 2 000 écoles,
+40 000 classes, 600 000 élèves), injectés **dans une transaction annulée** — mesure sans trace en base. Trois
+lectures parcouraient toutes les absences du pays ou tout le registre d'un établissement ; trois index partiels
+(`durcissement.sql`) les ramènent à quelques millisecondes :
+
+| Lecture | Sans index | Avec index |
+|---|---|---|
+| Carnet de classe : absences de la classe | 14 209 ms | 0,7 ms |
+| Bilans d'un établissement (liste des élèves, tableau de bord) | 115 ms | 3,9 ms |
+| Tableau de bord : saisies faites pour le compte de l'école | 9,9 ms | 0,4 ms |
+
 **Adresse partagée (box d'école, CGNAT mobile)** : les utilisateurs virtuels ont chacun leur adresse ; dans la
 réalité, une école entière arrive par une seule. Mesuré le 19/10 : l'ancien plafond (60 connexions/min par adresse)
 refusait 40 % de 100 connexions légitimes d'une même adresse. Corrigé (`ba84815`) : plafond des **échecs** par
