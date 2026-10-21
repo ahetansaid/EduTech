@@ -10,7 +10,7 @@
 > exportés, et **import des listes d'élèves** par le chef d'établissement (`01babf8`). **En production depuis le
 > 19/10/2026** (`main` à `4ab70fd`).
 >
-> **Depuis le 19/10, sur `dev`, pas encore en production** : import des **services d'enseignement** (`f75085e`,
+> **En production depuis le 21/10/2026** (`main` à `d5f27fd`) : import des **services d'enseignement** (`f75085e`,
 > audité de façon indépendante, 5 constats corrigés), test de charge **à 1 000 utilisateurs simultanés**, et
 > correctif des **plafonds de connexion** et de la **purge des compteurs** (`ba84815`). Aucune migration.
 
@@ -20,10 +20,11 @@
 
 | Élément | État |
 |---|---|
-| Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `4ab70fd`, déployée le 19/10/2026 |
-| API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 19/10/2026 depuis le même état |
-| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016) ; aucune nouvelle le 19/10 |
-| Sauvegarde avant la dernière mise en production | 70 tables, 19/10/2026 11 h 17 |
+| Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `d5f27fd`, déployée le 21/10/2026 |
+| API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 21/10/2026 depuis le même état |
+| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016) ; aucune nouvelle depuis le 15/10 |
+| Sauvegarde avant la dernière mise en production | 70 tables, 21/10/2026 09 h 14 |
+| Contrôle après mise en production (21/10) | Route des services vivante (401 sans session), corps de 20 Ko accepté sur l'import ; écran des services en navigateur à 1 280 et 390 px, ligne fictive refusée sans rien écrire ; en-têtes 5/5 ; page protégée → 307 ; écriture sans session → 401 ; connexion inconnue → 401 |
 | Intégration continue (`dev`) | Recette **408/408** cas conformes, écritures comprises (commit `ba84815`) |
 | Tenue en charge (CI, 4 vCPU, une instance) | **1 000 utilisateurs simultanés** à l'usage réel : 0 erreur, p50 13 ms, p95 58 ms ; sous 10 × cette charge : 0 erreur, p50 1,8 s (détail : [DIMENSIONNEMENT.md](DIMENSIONNEMENT.md)) |
 | Contrôle après mise en production (19/10) | Route d'import vivante (401 sans session), corps de 20 Ko accepté sur l'import et refusé ailleurs (413) ; écran d'import en navigateur à 1 280 et 390 px, vérification d'une ligne fictive refusée sans rien inscrire ; en-têtes 5/5 ; page protégée → 307 ; écriture sans session → 401 |
@@ -180,7 +181,7 @@ local, exports, file hors connexion). Chaque constat a été vérifié dans le c
 
 | # | Tâche | Comment tester |
 |---|---|---|
-| A | **Mettre en production `f75085e` → `ba84815`** (services d'enseignement, plafonds de connexion, purge des compteurs ; sans migration) | ① CI verte (408/408). ② `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/etablissements/ETB-PAR-PILOTE-CEG/import/services` → **401**. ③ `hortense.guera` → `/etablissement/import-services` : déposer une ligne `classe;matiere;enseignant` avec un enseignant d'une autre école → « introuvable parmi le personnel affecté » ; la vérification n'écrit rien. ④ Connexions : 5 mauvais mots de passe sur un compte de test → 423 (verrou inchangé). |
+| A | **Fait le 21/10** — `f75085e` → `ba84815` en production (services d'enseignement, plafonds de connexion, purge des compteurs) ; recette fonctionnelle à rejouer par l'équipe | ① CI verte (408/408). ② `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/etablissements/ETB-PAR-PILOTE-CEG/import/services` → **401**. ③ `hortense.guera` → `/etablissement/import-services` : déposer une ligne `classe;matiere;enseignant` avec un enseignant d'une autre école → « introuvable parmi le personnel affecté » ; la vérification n'écrit rien. ④ Connexions : 5 mauvais mots de passe sur un compte de test → 423 (verrou inchangé). |
 | B | **Services d'enseignement** (après A) | `hortense.guera` attribue une matière libre à `idrissou.sanni` dans une classe où il n'enseigne pas : avant l'import, `idrissou.sanni` ouvre `/enseignant/classe/<id>` → refus ; après → le carnet s'ouvre ; puis « remplacer » sans cette ligne → la perte du service est **annoncée avant** l'import, et après, le carnet est de nouveau refusé. Chaque mouvement figure au registre (`SERVICE_ENSEIGNEMENT`) et chaque refus au journal du DPO. |
 | 0 | **Import des listes** (`01babf8`, **en production depuis le 19/10**) | `hortense.guera` → `/etablissement/import` : télécharger le modèle, y mettre 5 lignes (un élève avec NPI, un enfant sans acte, un NPI au nom faux, une ligne sans prénom, un élève déjà inscrit) → « Vérifier » : 2 à inscrire, 1 déjà inscrit, 2 refusées ; le NPI faux dit « NPI et identité ne concordent pas au registre national ». « Importer » → 2 inscrits, visibles dans `/etablissement/eleves`. Redéposer le même fichier → tout « déjà inscrit », bouton Importer désactivé. Négatifs : `idrissou.sanni` sur la route → 403 ; un adulte du registre → refusé (âge). |
 | 1 | **Fait le 19/10** — `1d6e7a4` et `01babf8` en production ; recette fonctionnelle à rejouer par l’équipe | ① CI verte sur `01babf8` (405/405). ② Après déploiement : `curl -s -o /dev/null -w "%{http_code}" -X POST https://beile-api.vercel.app/api/v1/evenements/corrections` → **401** (route vivante, session exigée). ③ `idrissou.sanni` : corriger une note, puis rejouer la même requête (outil réseau du navigateur, « Rejouer ») → la note n'apparaît **qu'une fois** corrigée au carnet. ④ `hortense.guera` → `/etablissement/familles` : rattacher un NPI dont le registre n'inscrit pas la filiation → **refus** avec le message « Le registre national n'inscrit pas ce NPI comme parent… ». ⑤ Ouvrir une fiche `/etablissements/[id]` : elle s'affiche. |
