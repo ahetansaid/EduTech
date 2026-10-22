@@ -67,3 +67,14 @@ Compte `hortense.guera`, écran `/etablissement/emploi-du-temps` :
 1. **Horaires réglementaires officiels** (grilles par niveau et matière) : quelle source fait foi, qui la fournit ?
 2. **Appel par séance** : généralisation ou établissements pilotes d'abord ?
 3. **Confidentialité de l'emploi du temps des mineurs** : validation par le DPO (règle 5).
+4. **Clôture d'une année scolaire** : BEILE n'a pas encore de notion d'année close — une année qui a des classes
+   reste modifiable (emploi du temps, services, inscriptions). À partir de quand une année est-elle figée (après les
+   conseils de passage ? au 31 juillet ?), et qui peut la rouvrir ?
+
+## 8. Saisie à l'écran (ajouté le 22/10/2026)
+
+L'administration de l'école (détenteurs de l'habilitation « chef d'établissement » sur l'établissement, y compris
+les adjoints à qui l'inspection l'a déléguée) peut aussi **ajouter, modifier et supprimer une séance** à l'écran, sans
+fichier : mêmes contrôles que l'import (service, chevauchements de classe, d'enseignant et de salle, plages), sous le
+même verrou ; chaque écriture et chaque refus sont journalisés (modification : état avant → après) ; 120 écritures
+par heure et par compte au plus. L'inspection reste en lecture seule.

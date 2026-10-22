@@ -3,7 +3,7 @@ import { EtatVide } from "@/components/ui/primitives";
 
 export interface Seance {
   id: string; jour: number; jourLibelle: string; debut: string; fin: string; matiere: string;
-  salle: string | null; classe?: string; enseignant?: string;
+  salle: string | null; classe?: string; enseignant?: string; enseignantId?: string;
 }
 
 const JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
@@ -11,8 +11,9 @@ const JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 /**
  * Semaine type : une colonne par jour (empilées sur téléphone), séances dans l'ordre horaire. Le samedi n'apparaît
  * que s'il a des séances. `afficher` choisit ce que dit chaque séance en plus de la matière (classe ou enseignant).
+ * `onChoisir` (administration de l'école seulement) rend chaque séance cliquable pour la modifier.
  */
-export function GrilleSemaine({ seances, afficher }: { seances: Seance[]; afficher: "classe" | "enseignant" }) {
+export function GrilleSemaine({ seances, afficher, onChoisir }: { seances: Seance[]; afficher: "classe" | "enseignant"; onChoisir?: (s: Seance) => void }) {
   if (!seances.length) return <EtatVide icone={CalendarClock} titre="Aucune séance" texte="L'emploi du temps n'a pas encore été déposé par l'établissement." />;
   const jours = JOURS.map((libelle, i) => ({ libelle, jour: i + 1, seances: seances.filter((s) => s.jour === i + 1).sort((a, b) => a.debut.localeCompare(b.debut)) }))
     .filter((j) => j.jour < 6 || j.seances.length);
@@ -23,13 +24,23 @@ export function GrilleSemaine({ seances, afficher }: { seances: Seance[]; affich
           <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{j.libelle}</h3>
           {!j.seances.length ? <p className="text-[12.5px] text-ink-muted">Pas de cours</p> : (
             <ul className="space-y-2">
-              {j.seances.map((s) => (
-                <li key={s.id} className="rounded-lg bg-surface-2/70 px-2.5 py-2">
-                  <p className="text-[12px] font-medium tabular-nums text-ink-2">{s.debut} – {s.fin}</p>
-                  <p className="text-[13.5px] font-semibold text-ink">{s.matiere}</p>
-                  <p className="truncate text-[12px] text-ink-2">{afficher === "classe" ? s.classe : s.enseignant}{s.salle ? ` · ${s.salle}` : ""}</p>
-                </li>
-              ))}
+              {j.seances.map((s) => {
+                const contenu = (
+                  <>
+                    <p className="text-[12px] font-medium tabular-nums text-ink-2">{s.debut} – {s.fin}</p>
+                    <p className="text-[13.5px] font-semibold text-ink">{s.matiere}</p>
+                    <p className="truncate text-[12px] text-ink-2">{afficher === "classe" ? s.classe : s.enseignant}{s.salle ? ` · ${s.salle}` : ""}</p>
+                  </>
+                );
+                return (
+                  <li key={s.id}>
+                    {onChoisir ? (
+                      <button type="button" onClick={() => onChoisir(s)} aria-label={`Modifier : ${j.libelle} ${s.debut}–${s.fin}, ${s.matiere}`}
+                        className="block w-full rounded-lg bg-surface-2/70 px-2.5 py-2 text-left transition hover:bg-surface-2 hover:ring-1 hover:ring-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue">{contenu}</button>
+                    ) : <div className="rounded-lg bg-surface-2/70 px-2.5 py-2">{contenu}</div>}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
