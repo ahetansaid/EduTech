@@ -7,6 +7,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
+import { anneeOuverte } from "./annees";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 
 /**
@@ -157,13 +158,12 @@ async function analyser(etablissementId: string, saisie: z.infer<typeof Requete>
   return { resultats, aInscrire, nouvellesClasses: nouvellesUtiles };
 }
 
-/** Années admises : celles où l'établissement a déjà des classes, plus l'année en cours et la suivante. */
+/**
+ * Années admises en écriture : l'année en cours, la suivante, et celles où l'établissement a des classes — SAUF une
+ * année close (rentrée suivante passée et école basculée, ou un an après), sauf réouverture (voir annees.ts).
+ */
 export async function anneeAdmise(etablissementId: string, annee: string) {
-  const j = aujourdhui();
-  const debut = Number(j.slice(0, 4)) - (Number(j.slice(5, 7)) < 9 ? 1 : 0);
-  if (annee === `${debut}-${debut + 1}` || annee === `${debut + 1}-${debut + 2}`) return true;
-  const [x] = await base().select({ id: schema.classes.id }).from(schema.classes).where(and(eq(schema.classes.etablissementId, etablissementId), eq(schema.classes.anneeScolaire, annee))).limit(1);
-  return !!x;
+  return anneeOuverte(etablissementId, annee);
 }
 
 export const cleProfil = (c: Context) => `p:${(c.get("profil") as Profil | undefined)?.id ?? "anonyme"}`;
@@ -176,7 +176,10 @@ importEleves.post("/etablissements/:id/import/eleves", authentifie, limiteDebitP
     refuser("L'import d'une liste d'élèves revient au chef de CET établissement : refus journalisé");
   }
   const saisie = await corps(c, Requete);
-  if (!(await anneeAdmise(id, saisie.anneeScolaire))) throw new HTTPException(422, { message: `Année ${saisie.anneeScolaire} non ouverte pour l'import` });
+  if (!(await anneeAdmise(id, saisie.anneeScolaire))) {
+    await journaliser(profil, "Import d'une liste d'élèves", `${id} · ${saisie.anneeScolaire}`, "gestion", false, "annee");
+    throw new HTTPException(422, { message: `Année ${saisie.anneeScolaire} non ouverte pour l'import` });
+  }
 
   const analyse = await analyser(id, saisie);
   const totaux = (rs: Resultat[]) => ({

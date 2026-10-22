@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
+import { etatAnnee } from "./annees";
 import { classesCourantes, dejaSaisi, effectifClasse, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
 import { ouvertureDuTrimestre, trimestreAuCalendrier } from "./periode";
@@ -134,6 +135,15 @@ parcours.post("/evenements/corrections", authentifie, async (c) => {
   }
   const deja = await dejaSaisi(saisie.idSaisie, "CORRECTION_EVALUATION");
   if (deja) return c.json({ enregistre: deja[0], deja: true }, 200);
+  // Les notes d'une année close ne se corrigent plus (sauf réouverture par la direction départementale).
+  const [classeNote] = await base().select({ etablissementId: schema.classes.etablissementId, anneeScolaire: schema.classes.anneeScolaire }).from(schema.classes).where(eq(schema.classes.id, d.classeId));
+  if (classeNote) {
+    const etat = await etatAnnee(classeNote.etablissementId, classeNote.anneeScolaire);
+    if (!etat.ouverte) {
+      await journaliser(profil, "Correction de note", `${saisie.evenementCorrigeId} (${classeNote.anneeScolaire})`, "evaluation", false, "annee");
+      throw new HTTPException(422, { message: `Année ${classeNote.anneeScolaire} — ${etat.raison}` });
+    }
+  }
   const [id] = await inscrireAuRegistre([{
     type: "CORRECTION_EVALUATION", auteurId: enseignant!.id, etablissementId: origine.etablissementId, apprenantId: d.apprenantId,
     donnees: { apprenantId: d.apprenantId, evenementCorrigeId: saisie.evenementCorrigeId, nouvelleNote: saisie.nouvelleNote, motif: saisie.motif, classeId: d.classeId, ...(saisie.idSaisie ? { idSaisie: saisie.idSaisie } : {}) },
@@ -196,6 +206,13 @@ parcours.post("/inscriptions", authentifie, async (c) => {
   if (!etab || !classe || classe.etablissementId !== etab) {
     await journaliser(profil, "Inscription d'un apprenant", saisie.classeId, "gestion", false, !etab ? "role" : "perimetre");
     refuser("Inscription possible uniquement dans une classe de votre établissement");
+  }
+
+  // Une année close (école basculée sur l'année suivante) ne reçoit plus d'inscription, sauf réouverture.
+  const annee = await etatAnnee(etab!, classe!.anneeScolaire);
+  if (!annee.ouverte) {
+    await journaliser(profil, "Inscription d'un apprenant", `${saisie.classeId} · ${classe!.anneeScolaire}`, "gestion", false, "annee");
+    throw new HTTPException(422, { message: `Année ${classe!.anneeScolaire} : ${annee.raison}` });
   }
 
   // Capacité de la classe, lue dans la projection de lecture (indexée).

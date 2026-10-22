@@ -9,6 +9,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
+import { etatAnnee } from "./annees";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { enBaisse, scolarisesEtablissement } from "./lectures";
 import { bilansAuTrimestre, bornesDuTrimestre, enTete, periodePrincipale, periodesDesClasses } from "./periode";
@@ -240,6 +241,11 @@ etablissement.post("/etablissements/:id/classes/:classeId", authentifie, async (
   }).strict());
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, classeId));
   if (!classe || classe.etablissementId !== id) throw new HTTPException(404, { message: "Classe inconnue ou hors de votre établissement" });
+  const etatClasse = await etatAnnee(id, classe.anneeScolaire);
+  if (!etatClasse.ouverte) {
+    await journaliser(profil, "Modification d'une classe", `${classeId} (${classe.anneeScolaire})`, "gestion", false, "annee");
+    throw new HTTPException(422, { message: `Année ${classe.anneeScolaire} — ${etatClasse.raison}` });
+  }
   if (saisie.enseignantPrincipalId) {
     const [prof] = await base().select({ id: schema.enseignants.id }).from(schema.enseignants)
       .where(and(eq(schema.enseignants.id, saisie.enseignantPrincipalId), eq(schema.enseignants.etablissementId, id)));
@@ -299,7 +305,15 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
   }).strict());
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, classeId));
   if (!classe || classe.etablissementId !== id) throw new HTTPException(404, { message: "Classe inconnue ou hors de votre établissement" });
-  if (saisie.anneeScolaire === classe.anneeScolaire) throw new HTTPException(422, { message: "L'année cible doit différer de l'année en cours" });
+  // L'année cible est exactement l'année suivante de la classe, et elle doit être ouverte : sinon un conseil
+  // « à rebours » replacerait des élèves dans une année close et la rouvrirait sans la direction départementale.
+  const suivante = `${Number(classe.anneeScolaire.slice(5))}-${Number(classe.anneeScolaire.slice(5)) + 1}`;
+  if (saisie.anneeScolaire !== suivante) throw new HTTPException(422, { message: `L'année cible d'un conseil de passage est l'année suivante (${suivante})` });
+  const etatCible = await etatAnnee(id, suivante);
+  if (!etatCible.ouverte) {
+    await journaliser(profil, "Conseil de passage", `${classeId} → ${suivante}`, "gestion", false, "annee");
+    throw new HTTPException(422, { message: `Année ${suivante} — ${etatCible.raison}` });
+  }
   if (saisie.seance.dateSeance > aujourdhui()) throw new HTTPException(422, { message: `Le conseil ne peut pas être tenu après aujourd'hui (${aujourdhui()})` });
   // Le conseil de passage se tient pendant l'année scolaire de la classe (rentrée de septembre au plus tôt).
   const rentree = `${classe.anneeScolaire.slice(0, 4)}-09-01`;
@@ -381,6 +395,12 @@ etablissement.post("/apprenants/:id/transfert", authentifie, async (c) => {
   const { profil, sco } = await chefDeLApprenant(c, apprenantId);
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, versClasseId));
   if (!classe || classe.etablissementId === sco.etablissementId) throw new HTTPException(422, { message: "Classe d'accueil invalide (autre établissement requis)" });
+  // La classe d'accueil doit être d'une année OUVERTE de l'école d'accueil : un transfert ne rouvre pas une année close.
+  const etatAccueil = await etatAnnee(classe.etablissementId, classe.anneeScolaire);
+  if (!etatAccueil.ouverte) {
+    await journaliser(profil, "Transfert d'un apprenant", `${apprenantId} → ${versClasseId} (${classe.anneeScolaire})`, "gestion", false, "annee");
+    throw new HTTPException(422, { message: `Classe d'accueil d'une année close (${classe.anneeScolaire}) : choisissez une classe de l'année en cours` });
+  }
   const [id] = await inscrireAuRegistre([{ type: "TRANSFERT", auteurId: profil.id, etablissementId: classe.etablissementId, apprenantId, donnees: { apprenantId, deEtablissementId: sco.etablissementId, versEtablissementId: classe.etablissementId, versClasseId, anneeScolaire: classe.anneeScolaire } }]);
   await journaliser(profil, "Transfert d'un apprenant", `${apprenantId} → ${versClasseId}`, "gestion", true, null);
   return c.json({ enregistre: id }, 201);
@@ -573,7 +593,7 @@ etablissement.get("/etablissements/:id/demandes", authentifie, async (c) => {
 /* ------------------------------------------------------------------ Moteur de circuits : statuer sur une demande */
 
 /** Une habilitation couvre-t-elle cet établissement ? (national > département > circonscription > établissement) */
-function couvreEtab(h: Habilitation, etab: { id: string; communeId: string; circonscription: string }) {
+export function couvreEtab(h: Habilitation, etab: { id: string; communeId: string; circonscription: string }) {
   const p = h.perimetre;
   if (p.niveau === "national") return true;
   if (p.niveau === "departement") return communeById.get(etab.communeId)?.departementId === p.departementId;

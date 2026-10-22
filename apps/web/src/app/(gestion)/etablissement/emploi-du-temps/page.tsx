@@ -122,6 +122,12 @@ function EmploiDuTemps({ id }: { id: string }) {
 
   const choix = annees();
   const [annee, setAnnee] = useState(choix[1]!);
+  // État de l'année choisie (ouverte, close, rouverte) : une année close se voit avant tout import.
+  const etats = useQuery({
+    queryKey: ["etablissement", id, "annees"],
+    queryFn: ({ signal }) => lire<{ annees: { anneeScolaire: string; ouverte: boolean; statut: string; raison: string }[] }>(`/etablissements/${encodeURIComponent(id)}/annees`, signal),
+  });
+  const etatAnnee = etats.data?.annees.find((a) => a.anneeScolaire === annee);
   const [fichier, setFichier] = useState<string | null>(null);
   const [lecture, setLecture] = useState<LectureEdt | null>(null);
   const [erreurFichier, setErreurFichier] = useState<string | null>(null);
@@ -208,6 +214,11 @@ function EmploiDuTemps({ id }: { id: string }) {
             <label className="block"><span className="mb-1.5 block text-sm font-medium text-ink">Fichier CSV</span>
               <input type="file" accept=".csv,text/csv,.txt" onChange={choisir} className={cn(classeChamp, "py-1.5 file:mr-3 file:rounded file:border-0 file:bg-surface-2 file:px-2 file:py-1 file:text-[13px]")} aria-label="Fichier CSV" /></label>
           </div>
+          {etatAnnee && (etatAnnee.statut === "close" || etatAnnee.statut === "rouverte") && (
+            <p role="status" className={cn("mt-3 rounded-md px-3 py-2 text-[13px]", etatAnnee.ouverte ? "bg-warning-bg text-ink-2" : "bg-surface-2 text-ink-2")}>
+              <b className="text-ink">{etatAnnee.ouverte ? "Année rouverte" : "Année close"}</b> — {etatAnnee.raison}{etatAnnee.ouverte ? "" : " Pour la modifier, demandez une réouverture à votre direction départementale."}
+            </p>
+          )}
           {erreurFichier && <p role="alert" className="mt-3 rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">{erreurFichier}</p>}
           {lecture && <p className="mt-3 text-[13px] text-ink-2"><b className="text-ink">{fichier}</b> : {lecture.lignes.length} séance(s) lue(s) ({lecture.encodage}, séparateur « {lecture.separateur} »).</p>}
           {appel.error && <p role="alert" className="mt-3 rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">{appel.error.message}</p>}

@@ -221,6 +221,14 @@ export const Evenement = z.discriminatedUnion("type", [
     formation: z.string(),
     statut: z.enum(["inscrit", "validee"]),
   }),
+  /* Réouverture temporaire d'une année scolaire close pour un établissement (direction départementale) : jusqu'à
+   * `jusquAu` inclus, les écritures de cette année (inscriptions, services, emploi du temps) sont de nouveau admises. */
+  Base.extend({
+    type: z.literal("REOUVERTURE_ANNEE"),
+    anneeScolaire: z.string(),
+    jusquAu: z.string(),
+    motif: z.string(),
+  }),
   /* Service d'enseignement : qui enseigne quelle matière dans quelle classe. Attribuer un service ouvre à
    * l'enseignant le carnet de la classe (élèves, notes, absences) ; le retirer le ferme. Chaque mouvement est
    * donc un fait, avec son auteur : on sait toujours qui a donné ou retiré l'accès à une classe. */

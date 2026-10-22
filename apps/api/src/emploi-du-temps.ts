@@ -8,6 +8,7 @@ import { z } from "zod";
 import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
 import { anneeAdmise, chefDe, cleClasse, cleProfil, normaliser } from "./import-eleves";
 import { matiereDe, personnelDe } from "./import-services";
+import { etatAnnee } from "./annees";
 import { enseignantDe } from "./parcours";
 
 /**
@@ -232,9 +233,9 @@ async function ecrireSeance(profil: Profil, etablissementId: string, s: z.infer<
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`services-edt:${etablissementId}`}))`);
     const [classe] = await tx.select().from(schema.classes).where(and(eq(schema.classes.id, s.classeId), eq(schema.classes.etablissementId, etablissementId)));
     if (!classe) throw new HTTPException(422, { message: "Classe inconnue ou hors de votre établissement" });
-    // Même règle que l'import (anneeAdmise). Limite connue : BEILE n'a pas encore de notion d'année CLOSE — une année
-    // qui a des classes reste admise. La date de clôture est une décision métier (note de cadrage, décision 4).
-    if (!(await anneeAdmise(etablissementId, classe.anneeScolaire))) throw new HTTPException(422, { message: `Année ${classe.anneeScolaire} non ouverte : son emploi du temps ne se modifie plus` });
+    // Même règle que l'import : une année close (annees.ts) ne se modifie plus, sauf réouverture départementale.
+    const etat = await etatAnnee(etablissementId, classe.anneeScolaire);
+    if (!etat.ouverte) throw new HTTPException(422, { message: `Année ${classe.anneeScolaire} — ${etat.raison}` });
     let avant: typeof schema.cours.$inferSelect | undefined;
     if (remplace) {
       [avant] = await tx.select().from(schema.cours).where(and(eq(schema.cours.id, remplace), eq(schema.cours.etablissementId, etablissementId)));
@@ -321,7 +322,8 @@ emploiDuTemps.post("/etablissements/:id/emploi-du-temps/seances/:seanceId/suppri
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`services-edt:${id}`}))`);
     const [cible] = await tx.select().from(schema.cours).where(and(eq(schema.cours.id, seanceId), eq(schema.cours.etablissementId, id)));
     if (!cible) throw new HTTPException(404, { message: "Séance inconnue ou hors de votre établissement" });
-    if (!(await anneeAdmise(id, cible.anneeScolaire))) throw new HTTPException(422, { message: `Année ${cible.anneeScolaire} non ouverte : son emploi du temps ne se modifie plus` });
+    const etat = await etatAnnee(id, cible.anneeScolaire);
+    if (!etat.ouverte) throw new HTTPException(422, { message: `Année ${cible.anneeScolaire} — ${etat.raison}` });
     await tx.delete(schema.cours).where(and(eq(schema.cours.id, seanceId), eq(schema.cours.etablissementId, id)));
     return cible;
   }));

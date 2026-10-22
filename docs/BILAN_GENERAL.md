@@ -13,6 +13,11 @@
 > **En production depuis le 21/10/2026** (`main` à `d5f27fd`) : import des **services d'enseignement** (`f75085e`,
 > audité de façon indépendante, 5 constats corrigés), test de charge **à 1 000 utilisateurs simultanés**, et
 > correctif des **plafonds de connexion** et de la **purge des compteurs** (`ba84815`). Aucune migration.
+>
+> **En production depuis le 22/10/2026** (`main` à `229aad6`) : **emploi du temps** (note
+> [cadrage/EMPLOI_DU_TEMPS.md](cadrage/EMPLOI_DU_TEMPS.md)) — import par fichier (`b065163`, migration 0017) et
+> **saisie à l'écran** par l'administration de l'école (`7bbb483`) ; lecture par l'inspection et par l'enseignant.
+> Deux audits indépendants, 9 constats corrigés ; limite documentée : pas encore de notion d'année scolaire close.
 
 ---
 
@@ -20,10 +25,11 @@
 
 | Élément | État |
 |---|---|
-| Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `afd233c`, déployée le 21/10/2026 (soir : allègement des lectures, +52 % de débit sous stress) |
-| API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 21/10/2026 depuis le même état |
-| Base (Neon PostgreSQL) | 17 migrations appliquées (0000 → 0016) ; **4 index du registre ajoutés le 21/10** (absences par élève, par classe, saisies pour le compte d'une école ; faits d'un type par école), valides, utilisés par le carnet de classe (2 ms en production) |
-| Sauvegarde avant la dernière modification de la base | 70 tables, 21/10/2026 11 h 27 |
+| Front (Next.js 16) | https://edu-tech-api-rho.vercel.app — branche `main` à `229aad6`, déployée le 22/10/2026 (emploi du temps, saisie à l'écran) |
+| API (Hono) | https://beile-api.vercel.app/api/v1 — déployée le 22/10/2026 depuis le même état |
+| Base (Neon PostgreSQL) | 18 migrations appliquées (0000 → 0017, table `core.cours` le 22/10) ; 4 index du registre ajoutés le 21/10, utilisés par le carnet de classe (2 ms en production) |
+| Sauvegarde avant la dernière mise en production | 71 tables, 22/10/2026 13 h 01 |
+| Contrôle après mise en production (22/10) | Routes de l'emploi du temps vivantes (401 sans session) ; directrice : écran, formulaire « Ajouter une séance », ligne fictive refusée sans rien écrire ; enseignant : « Mon emploi du temps » ; en-têtes 5/5 |
 | Contrôle après mise en production (21/10) | Route des services vivante (401 sans session), corps de 20 Ko accepté sur l'import ; écran des services en navigateur à 1 280 et 390 px, ligne fictive refusée sans rien écrire ; en-têtes 5/5 ; page protégée → 307 ; écriture sans session → 401 ; connexion inconnue → 401 |
 | Intégration continue (`dev`) | Recette **408/408** cas conformes, écritures comprises (commit `ba84815`) |
 | Tenue en charge (CI, 4 vCPU, une instance) | **1 000 utilisateurs simultanés** à l'usage réel : 0 erreur, p50 13 ms, p95 58 ms ; sous 10 × cette charge : 0 erreur, p50 1,8 s (détail : [DIMENSIONNEMENT.md](DIMENSIONNEMENT.md)) |
