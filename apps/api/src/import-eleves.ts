@@ -44,7 +44,7 @@ const Requete = z.object({
   creerClasses: z.boolean().default(false),
   capaciteNouvellesClasses: z.number().int().min(10).max(200).default(60),
   idImport: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
-  lignes: z.array(Ligne).min(1).max(MAX_LIGNES),
+  lignes: z.array(Ligne).min(1).max(MAX_LIGNES).refine((ls) => new Set(ls.map((l) => l.n)).size === ls.length, "numéros de ligne (n) en double"),
 }).strict();
 
 type Statut = "a_inscrire" | "deja_inscrit" | "erreur";

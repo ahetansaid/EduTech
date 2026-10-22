@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn, bigint, boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, unique, uniqueIndex,
+  type AnyPgColumn, bigint, boolean, check, customType, date, doublePrecision, index, integer, jsonb, numeric, pgSchema, primaryKey, text, timestamp, unique, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -327,6 +327,31 @@ export const enseignements = core.table("enseignements", {
   classeId: text("classe_id").notNull().references(() => classes.id),
   matiere: text("matiere").notNull(),
 }, (t) => [primaryKey({ columns: [t.enseignantId, t.classeId, t.matiere] })]);
+
+/**
+ * Emploi du temps : une séance hebdomadaire d'une classe (docs/cadrage/EMPLOI_DU_TEMPS.md). Reçu de l'établissement,
+ * jamais calculé par BEILE. Heures en minutes depuis minuit (07:30 → 450) : chevauchements et tris sans ambiguïté.
+ * Un cours suppose le service correspondant (enseignant, classe, matière) : l'API le vérifie à l'import.
+ */
+export const cours = core.table("cours", {
+  id: text("id").primaryKey(),
+  etablissementId: text("etablissement_id").notNull().references(() => etablissements.id),
+  classeId: text("classe_id").notNull().references(() => classes.id),
+  anneeScolaire: text("annee_scolaire").notNull(),
+  /** 1 = lundi … 6 = samedi. */
+  jour: integer("jour").notNull(),
+  debut: integer("debut").notNull(),
+  fin: integer("fin").notNull(),
+  matiere: text("matiere").notNull(),
+  enseignantId: text("enseignant_id").notNull().references(() => enseignants.id),
+  salle: text("salle"),
+}, (t) => [
+  index("cours_classe_idx").on(t.classeId, t.jour, t.debut),
+  index("cours_enseignant_idx").on(t.enseignantId, t.jour, t.debut),
+  index("cours_etablissement_idx").on(t.etablissementId, t.anneeScolaire),
+  // Seconde barrière : les mêmes bornes que l'API (lundi–samedi, 06:00–20:00, séance de 15 min à 4 h).
+  check("cours_plage_ck", sql`${t.jour} between 1 and 6 and ${t.debut} >= 360 and ${t.fin} <= 1200 and ${t.fin} - ${t.debut} between 15 and 240`),
+]);
 
 /**
  * Un diplôme certifié, vérifiable par un tiers. `examen` porte la valeur complète de ce qui est attesté

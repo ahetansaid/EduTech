@@ -45,6 +45,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/etablissement/import", libelle: "Importer une liste", icone: FileSpreadsheet, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6", cycles: K12 },
   { href: "/etablissement/eleves", libelle: "Apprenants", icone: Users, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7 · P9" , cycles: K12 },
   { href: "/etablissement/familles", libelle: "Familles sans NPI", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6", cycles: K12 },
+  { href: "/etablissement/emploi-du-temps", libelle: "Emploi du temps", icone: CalendarCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
   { href: "/etablissement/import-services", libelle: "Services d'enseignement", icone: ListChecks, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
   { href: "/etablissement/personnel", libelle: "Personnel enseignant", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
   { href: "/etablissement/justificatifs", libelle: "Justificatifs d'absence", icone: ClipboardCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7" , cycles: K12 },
