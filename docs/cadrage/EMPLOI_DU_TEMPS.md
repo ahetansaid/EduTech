@@ -67,9 +67,21 @@ Compte `hortense.guera`, écran `/etablissement/emploi-du-temps` :
 1. **Horaires réglementaires officiels** (grilles par niveau et matière) : quelle source fait foi, qui la fournit ?
 2. **Appel par séance** : généralisation ou établissements pilotes d'abord ?
 3. **Confidentialité de l'emploi du temps des mineurs** : validation par le DPO (règle 5).
-4. **Clôture d'une année scolaire** : BEILE n'a pas encore de notion d'année close — une année qui a des classes
-   reste modifiable (emploi du temps, services, inscriptions). À partir de quand une année est-elle figée (après les
-   conseils de passage ? au 31 juillet ?), et qui peut la rouvrir ?
+4. ~~Clôture d'une année scolaire~~ — **tranchée et livrée le 22/10/2026** (voir § 9).
+
+## 9. Clôture des années scolaires (livré le 22/10/2026)
+
+- Une année est **close** pour un établissement quand la rentrée suivante est passée (calendrier officiel ; à défaut
+  le 1er octobre) **et** qu'il n'y reste plus aucun élève scolarisé — l'école a basculé. Filet : close dans tous les
+  cas un an après la rentrée suivante. Une école en retard sur ses conseils de passage n'est pas figée en plein
+  travail (l'école pilote de démonstration garde 2025-2026 ouverte : ses élèves y sont encore).
+- Close, elle refuse : inscriptions (import et unitaire), services, emploi du temps (import et écran), modification
+  d'une classe, correction de notes, conseil de passage vers elle, transfert vers une de ses classes.
+- **Réouverture** : par la direction départementale dont relève l'établissement seulement, 1 à 30 jours, motif
+  obligatoire, fait `REOUVERTURE_ANNEE` au registre ; écran « Années scolaires ». **Stable** : une année rouverte une
+  fois redevient close à la fin de la fenêtre, même si des élèves y ont été inscrits entre-temps.
+- Audit indépendant : 2 failles hautes (réouverture détournée par un conseil de passage « à rebours » ; clôture
+  instable) et 3 moyennes (transfert, corrections et édition de classe, coût de la liste de suivi) corrigées et testées.
 
 ## 8. Saisie à l'écran (ajouté le 22/10/2026)
 

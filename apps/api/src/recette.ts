@@ -367,29 +367,34 @@ if (ECRITURES) {
   // Conseil de passage : la séance est attestée au registre (fait CONSEIL_DE_CLASSE), puis l'admis est
   // réinscrit dans sa division de l'année suivante (fait PASSAGE + REPRISE).
   const passage = await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
-    anneeScolaire: "2027-2028",
+    anneeScolaire: "2026-2027",
     seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Professeur principal", "Chef d'établissement"], referencePv: "PV-REC-01" },
     decisions: [{ apprenantId: "APP-000001", decision: "admis" }],
   });
   verifier("Directrice : conseil de passage (admis réinscrit)", [201, 422].includes(passage.statut), true, `statut ${passage.statut}${passage.statut === 422 ? " — apprenant déjà muté d'une exécution précédente" : ""}`);
   verifier("Directrice : la séance du conseil est au registre avec ses membres", passage.statut !== 201 || passage.json?.nombreDeMembres === 2, true, `membres ${passage.json?.nombreDeMembres}`);
+  verifier("Directrice : un conseil vers une autre année que la suivante est refusé (pas de réouverture détournée)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
+    anneeScolaire: "2024-2025",
+    seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Chef d'établissement"], referencePv: null },
+    decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
+  })).statut, 422);
   verifier("Directrice : une séance future est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
-    anneeScolaire: "2028-2029",
+    anneeScolaire: "2026-2027",
     seance: { dateSeance: "2099-01-01", membres: ["Chef d'établissement"], referencePv: null },
     decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
   })).statut, 422);
   verifier("Directrice : une séance sans membre est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
-    anneeScolaire: "2028-2029",
+    anneeScolaire: "2026-2027",
     seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: [], referencePv: null },
     decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
   })).statut, 422);
   verifier("Directrice : un nom de personne au lieu d'une qualité est refusé (registre ineffaçable)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
-    anneeScolaire: "2028-2029",
+    anneeScolaire: "2026-2027",
     seance: { dateSeance: new Date().toISOString().slice(0, 10), membres: ["Mme Adjoua KOSSOU, parent délégué"], referencePv: null },
     decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
   })).statut, 422);
   verifier("Directrice : une date de séance impossible est refusée", (await directrice!.appel("POST", `/etablissements/${PILOTE}/classes/CLS-PAR-5eA-S/conseil-passage`, {
-    anneeScolaire: "2028-2029",
+    anneeScolaire: "2026-2027",
     seance: { dateSeance: "2026-02-31", membres: ["Chef d'établissement"], referencePv: null },
     decisions: [{ apprenantId: "APP-000001", decision: "redouble" }],
   })).statut, 422);
@@ -497,6 +502,11 @@ titre("Boucle d'action : une alerte se prend en charge, se suit, se clôt");
   verifier("Séance à l'écran : un enseignant ne modifie pas l'emploi du temps", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/emploi-du-temps/seances`, seanceEcran)).statut, 403);
   verifier("Séance à l'écran : enseignant hors personnel refusé", (await directrice!.appel("POST", `/etablissements/${PILOTE}/emploi-du-temps/seances`, seanceEcran)).statut, 422);
   verifier("Séance à l'écran : séance inconnue introuvable", (await directrice!.appel("POST", `/etablissements/${PILOTE}/emploi-du-temps/seances/CRS-inexistante/supprimer`, {})).statut, 404);
+  const anneesEtab = await directrice!.appel("GET", `/etablissements/${PILOTE}/annees`);
+  verifier("Années scolaires : l'année des élèves de démonstration reste ouverte (école pas encore basculée)", anneesEtab.statut === 200 && (anneesEtab.json.annees as { anneeScolaire: string; ouverte: boolean }[]).find((a) => a.anneeScolaire === "2025-2026")?.ouverte === true, true, `HTTP ${anneesEtab.statut}`);
+  verifier("Années scolaires : un chef ne rouvre pas une année", (await directrice!.appel("POST", `/etablissements/${PILOTE}/annees/2025-2026/reouverture`, { motif: "Recette : tentative de réouverture", jours: 3 })).statut, 403);
+  verifier("Années scolaires : suivi départemental refusé au chef", (await directrice!.appel("GET", "/annees-scolaires/a-suivre")).statut, 403);
+  verifier("Années scolaires : suivi par la direction départementale", (await departement!.appel("GET", "/annees-scolaires/a-suivre")).statut, 200);
   verifier("Emploi du temps de l'établissement : refusé à l'enseignant", (await enseignant!.appel("GET", `/etablissements/${PILOTE}/emploi-du-temps`)).statut, 403);
   verifier("Inspection : écoles non connectées de sa circonscription", (await inspecteur!.appel("GET", "/inspection/ecoles-non-connectees")).statut, 200);
   verifier("Hors inspection : écoles non connectées refusées", (await departement!.appel("GET", "/inspection/ecoles-non-connectees")).statut, 403);
