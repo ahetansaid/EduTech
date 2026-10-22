@@ -201,6 +201,134 @@ emploiDuTemps.post("/etablissements/:id/import/emploi-du-temps", authentifie, li
   return c.json({ mode: "import", ecrit: true, totaux: { ...totaux, coursEcrits: a.aEcrire.length }, classes: a.changees.map(a.libelle), lignes: a.resultats.map((r) => sortie(r.statut === "a_importer" ? { ...r, statut: "deja_present" as Statut } : r)) }, 201);
 });
 
+/* ------------------------------------------------------------------ Saisie à l'écran : une séance à la fois */
+
+const ID_SEANCE = z.string().regex(/^CRS-[A-Za-z0-9-]+$/);
+const ID_ENSEIGNANT = z.string().regex(/^ENS-[A-Za-z0-9-]+$/);
+const Seance = z.object({
+  classeId: ID_CLASSE,
+  jour: z.number().int().min(1).max(6),
+  debut: z.string().regex(/^\d{1,2}:\d{2}$/),
+  fin: z.string().regex(/^\d{1,2}:\d{2}$/),
+  matiere: z.string().trim().min(1).max(40),
+  enseignantId: ID_ENSEIGNANT,
+  salle: z.string().trim().max(30).optional(),
+}).strict();
+
+/**
+ * Une séance saisie ou modifiée à l'écran par l'administration de l'école : MÊMES contrôles que l'import (classe de
+ * l'établissement, enseignant affecté, service, plages, chevauchements de classe, d'enseignant et de salle), faits
+ * DANS la transaction, sous le verrou commun aux imports de services et d'emploi du temps.
+ */
+async function ecrireSeance(profil: Profil, etablissementId: string, s: z.infer<typeof Seance>, remplace: string | null) {
+  const matiere = matiereDe(s.matiere);
+  if (!matiere) throw new HTTPException(422, { message: `Matière « ${s.matiere} » non reconnue (${MATIERES.join(", ")})` });
+  const debut = minutesDe(s.debut), fin = minutesDe(s.fin);
+  if (debut == null || fin == null) throw new HTTPException(422, { message: "Heure invalide : HH:MM (ex. 07:30)" });
+  if (debut < 360 || fin > 1200) throw new HTTPException(422, { message: "Cours hors de la plage 06:00 – 20:00" });
+  if (fin - debut < 15 || fin - debut > 240) throw new HTTPException(422, { message: "Durée d'une séance : de 15 min à 4 h" });
+  const salle = s.salle ? s.salle : null;
+  return base().transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`services-edt:${etablissementId}`}))`);
+    const [classe] = await tx.select().from(schema.classes).where(and(eq(schema.classes.id, s.classeId), eq(schema.classes.etablissementId, etablissementId)));
+    if (!classe) throw new HTTPException(422, { message: "Classe inconnue ou hors de votre établissement" });
+    // Même règle que l'import (anneeAdmise). Limite connue : BEILE n'a pas encore de notion d'année CLOSE — une année
+    // qui a des classes reste admise. La date de clôture est une décision métier (note de cadrage, décision 4).
+    if (!(await anneeAdmise(etablissementId, classe.anneeScolaire))) throw new HTTPException(422, { message: `Année ${classe.anneeScolaire} non ouverte : son emploi du temps ne se modifie plus` });
+    let avant: typeof schema.cours.$inferSelect | undefined;
+    if (remplace) {
+      [avant] = await tx.select().from(schema.cours).where(and(eq(schema.cours.id, remplace), eq(schema.cours.etablissementId, etablissementId)));
+      if (!avant) throw new HTTPException(404, { message: "Séance inconnue ou hors de votre établissement" });
+      if (avant.anneeScolaire !== classe.anneeScolaire) throw new HTTPException(422, { message: "Une séance ne change pas d'année scolaire : supprimez-la et créez-en une nouvelle" });
+    }
+    const [prof] = await tx.select().from(schema.enseignants).where(and(eq(schema.enseignants.id, s.enseignantId), eq(schema.enseignants.etablissementId, etablissementId)));
+    if (!prof) throw new HTTPException(422, { message: "Enseignant introuvable parmi le personnel affecté à votre établissement" });
+    const [service] = await tx.select().from(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, prof.id), eq(schema.enseignements.classeId, classe.id), eq(schema.enseignements.matiere, matiere)));
+    if (!service) throw new HTTPException(422, { message: `${prof.prenoms} ${prof.nom} n'a pas de service en ${matiere} pour ${classe.libelle} : attribuez d'abord le service` });
+    // Chevauchements : toutes les séances de l'établissement, cette année, le même jour — sauf celle qu'on modifie.
+    const memeJour = await tx.select({ c: schema.cours, classe: schema.classes.libelle, nom: schema.enseignants.nom, prenoms: schema.enseignants.prenoms })
+      .from(schema.cours).innerJoin(schema.classes, eq(schema.classes.id, schema.cours.classeId)).innerJoin(schema.enseignants, eq(schema.enseignants.id, schema.cours.enseignantId))
+      .where(and(eq(schema.cours.etablissementId, etablissementId), eq(schema.cours.anneeScolaire, classe.anneeScolaire), eq(schema.cours.jour, s.jour)));
+    for (const { c: o, classe: libelleAutre, nom, prenoms } of memeJour) {
+      if (o.id === remplace || !(debut < o.fin && o.debut < fin)) continue;
+      const quoi = o.classeId === classe.id ? `la classe a déjà ${o.matiere}` : o.enseignantId === prof.id ? `${prenoms} ${nom} est en ${libelleAutre}` : salle && o.salle && normaliser(o.salle) === normaliser(salle) ? `la salle ${o.salle} est occupée par ${libelleAutre}` : null;
+      if (quoi) throw new HTTPException(409, { message: `Chevauchement ${JOURS[s.jour - 1]} ${heure(o.debut)}–${heure(o.fin)} : ${quoi}` });
+    }
+    const valeurs = { etablissementId, classeId: classe.id, anneeScolaire: classe.anneeScolaire, jour: s.jour, debut, fin, matiere, enseignantId: prof.id, salle };
+    const id = remplace ?? `CRS-${randomUUID()}`;
+    if (remplace) await tx.update(schema.cours).set(valeurs).where(and(eq(schema.cours.id, remplace), eq(schema.cours.etablissementId, etablissementId)));
+    else await tx.insert(schema.cours).values({ id, ...valeurs });
+    // Trace compacte (le journal garde 200 caractères) : la classe une fois, puis « avant → après » champ par champ.
+    type Etat = { jour: number; debut: number; fin: number; matiere: string; enseignantId: string; salle: string | null; classeId: string };
+    const champs = (x: Etat) => ({ classe: x.classeId, creneau: `${JOURS[x.jour - 1]!.slice(0, 3)} ${heure(x.debut)}–${heure(x.fin)}`, matiere: x.matiere, enseignant: x.enseignantId, salle: x.salle ?? "—" });
+    const apres = champs(valeurs);
+    const trace = avant
+      ? (() => { const a = champs(avant); return Object.entries(apres).filter(([k, v]) => a[k as keyof typeof a] !== v).map(([k, v]) => `${k} ${a[k as keyof typeof a]}→${v}`).join(" · ") || "inchangée"; })()
+      : Object.values(apres).join(" ");
+    return { id, classe: classe.libelle, enseignant: `${prof.prenoms} ${prof.nom}`, matiere, jour: s.jour, debut: heure(debut), fin: heure(fin), salle, trace: avant ? `${avant.classeId} · ${trace}` : trace };
+  });
+}
+
+async function seulAdministrationEcole(profil: Profil, etablissementId: string, action: string) {
+  if (!chefDe(profil, etablissementId)) {
+    await journaliser(profil, action, etablissementId, "gestion", false, "perimetre");
+    refuser("L'emploi du temps se modifie par l'administration de CET établissement : refus journalisé");
+  }
+}
+/** Un refus métier (séance inconnue, chevauchement, contrôle) est tracé comme un refus de périmètre : avec sa cible. */
+async function tracerRefus<T>(profil: Profil, action: string, cible: string, f: () => Promise<T>): Promise<T> {
+  try { return await f(); } catch (err) {
+    if (err instanceof HTTPException && [404, 409, 422].includes(err.status)) {
+      await journaliser(profil, action, `${cible} · ${err.message}`.slice(0, 200), "gestion", false, err.status === 409 ? "chevauchement" : err.status === 404 ? "perimetre" : "controle");
+    }
+    throw err;
+  }
+}
+// Plafond propre aux écritures unitaires : un usage normal reste loin de 120 par heure ; au-delà, c'est un script.
+const plafondSaisie = limiteDebitPartage("saisie-edt", 120, 3_600_000, cleProfil);
+
+emploiDuTemps.post("/etablissements/:id/emploi-du-temps/seances", authentifie, plafondSaisie, async (c) => {
+  const profil = c.get("profil");
+  const id = ID_ETAB.parse(c.req.param("id"));
+  await seulAdministrationEcole(profil, id, "Ajout d'une séance");
+  const s = await corps(c, Seance);
+  const r = await tracerRefus(profil, "Ajout d'une séance", `${id} · ${s.classeId}`, () => ecrireSeance(profil, id, s, null));
+  await journaliser(profil, "Ajout d'une séance", `${id} · ${r.id} · ${r.trace}`.slice(0, 200), "gestion", true, null);
+  const { trace: _t, ...sortie } = r;
+  return c.json(sortie, 201);
+});
+
+emploiDuTemps.post("/etablissements/:id/emploi-du-temps/seances/:seanceId", authentifie, plafondSaisie, async (c) => {
+  const profil = c.get("profil");
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const seanceId = ID_SEANCE.parse(c.req.param("seanceId"));
+  await seulAdministrationEcole(profil, id, "Modification d'une séance");
+  const s = await corps(c, Seance);
+  const r = await tracerRefus(profil, "Modification d'une séance", `${id} · ${seanceId}`, () => ecrireSeance(profil, id, s, seanceId));
+  // Avant → après : une séance déplacée ou réaffectée reste reconstituable depuis le journal.
+  await journaliser(profil, "Modification d'une séance", `${seanceId} · ${r.trace}`.slice(0, 200), "gestion", true, null);
+  const { trace: _t, ...sortie } = r;
+  return c.json(sortie);
+});
+
+emploiDuTemps.post("/etablissements/:id/emploi-du-temps/seances/:seanceId/supprimer", authentifie, plafondSaisie, async (c) => {
+  const profil = c.get("profil");
+  const id = ID_ETAB.parse(c.req.param("id"));
+  const seanceId = ID_SEANCE.parse(c.req.param("seanceId"));
+  await seulAdministrationEcole(profil, id, "Suppression d'une séance");
+  await corps(c, z.object({}).strict());
+  const s = await tracerRefus(profil, "Suppression d'une séance", `${id} · ${seanceId}`, () => base().transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`services-edt:${id}`}))`);
+    const [cible] = await tx.select().from(schema.cours).where(and(eq(schema.cours.id, seanceId), eq(schema.cours.etablissementId, id)));
+    if (!cible) throw new HTTPException(404, { message: "Séance inconnue ou hors de votre établissement" });
+    if (!(await anneeAdmise(id, cible.anneeScolaire))) throw new HTTPException(422, { message: `Année ${cible.anneeScolaire} non ouverte : son emploi du temps ne se modifie plus` });
+    await tx.delete(schema.cours).where(and(eq(schema.cours.id, seanceId), eq(schema.cours.etablissementId, id)));
+    return cible;
+  }));
+  await journaliser(profil, "Suppression d'une séance", `${id} · ${seanceId} · ${s.classeId} ${s.matiere} ${JOURS[s.jour - 1]} ${heure(s.debut)}–${heure(s.fin)} ${s.enseignantId}${s.salle ? ` ${s.salle}` : ""}`.slice(0, 200), "gestion", true, null);
+  return c.json({ supprime: seanceId });
+});
+
 /** Lecture d'un établissement : son chef, ou l'inspection de sa circonscription (lecture seule). */
 async function lecteurEtablissement(profil: Profil, etablissementId: string) {
   const [etab] = await base().select({ id: schema.etablissements.id, circonscription: schema.etablissements.circonscription }).from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId));
@@ -228,8 +356,16 @@ emploiDuTemps.get("/etablissements/:id/emploi-du-temps", authentifie, async (c) 
     .from(schema.cours).innerJoin(schema.enseignants, eq(schema.enseignants.id, schema.cours.enseignantId)).innerJoin(schema.classes, eq(schema.classes.id, schema.cours.classeId))
     .where(and(eq(schema.cours.etablissementId, id), ...(classeId ? [eq(schema.cours.classeId, classeId)] : []), ...(annee ? [eq(schema.cours.anneeScolaire, annee)] : [])))
     .orderBy(schema.cours.classeId, schema.cours.jour, schema.cours.debut);
+  // Pour la saisie à l'écran (administration de l'école seulement) : les services de la classe, seuls couples
+  // enseignant × matière admis pour une séance.
+  const services = classeId && finalite === "gestion"
+    ? (await base().select({ enseignantId: schema.enseignements.enseignantId, matiere: schema.enseignements.matiere, nom: schema.enseignants.nom, prenoms: schema.enseignants.prenoms })
+      .from(schema.enseignements).innerJoin(schema.enseignants, eq(schema.enseignants.id, schema.enseignements.enseignantId))
+      .where(and(eq(schema.enseignements.classeId, classeId), eq(schema.enseignants.etablissementId, id))))
+      .map((s) => ({ enseignantId: s.enseignantId, matiere: s.matiere, enseignant: `${s.prenoms} ${s.nom}` }))
+    : undefined;
   await journaliser(profil, "Consultation d'un emploi du temps", `${id}${classeId ? ` · ${classeId}` : ""}`, finalite, true, null);
-  return c.json({ jours: JOURS, cours: lignes.map((l) => enLigne(l.c, { classe: l.classe, enseignant: `${l.prenoms} ${l.nom}` })) });
+  return c.json({ jours: JOURS, modifiable: finalite === "gestion", ...(services ? { services } : {}), cours: lignes.map((l) => enLigne(l.c, { classe: l.classe, enseignant: `${l.prenoms} ${l.nom}`, ...(finalite === "gestion" ? { enseignantId: l.c.enseignantId } : {}) })) });
 });
 
 /**
