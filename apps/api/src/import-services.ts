@@ -41,7 +41,7 @@ const Requete = z.object({
   anneeScolaire: z.string().regex(/^\d{4}-\d{4}$/),
   remplacer: z.boolean().default(false),
   idImport: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
-  lignes: z.array(Ligne).min(1).max(MAX_LIGNES),
+  lignes: z.array(Ligne).min(1).max(MAX_LIGNES).refine((ls) => new Set(ls.map((l) => l.n)).size === ls.length, "numéros de ligne (n) en double"),
 }).strict();
 
 /** Intitulés courants dans les établissements béninois → matière du référentiel. */
@@ -61,17 +61,29 @@ interface Resultat { n: number; statut: Statut; classe: string; classeId?: strin
 interface Service { enseignantId: string; classeId: string; matiere: string }
 const cle = (s: Service) => `${s.classeId}|${s.matiere}|${s.enseignantId}`;
 
-async function analyser(etablissementId: string, saisie: z.infer<typeof Requete>, npiAuteur: string | null) {
-  const classes = await base().select().from(schema.classes)
-    .where(and(eq(schema.classes.etablissementId, etablissementId), eq(schema.classes.anneeScolaire, saisie.anneeScolaire)));
-  const parCle = new Map(classes.map((c) => [cleClasse(c.libelle), c]));
+/**
+ * Personnel affecté à l'établissement, et recherche d'un enseignant par NPI ou par nom (dans les deux ordres).
+ * Partagé avec l'emploi du temps : la recherche ne sort JAMAIS du personnel de l'établissement.
+ */
+export async function personnelDe(etablissementId: string) {
   const profs = await base().select({ id: schema.enseignants.id, npi: schema.enseignants.npi, nom: schema.enseignants.nom, prenoms: schema.enseignants.prenoms, matieres: schema.enseignants.matieres })
     .from(schema.enseignants).where(eq(schema.enseignants.etablissementId, etablissementId));
   const parNom = new Map<string, typeof profs>();
   for (const p of profs) {
     for (const k of new Set([normaliser(`${p.nom} ${p.prenoms}`), normaliser(`${p.prenoms} ${p.nom}`)])) parNom.set(k, [...(parNom.get(k) ?? []), p]);
   }
-  const nomDe = (id: string) => { const p = profs.find((x) => x.id === id); return p ? `${p.prenoms} ${p.nom}` : id; };
+  return {
+    profs,
+    trouver: (l: { enseignant?: string; npiEnseignant?: string }) => (l.npiEnseignant ? profs.filter((p) => p.npi === l.npiEnseignant) : parNom.get(normaliser(l.enseignant ?? "")) ?? []),
+    nomDe: (id: string) => { const p = profs.find((x) => x.id === id); return p ? `${p.prenoms} ${p.nom}` : id; },
+  };
+}
+
+async function analyser(etablissementId: string, saisie: z.infer<typeof Requete>, npiAuteur: string | null) {
+  const classes = await base().select().from(schema.classes)
+    .where(and(eq(schema.classes.etablissementId, etablissementId), eq(schema.classes.anneeScolaire, saisie.anneeScolaire)));
+  const parCle = new Map(classes.map((c) => [cleClasse(c.libelle), c]));
+  const { trouver, nomDe } = await personnelDe(etablissementId);
   const existants: Service[] = classes.length
     ? await base().select({ enseignantId: schema.enseignements.enseignantId, classeId: schema.enseignements.classeId, matiere: schema.enseignements.matiere })
       .from(schema.enseignements).where(inArray(schema.enseignements.classeId, classes.map((c) => c.id)))
@@ -96,7 +108,7 @@ async function analyser(etablissementId: string, saisie: z.infer<typeof Requete>
     classesDuFichier.add(classe.id);
     const matiere = matiereDe(l.matiere);
     if (!matiere) { r("erreur", { motif: `Matière « ${l.matiere} » non reconnue (${MATIERES.join(", ")})` }); continue; }
-    const candidats = l.npiEnseignant ? profs.filter((p) => p.npi === l.npiEnseignant) : parNom.get(normaliser(l.enseignant!)) ?? [];
+    const candidats = trouver(l);
     if (!candidats.length) { r("erreur", { matiere, motif: "Enseignant introuvable parmi le personnel affecté à votre établissement" }); continue; }
     if (candidats.length > 1) { r("erreur", { matiere, motif: "Homonymes dans votre personnel : préciser le NPI de l'enseignant" }); continue; }
     const prof = candidats[0]!;
@@ -199,7 +211,7 @@ importServices.post("/etablissements/:id/import/services", authentifie, limiteDe
     await inscrireAuRegistre(faits, async (tx) => {
       // Deux imports simultanés : l'un attend l'autre, puis on vérifie que les services des classes de l'année n'ont
       // pas bougé depuis l'analyse (même périmètre que l'analyse). Sinon on refuse, sans rien écrire.
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`import-services:${id}`}))`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`services-edt:${id}`}))`);
       const maintenant = await tx.select({ enseignantId: schema.enseignements.enseignantId, classeId: schema.enseignements.classeId, matiere: schema.enseignements.matiere })
         .from(schema.enseignements).where(inArray(schema.enseignements.classeId, a.classeIds));
       if (maintenant.map(cle).sort().join(",") !== instantane) throw new HTTPException(409, { message: "Les services ont changé pendant l'import : relancez la vérification" });
@@ -210,6 +222,8 @@ importServices.post("/etablissements/:id/import/services", authentifie, limiteDe
       }
       for (const s of a.aRetirer) {
         await tx.delete(schema.enseignements).where(and(eq(schema.enseignements.enseignantId, s.enseignantId), eq(schema.enseignements.classeId, s.classeId), eq(schema.enseignements.matiere, s.matiere)));
+        // Plus de service, plus de séance : l'emploi du temps ne garde pas un cours que l'enseignant n'assure plus.
+        await tx.delete(schema.cours).where(and(eq(schema.cours.enseignantId, s.enseignantId), eq(schema.cours.classeId, s.classeId), eq(schema.cours.matiere, s.matiere)));
       }
       if (a.attributions.length) await tx.insert(schema.enseignements).values(a.attributions.map(({ enseignantId, classeId, matiere }) => ({ enseignantId, classeId, matiere }))).onConflictDoNothing();
       for (const [classeId] of a.principauxRetires) await tx.update(schema.classes).set({ enseignantPrincipalId: null }).where(and(eq(schema.classes.id, classeId), eq(schema.classes.etablissementId, id)));

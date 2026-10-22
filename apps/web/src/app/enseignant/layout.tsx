@@ -1,6 +1,6 @@
 "use client";
 
-import { BookUser, CalendarCheck, GraduationCap, ShieldCheck } from "lucide-react";
+import { BookUser, CalendarCheck, CalendarClock, GraduationCap, ShieldCheck } from "lucide-react";
 import { EspacePersonnel } from "@/components/shell/EspacePersonnel";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       largeur="large"
       onglets={[
         { href: "/enseignant", libelle: "Mes classes", icone: CalendarCheck },
+        { href: "/enseignant/emploi-du-temps", libelle: "Emploi du temps", icone: CalendarClock },
         { href: "/enseignant/carriere", libelle: "Parcours pro", icone: GraduationCap },
         { href: "/famille", libelle: "Mon enfant", icone: BookUser, roles: ["parent"] },
         { href: "/enseignant/droits", libelle: "Mes données", icone: ShieldCheck },

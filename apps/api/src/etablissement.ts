@@ -617,8 +617,14 @@ async function appliquerAffectation(profil: import("@beile/contracts").Profil, e
     .where(and(eq(schema.classes.enseignantPrincipalId, enseignantId), eq(schema.classes.etablissementId, ens.etablissementId)));
   // Les enseignements dans l'ancien établissement prennent fin : sinon l'enseignant muté continuerait de lire
   // les carnets et de saisir notes et absences dans des classes qui ne sont plus les siennes.
-  await base().execute(sql`delete from core.enseignements e using core.classes c
-    where c.id = e.classe_id and e.enseignant_id = ${enseignantId} and c.etablissement_id = ${ens.etablissementId}`);
+  // Ses séances dans l'ancien établissement disparaissent avec ses services, sous le verrou des imports de services
+  // et d'emploi du temps de cet établissement : un import en cours ne peut pas lui recréer une séance après coup.
+  await base().transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`services-edt:${ens.etablissementId}`}))`);
+    await tx.execute(sql`delete from core.enseignements e using core.classes c
+      where c.id = e.classe_id and e.enseignant_id = ${enseignantId} and c.etablissement_id = ${ens.etablissementId}`);
+    await tx.delete(schema.cours).where(and(eq(schema.cours.enseignantId, enseignantId), eq(schema.cours.etablissementId, ens.etablissementId)));
+  });
   // Habilitation « enseignant » : elle suit l'affectation (nouvel établissement).
   if (ens.npi) {
     const [p] = await base().select().from(schema.profils).where(eq(schema.profils.npi, ens.npi));

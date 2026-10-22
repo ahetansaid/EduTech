@@ -190,6 +190,8 @@ REVOKE DELETE ON core.compteurs_debit FROM beile_portail_public;
 -- ------------------------------------------------------------------ Audit d'octobre 2026
 -- Liens enseignant–classe : supprimés à la mutation d'un enseignant (fin des droits dans l'ancien établissement).
 GRANT DELETE ON core.enseignements TO beile_app;
+-- Emploi du temps : l'import remplace les cours d'une classe (suppression puis insertion, dans une transaction).
+GRANT DELETE ON core.cours TO beile_app;
 -- Défis WebAuthn : consommés (supprimés) à l'usage, purgés à l'échéance.
 GRANT DELETE ON core.defis_webauthn TO beile_app;
 
