@@ -216,13 +216,13 @@ export const TON_SITUATION: Record<keyof typeof LIBELLE_SITUATION, TonStatut> = 
 
 export const LIBELLE_EVENEMENT: Record<string, string> = {
   INSCRIPTION: "Inscription", EVALUATION: "Évaluation", CORRECTION_EVALUATION: "Correction de note", ABSENCE: "Absence",
-  PASSAGE: "Passage de niveau", TRANSFERT: "Transfert", ABANDON: "Abandon", REPRISE: "Reprise de scolarité",
+  PASSAGE: "Passage de niveau", TRANSFERT: "Transfert", CHANGEMENT_CLASSE: "Changement de classe", ABANDON: "Abandon", REPRISE: "Reprise de scolarité",
   RESULTAT_EXAMEN: "Résultat d'examen", CERTIFICATION: "Diplôme délivré", REGULARISATION_IDENTITE_DEMANDEE: "Régularisation d'identité",
   AFFECTATION_ENSEIGNANT: "Affectation", FORMATION_ENSEIGNANT: "Formation", SERVICE_ENSEIGNEMENT: "Service d’enseignement",
   JUSTIFICATION_ABSENCE: "Justificatif d'absence", DECISION_JUSTIFICATION: "Décision sur justificatif",
 };
 export const TON_EVENEMENT: Record<string, TonStatut> = {
-  INSCRIPTION: "marque", PASSAGE: "succes", TRANSFERT: "info", ABANDON: "critique", REPRISE: "succes",
+  INSCRIPTION: "marque", PASSAGE: "succes", TRANSFERT: "info", CHANGEMENT_CLASSE: "info", ABANDON: "critique", REPRISE: "succes",
   RESULTAT_EXAMEN: "avertissement", CERTIFICATION: "succes", REGULARISATION_IDENTITE_DEMANDEE: "info", CORRECTION_EVALUATION: "neutre",
 };
 export const LIBELLE_SOURCE: Record<string, string> = { beile: "BEILE", registre_national: "Registre national", educmaster: "EDUCMASTER", examens: "Office des examens" };

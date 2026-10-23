@@ -105,7 +105,20 @@ export interface DossierGestion {
   certificats: Certificat[];
   etablissements: Record<string, string>;
   classes: Record<string, string>;
-  actions: { transfert: boolean; abandon: boolean };
+  actions: { transfert: boolean; changementClasse: boolean; abandon: boolean };
+  /** Demande de transfert en attente de la réponse de l'école d'accueil. */
+  transfertEnAttente: { demandeId: string; versEtablissement: string; echeance: string } | null;
+}
+
+export interface ClasseAvecPlaces { id: string; libelle: string; capacite: number; effectif: number; places: number }
+
+export type EtatTransfert = "en_attente" | "expiree" | "acceptee" | "refusee" | "retiree";
+export interface Transfert {
+  id: string; etat: EtatTransfert; creeeLe: string; echeance: string | null; motif: string;
+  eleve: { id: string; nom: string; prenoms: string }; niveau: string; anneeScolaire: string;
+  de: { id: string; nom: string }; vers: { id: string; nom: string }; classeProposee: { id: string; libelle: string };
+  reponse: { decision: "valide" | "refuse" | "renvoye"; motif: string | null; le: string } | null; impose: boolean;
+  peutDecider: boolean; peutImposer: boolean; peutRetirer: boolean; classesPossibles: ClasseAvecPlaces[];
 }
 
 export interface ClasseAccueil {
@@ -164,6 +177,9 @@ export const cles = {
   examens: (id: string) => ["etablissement", id, "examens"] as const,
   dossier: (apprenantId: string) => ["etablissement", "dossier", apprenantId] as const,
   accueil: (apprenantId: string, q: string) => ["etablissement", "classes-accueil", apprenantId, q] as const,
+  classesEcole: (apprenantId: string) => ["etablissement", "classes-ecole", apprenantId] as const,
+  transferts: (id: string) => ["etablissement", id, "transferts"] as const,
+  transfertsInspection: ["etablissement", "transferts-inspection"] as const,
   registre: (nom: string, prenoms: string) => ["etablissement", "registre", nom, prenoms] as const,
 };
 
@@ -215,7 +231,7 @@ export interface BulletinsClasse {
   trimestre: number;
   periode: Periode | null;
   absencesSur: string;
-  bulletins: { apprenant: { id: string; nom: string; prenoms: string }; matieres: { matiere: string; moyenne: number; nb: number }[]; moyenneGenerale: number | null; absences: { total: number; justifiees: number } }[];
+  bulletins: { apprenant: { id: string; nom: string; prenoms: string }; matieres: { matiere: string; moyenne: number; nb: number }[]; moyenneGenerale: number | null; absences: { total: number; justifiees: number }; autresClasses: string[] }[];
 }
 export function useBulletinsClasse(id: string | null, classeId: string | null) {
   return useQuery({
@@ -363,10 +379,52 @@ export function useDecisionDemandeMutation() {
   });
 }
 
+/** Demande de transfert : l'élève ne bouge qu'à l'accord de l'école d'accueil (15 jours pour répondre). */
 export function useTransfertMutation(apprenantId: string) {
   const invalider = useInvalider();
   return useMutation({
-    mutationFn: (versClasseId: string) => ecrire<{ enregistre: string }>(`/apprenants/${e(apprenantId)}/transfert`, { versClasseId }),
+    mutationFn: (v: { versClasseId: string; motif: string }) => ecrire<{ demandeId: string; statut: "en_attente"; echeance: string; versEtablissement: string }>(`/apprenants/${e(apprenantId)}/transfert`, v),
+    onSuccess: invalider,
+  });
+}
+
+export function useClassesEcole(apprenantId: string, actif: boolean) {
+  return useQuery({
+    queryKey: cles.classesEcole(apprenantId),
+    queryFn: ({ signal }) => lire<{ niveau: string; anneeScolaire: string; classes: ClasseAvecPlaces[] }>(`/apprenants/${e(apprenantId)}/classes-ecole`, signal),
+    enabled: actif,
+  });
+}
+
+export function useChangementClasseMutation(apprenantId: string) {
+  const invalider = useInvalider();
+  return useMutation({
+    mutationFn: (v: { versClasseId: string; motif: string }) => ecrire<{ enregistre: string }>(`/apprenants/${e(apprenantId)}/changement-classe`, v),
+    onSuccess: invalider,
+  });
+}
+
+export function useTransferts(id: string | null) {
+  return useQuery({
+    queryKey: cles.transferts(id ?? ""),
+    queryFn: ({ signal }) => lire<{ entrants: Transfert[]; sortants: Transfert[]; tronque: boolean }>(`/etablissements/${e(id!)}/transferts`, signal),
+    enabled: !!id,
+  });
+}
+
+export function useTransfertsInspection() {
+  return useQuery({
+    queryKey: cles.transfertsInspection,
+    queryFn: ({ signal }) => lire<{ transferts: Transfert[]; tronque: boolean }>("/transferts/inspection", signal),
+  });
+}
+
+/** Réponse de l'accueil, retrait par le départ, décision de l'inspection : une route par acteur. */
+export function useActionTransfert() {
+  const invalider = useInvalider();
+  return useMutation({
+    mutationFn: ({ demandeId, action, corps }: { demandeId: string; action: "decision" | "retrait" | "imposer"; corps: Record<string, unknown> }) =>
+      ecrire<{ statut: string; classe?: string | null }>(`/transferts/${e(demandeId)}/${action}`, corps),
     onSuccess: invalider,
   });
 }

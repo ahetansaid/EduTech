@@ -21,7 +21,8 @@ export async function chargerTerritoire(tx: Tx) {
 
 export async function chargerConfiguration(tx: Tx) {
   await tx.insert(t.modelesCircuit).values([
-    { code: "TRANSFERT", libelle: "Transfert d'établissement", version: "1.0", etapes: [{ ordre: 1, code: "DEMANDE", role: "parent", delaiJours: 0 }, { ordre: 2, code: "ACCORD_ACCUEIL", role: "chef_etablissement", delaiJours: 5 }, { ordre: 3, code: "VISA_DEPART", role: "chef_etablissement", delaiJours: 3 }] },
+    // Même définition que apps/api/src/transferts.ts, qui ne déclare le circuit qu'une fois (jamais de réécriture).
+    { code: "TRANSFERT", libelle: "Transfert d'établissement", version: "2.0", etapes: [{ ordre: 1, code: "DEMANDE", role: "chef_etablissement", delaiJours: 0 }, { ordre: 2, code: "ACCORD_ACCUEIL", role: "chef_etablissement", delaiJours: 15 }] },
     { code: "RECLAMATION", libelle: "Réclamation sur une donnée", version: "1.0", etapes: [{ ordre: 1, code: "DEPOT", role: "apprenant", delaiJours: 0 }, { ordre: 2, code: "INSTRUCTION", role: "chef_etablissement", delaiJours: 7 }, { ordre: 3, code: "CORRECTION", role: "direction_departementale", delaiJours: 10 }] },
     { code: "AFFECTATION", libelle: "Affectation d'un enseignant", version: "1.0", etapes: [{ ordre: 1, code: "BESOIN", role: "direction_departementale", delaiJours: 0 }, { ordre: 2, code: "PROPOSITION", role: "administration_centrale", delaiJours: 15 }, { ordre: 3, code: "PRISE_FONCTION", role: "chef_etablissement", delaiJours: 30 }] },
   ]);

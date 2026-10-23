@@ -2,7 +2,7 @@
 
 import type { Evenement } from "@beile/contracts";
 import { communeById } from "@beile/simulation/territoire";
-import { ArrowLeft, ArrowRightLeft, Award, BookOpenCheck, CalendarX2, Check, History, Printer, School, ShieldAlert, UserMinus, UserRoundX } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Award, BookOpenCheck, CalendarX2, Check, Clock, History, Printer, School, ShieldAlert, Shuffle, UserMinus, UserRoundX } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
@@ -13,7 +13,9 @@ import { CartePreuve } from "@/components/ui/Preuve";
 import { Badge, Button, Card, CardHeader, EtatVide, Squelette } from "@/components/ui/primitives";
 import { Bulletin } from "@/components/bulletin/Bulletin";
 import { Evolution } from "@/components/parcours/Evolution";
-import { decisionDuRefus, jourCourant, useAbandonMutation, useClassesAccueil, useDossier, useTransfertMutation, type DossierGestion } from "@/lib/api/etablissement";
+import {
+  decisionDuRefus, jourCourant, useAbandonMutation, useChangementClasseMutation, useClassesAccueil, useClassesEcole, useDossier, useTransfertMutation, type DossierGestion,
+} from "@/lib/api/etablissement";
 import { bulletinDepuisGestion } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
 import { entier, nombre } from "@/lib/format";
@@ -76,7 +78,7 @@ function SqueletteDossier() {
 function DossierCharge({ d }: { d: DossierGestion }) {
   const a = d.apprenant;
   const s = d.situation;
-  const [action, setAction] = useState<"transfert" | "abandon" | null>(null);
+  const [action, setAction] = useState<"transfert" | "changement" | "abandon" | null>(null);
   const [decisionVisible, setDecisionVisible] = useState(false);
   const [bulletinOuvert, setBulletinOuvert] = useState(false);
   const moyenneGenerale = d.moyennes.length ? d.moyennes.reduce((x, m) => x + m.moyenne, 0) / d.moyennes.length : null;
@@ -100,13 +102,25 @@ function DossierCharge({ d }: { d: DossierGestion }) {
             </div>
           </div>
         </div>
-        {(d.actions.transfert || d.actions.abandon) && (
+        {(d.actions.transfert || d.actions.changementClasse || d.actions.abandon) && (
           <div className="flex flex-wrap gap-2 sm:shrink-0">
+            {d.actions.changementClasse && <Button variante="secondaire" icone={Shuffle} onClick={() => setAction("changement")} className="flex-1 sm:flex-none">Changer de classe</Button>}
             {d.actions.transfert && <Button variante="secondaire" icone={ArrowRightLeft} onClick={() => setAction("transfert")} className="flex-1 sm:flex-none">Transférer</Button>}
             {d.actions.abandon && <Button variante="secondaire" icone={UserMinus} onClick={() => setAction("abandon")} className="flex-1 text-critical sm:flex-none">Déclarer un abandon</Button>}
           </div>
         )}
       </header>
+
+      {d.transfertEnAttente && (
+        <div role="status" className="flex items-start gap-3 rounded-lg border border-info/30 bg-info-bg/60 px-4 py-3 text-[13.5px] text-ink-2">
+          <Clock size={17} className="mt-0.5 shrink-0 text-info" aria-hidden />
+          <p>
+            Demande de transfert vers <strong className="text-ink">{d.transfertEnAttente.versEtablissement}</strong> en attente de la réponse de l&apos;école d&apos;accueil
+            (au plus tard le {dateCourte(d.transfertEnAttente.echeance)}). {a.prenoms} reste inscrit·e ici d&apos;ici là.{" "}
+            <Link href="/etablissement/transferts" className="font-medium text-blue hover:underline">Suivre ou retirer la demande</Link>
+          </p>
+        </div>
+      )}
 
       {/* Chiffres */}
       <Cascade className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -197,6 +211,7 @@ function DossierCharge({ d }: { d: DossierGestion }) {
       </div>
 
       {d.actions.transfert && <DialogueTransfert d={d} ouvert={action === "transfert"} onFermer={() => setAction(null)} />}
+      {d.actions.changementClasse && <DialogueChangementClasse d={d} ouvert={action === "changement"} onFermer={() => setAction(null)} />}
       {d.actions.abandon && <DialogueAbandon d={d} ouvert={action === "abandon"} onFermer={() => setAction(null)} />}
       {bulletinOuvert && <Bulletin view={bulletinDepuisGestion(d)} onFermer={() => setBulletinOuvert(false)} />}
     </div>
@@ -224,7 +239,8 @@ function detailEvenement(e: Evenement, d: DossierGestion): string {
   switch (e.type) {
     case "INSCRIPTION": return `${classe(e.classeId)} · ${etab(e.etablissementId)} · année ${e.anneeScolaire}`;
     case "REPRISE": return `Reprise en ${classe(e.classeId)} · ${etab(e.etablissementId)}`;
-    case "TRANSFERT": return `${etab(e.deEtablissementId)} → ${etab(e.versEtablissementId)} (${classe(e.versClasseId)})`;
+    case "TRANSFERT": return `${etab(e.deEtablissementId)} → ${etab(e.versEtablissementId)} (${classe(e.versClasseId)})${e.impose ? " · décidé par l'inspection" : ""}`;
+    case "CHANGEMENT_CLASSE": return `${classe(e.deClasseId)} → ${classe(e.versClasseId)} · ${e.motif}`;
     case "ABANDON": return `Sortie déclarée · année ${e.anneeScolaire}`;
     case "PASSAGE": return `${e.deNiveau} → ${e.versNiveau} · ${e.decision === "admis" ? "admis" : "redoublement"} (${e.anneeScolaire})`;
     case "RESULTAT_EXAMEN": return `${e.examen} ${e.session} · ${nombre(e.moyenne, 2)}/20 · ${e.admis ? "admis" : "ajourné"}`;
@@ -237,21 +253,34 @@ function detailEvenement(e: Evenement, d: DossierGestion): string {
 
 /* ================================================================== Transfert */
 
+/** Champ de motif partagé (transfert, changement de classe) : 10 à 200 caractères, compteur visible. */
+function ChampMotif({ valeur, onChange, exemple }: { valeur: string; onChange: (v: string) => void; exemple: string }) {
+  const n = valeur.trim().length;
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-ink">Motif (obligatoire)</span>
+      <textarea value={valeur} onChange={(e) => onChange(e.target.value.slice(0, 200))} rows={2} placeholder={exemple} className={cn(classeChamp, "h-auto py-2.5")} />
+      <span className={cn("mt-1 block text-xs", valeur && n < 10 ? "text-critical" : "text-ink-muted")}>{valeur && n < 10 ? "Au moins 10 caractères." : `${n}/200 caractères`}</span>
+    </label>
+  );
+}
+
 function DialogueTransfert({ d, ouvert, onFermer }: { d: DossierGestion; ouvert: boolean; onFermer: () => void }) {
-  const router = useRouter();
   const [q, setQ] = useState("");
   const [choix, setChoix] = useState<string | null>(null);
+  const [motif, setMotif] = useState("");
   const [confirme, setConfirme] = useState(false);
   const accueil = useClassesAccueil(d.apprenant.id, q.trim(), ouvert);
   const transferer = useTransfertMutation(d.apprenant.id);
   const cible = accueil.data?.classes.find((c) => c.id === choix);
 
   const fermer = () => { if (transferer.isPending) return; setConfirme(false); onFermer(); };
-  const valider = () => transferer.mutate(choix!, {
-    onSuccess: () => {
-      notifier({ ton: "succes", titre: "Transfert enregistré", texte: `${d.apprenant.prenoms} ${d.apprenant.nom} rejoint ${cible?.etablissement ?? "l'établissement d'accueil"} (${cible?.libelle ?? ""}). Son dossier le suit.` });
+  // L'élève reste ici tant que l'école d'accueil n'a pas accepté : on reste sur son dossier, qui affiche la demande.
+  const valider = () => transferer.mutate({ versClasseId: choix!, motif: motif.trim() }, {
+    onSuccess: (r) => {
+      notifier({ ton: "succes", titre: "Demande de transfert envoyée", texte: `${r.versEtablissement} doit répondre avant le ${dateCourte(r.echeance)}. ${d.apprenant.prenoms} reste inscrit·e ici d'ici là ; la famille est prévenue.` });
+      setConfirme(false);
       onFermer();
-      router.push("/etablissement/eleves");
     },
   });
 
@@ -262,11 +291,11 @@ function DialogueTransfert({ d, ouvert, onFermer }: { d: DossierGestion; ouvert:
       large
       icone={ArrowRightLeft}
       titre={`Transférer ${d.apprenant.prenoms} ${d.apprenant.nom}`}
-      description={`Classe d'accueil de même niveau (${accueil.data?.niveau ?? d.situation.niveau ?? "—"}) dans un autre établissement. Aucune ressaisie : le parcours et le passeport éducatif suivent l'apprenant.`}
+      description={`Classe d'accueil de même niveau (${accueil.data?.niveau ?? d.situation.niveau ?? "—"}) dans un autre établissement. L'école d'accueil accepte ou refuse sous 15 jours ; le parcours et le passeport éducatif suivent l'apprenant, sans ressaisie.`}
       pied={
         <>
           <Button variante="secondaire" onClick={fermer} disabled={transferer.isPending}>Annuler</Button>
-          <Button variante="primaire" icone={ArrowRightLeft} disabled={!cible || !confirme} chargement={transferer.isPending} onClick={valider}>Confirmer le transfert</Button>
+          <Button variante="primaire" icone={ArrowRightLeft} disabled={!cible || !confirme || motif.trim().length < 10} chargement={transferer.isPending} onClick={valider}>Envoyer la demande</Button>
         </>
       }
     >
@@ -299,17 +328,83 @@ function DialogueTransfert({ d, ouvert, onFermer }: { d: DossierGestion; ouvert:
             })}
           </ul>
         )}
+        {cible && <ChampMotif valeur={motif} onChange={setMotif} exemple="Ex. : déménagement de la famille à Parakou à la fin du mois" />}
         <AnimatePresence>
           {cible && (
             <motion.label initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex cursor-pointer items-start gap-3 rounded-lg border border-warning/30 bg-warning-bg/60 p-3.5">
               <input type="checkbox" checked={confirme} onChange={(e) => setConfirme(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--blue)]" />
               <span className="text-[13px] text-ink-2">
-                Je confirme le transfert vers <strong className="text-ink">{cible.etablissement}</strong> ({cible.libelle}). Mon accès au dossier prendra fin : il sera géré par l'établissement d'accueil.
+                Je demande le transfert vers <strong className="text-ink">{cible.etablissement}</strong> ({cible.libelle}). Si l&apos;école d&apos;accueil accepte, mon accès au dossier prendra fin : il sera géré par l&apos;établissement d&apos;accueil.
               </span>
             </motion.label>
           )}
         </AnimatePresence>
         {transferer.error instanceof ErreurApi && <p role="alert" className="text-xs text-critical">{transferer.error.message}</p>}
+      </div>
+    </Dialogue>
+  );
+}
+
+/* ================================================================== Changement de classe */
+
+function DialogueChangementClasse({ d, ouvert, onFermer }: { d: DossierGestion; ouvert: boolean; onFermer: () => void }) {
+  const [choix, setChoix] = useState<string | null>(null);
+  const [motif, setMotif] = useState("");
+  const classes = useClassesEcole(d.apprenant.id, ouvert);
+  const changer = useChangementClasseMutation(d.apprenant.id);
+  const cible = classes.data?.classes.find((c) => c.id === choix);
+  const fermer = () => { if (!changer.isPending) onFermer(); };
+  const valider = () => changer.mutate({ versClasseId: choix!, motif: motif.trim() }, {
+    onSuccess: () => {
+      notifier({ ton: "succes", titre: "Changement de classe enregistré", texte: `${d.apprenant.prenoms} ${d.apprenant.nom} rejoint la ${cible?.libelle ?? "nouvelle classe"}. Ses notes déjà obtenues sont conservées ; la famille est prévenue.` });
+      setChoix(null); setMotif("");
+      onFermer();
+    },
+  });
+  return (
+    <Dialogue
+      ouvert={ouvert}
+      onFermer={fermer}
+      icone={Shuffle}
+      titre={`Changer ${d.apprenant.prenoms} de classe`}
+      description={`Vers une autre classe de ${classes.data?.niveau ?? d.situation.niveau ?? "même niveau"} de l'établissement, pour l'année ${classes.data?.anneeScolaire ?? d.situation.anneeScolaire ?? ""}. Le niveau, lui, se décide en conseil de passage.`}
+      pied={
+        <>
+          <Button variante="secondaire" onClick={fermer} disabled={changer.isPending}>Annuler</Button>
+          <Button variante="primaire" icone={Shuffle} disabled={!cible || motif.trim().length < 10} chargement={changer.isPending} onClick={valider}>Changer de classe</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {classes.isPending ? (
+          <div className="space-y-2">{Array.from({ length: 2 }, (_, i) => <Squelette key={i} className="h-14" />)}</div>
+        ) : classes.isError ? (
+          <EtatErreur erreur={classes.error} reessayer={() => classes.refetch()} />
+        ) : !classes.data.classes.length ? (
+          <EtatVide icone={School} titre="Aucune autre classe" texte={`L'établissement n'a pas d'autre classe de ${classes.data.niveau} cette année.`} />
+        ) : (
+          <ul className="space-y-2" role="radiogroup" aria-label="Classe d'arrivée">
+            {classes.data.classes.map((c) => {
+              const pleine = c.places <= 0;
+              const actif = choix === c.id;
+              return (
+                <li key={c.id}>
+                  <button type="button" role="radio" aria-checked={actif} disabled={pleine} onClick={() => setChoix(c.id)}
+                    className={cn("flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-all", actif ? "border-blue bg-blue-soft/40 ring-4 ring-blue/15" : "border-line/70 hover:bg-surface-2/60", pleine && "cursor-not-allowed opacity-55")}>
+                    <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2", actif ? "border-blue bg-blue text-white" : "border-line")}>{actif && <Check size={12} aria-hidden />}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-ink">{c.libelle}</span>
+                      <span className="block text-xs text-ink-muted">{c.effectif}/{c.capacite} élèves</span>
+                    </span>
+                    {pleine ? <Badge ton="critique">Complète</Badge> : <Badge ton="succes">{c.places} place{c.places > 1 ? "s" : ""}</Badge>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {cible && <ChampMotif valeur={motif} onChange={setMotif} exemple="Ex. : rééquilibrage des effectifs entre les deux classes de 5e" />}
+        {changer.error instanceof ErreurApi && <p role="alert" className="text-xs text-critical">{changer.error.message}</p>}
       </div>
     </Dialogue>
   );

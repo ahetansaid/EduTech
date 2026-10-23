@@ -134,21 +134,31 @@ etablissement.get("/etablissements/:id/classes/:classeId/bulletins", authentifie
   // Absences du trimestre quand le calendrier en donne les dates ; sinon, celles de l'année de la classe (dit tel quel).
   const bornes = await bornesDuTrimestre(classe.anneeScolaire, trimestre);
   const dansLaPeriode = bornes ? sql`and e.donnees->>'date' between ${bornes.debut} and ${bornes.fin}` : sql``;
-  const [eleves, notes, absences] = await Promise.all([
+  // Notes et absences de l'ÉLÈVE sur l'année de la classe, quelle que soit la classe où elles ont été saisies : un
+  // élève changé de classe ou transféré en cours de trimestre garde ses notes au bulletin (index par apprenant).
+  const effectif = sql`(select s.apprenant_id from core.scolarites s where s.classe_id = ${classeId} and s.statut = 'scolarise')`;
+  const [eleves, notes, absences, ailleurs] = await Promise.all([
     base().select({ id: schema.apprenants.id, nom: schema.apprenants.nom, prenoms: schema.apprenants.prenoms })
       .from(schema.scolarites).innerJoin(schema.apprenants, eq(schema.apprenants.id, schema.scolarites.apprenantId))
       .where(and(eq(schema.scolarites.classeId, classeId), eq(schema.scolarites.statut, "scolarise"))),
     base().execute<{ apprenant_id: string; matiere: string; moyenne: number; nb: number }>(sql`
-      select apprenant_id, matiere, avg(note)::float as moyenne, count(*)::int as nb from core.notes
-      where classe_id = ${classeId} and trimestre = ${trimestre} group by 1, 2`),
+      select n.apprenant_id, n.matiere, avg(n.note)::float as moyenne, count(*)::int as nb
+      from core.notes n join core.classes k on k.id = n.classe_id
+      where n.apprenant_id in ${effectif} and k.annee_scolaire = ${classe.anneeScolaire} and n.trimestre = ${trimestre} group by 1, 2`),
     base().execute<{ apprenant_id: string; total: number; justifiees: number }>(sql`
       select e.apprenant_id, count(*)::int as total,
              count(*) filter (where coalesce((e.donnees->>'justifiee')::boolean, false) or exists (select 1 from core.absences_justifiees j where j.absence_id = e.id))::int as justifiees
-      from ledger.evenements e where e.type = 'ABSENCE' and e.donnees->>'classeId' = ${classeId} ${dansLaPeriode} group by 1`),
+      from ledger.evenements e join core.classes k on k.id = e.donnees->>'classeId'
+      where e.type = 'ABSENCE' and e.apprenant_id in ${effectif} and k.annee_scolaire = ${classe.anneeScolaire} ${dansLaPeriode} group by 1`),
+    base().execute<{ apprenant_id: string; libelles: string[] }>(sql`
+      select n.apprenant_id, array_agg(distinct k.libelle || case when k.etablissement_id <> ${id} then ' (autre établissement)' else '' end) as libelles
+      from core.notes n join core.classes k on k.id = n.classe_id
+      where n.apprenant_id in ${effectif} and k.annee_scolaire = ${classe.anneeScolaire} and n.trimestre = ${trimestre} and n.classe_id <> ${classeId} group by 1`),
   ]);
   const parEleve = new Map<string, { matiere: string; moyenne: number; nb: number }[]>();
   for (const n of notes) parEleve.set(n.apprenant_id, [...(parEleve.get(n.apprenant_id) ?? []), { matiere: n.matiere, moyenne: n.moyenne, nb: n.nb }]);
   const abs = new Map(absences.map((a) => [a.apprenant_id, a]));
+  const autresClasses = new Map(ailleurs.map((a) => [a.apprenant_id, a.libelles]));
   await journaliser(profil, "Édition des bulletins d'une classe", `${classeId} (${classe.libelle}) · T${trimestre} · ${eleves.length} élève(s)`, finalite, true, null);
   return c.json({
     etablissement: etab.nom, classe: { id: classe.id, libelle: classe.libelle, anneeScolaire: classe.anneeScolaire }, ...enTete(periode),
@@ -159,6 +169,7 @@ etablissement.get("/etablissements/:id/classes/:classeId/bulletins", authentifie
         apprenant: { id: e.id, nom: e.nom, prenoms: e.prenoms }, matieres,
         moyenneGenerale: matieres.length ? matieres.reduce((s, m) => s + m.moyenne, 0) / matieres.length : null,
         absences: { total: abs.get(e.id)?.total ?? 0, justifiees: abs.get(e.id)?.justifiees ?? 0 },
+        autresClasses: autresClasses.get(e.id) ?? [],
       };
     }),
   });
@@ -389,22 +400,7 @@ async function chefDeLApprenant(c: Context<{ Variables: Variables }>, apprenantI
   return { profil, sco: sco! };
 }
 
-etablissement.post("/apprenants/:id/transfert", authentifie, async (c) => {
-  const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
-  const { versClasseId } = await corps(c, z.object({ versClasseId: z.string().regex(/^CLS-[A-Za-z0-9-]+$/) }).strict());
-  const { profil, sco } = await chefDeLApprenant(c, apprenantId);
-  const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, versClasseId));
-  if (!classe || classe.etablissementId === sco.etablissementId) throw new HTTPException(422, { message: "Classe d'accueil invalide (autre établissement requis)" });
-  // La classe d'accueil doit être d'une année OUVERTE de l'école d'accueil : un transfert ne rouvre pas une année close.
-  const etatAccueil = await etatAnnee(classe.etablissementId, classe.anneeScolaire);
-  if (!etatAccueil.ouverte) {
-    await journaliser(profil, "Transfert d'un apprenant", `${apprenantId} → ${versClasseId} (${classe.anneeScolaire})`, "gestion", false, "annee");
-    throw new HTTPException(422, { message: `Classe d'accueil d'une année close (${classe.anneeScolaire}) : choisissez une classe de l'année en cours` });
-  }
-  const [id] = await inscrireAuRegistre([{ type: "TRANSFERT", auteurId: profil.id, etablissementId: classe.etablissementId, apprenantId, donnees: { apprenantId, deEtablissementId: sco.etablissementId, versEtablissementId: classe.etablissementId, versClasseId, anneeScolaire: classe.anneeScolaire } }]);
-  await journaliser(profil, "Transfert d'un apprenant", `${apprenantId} → ${versClasseId}`, "gestion", true, null);
-  return c.json({ enregistre: id }, 201);
-});
+// Le transfert entre écoles et le changement de classe : transferts.ts (circuit demande → accord de l'accueil).
 
 etablissement.post("/apprenants/:id/abandon", authentifie, async (c) => {
   const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
@@ -800,6 +796,8 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
     if (saisie.decision === "renvoye") throw new HTTPException(422, { message: "Une demande d'exercice des droits ne se renvoie pas : répondez, ou refusez en motivant." });
     if ((saisie.motif ?? "").length < 10) throw new HTTPException(422, { message: "La réponse adressée à la personne est obligatoire (10 caractères au moins)." });
   }
+  // Un transfert se décide avec le choix de la classe et le contrôle des places : jamais par la décision générique.
+  if (ctx.modele.code === "TRANSFERT") throw new HTTPException(409, { message: "Un transfert se traite depuis l'écran « Transferts » de l'établissement (choix de la classe, places restantes)." });
   if (!ctx.etape) throw new HTTPException(409, { message: "Étape courante incohérente avec le modèle de circuit" });
   if (!["ouverte", "en_cours"].includes(ctx.demande.statut)) throw new HTTPException(409, { message: "Cette demande est déjà close" });
   if (!ctx.peutStatuer) {

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { authentifie, base, comparerFr, journaliser, refuser, type Variables } from "./commun";
 import { dossier } from "./parcours";
 import { enTete, periodesDesClasses } from "./periode";
+import { transfertEnAttente } from "./transferts";
 
 /** Routes complémentaires de l'espace « etablissement » (ajoutées pendant le branchement du front). */
 export const complementsEtablissement = new Hono<{ Variables: Variables }>();
@@ -49,10 +50,14 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
     return { anneeScolaire, trimestre: Number(t), moyenne: moy(matieres.map((m) => m.moyenne)), matieres };
   }).sort((a, b) => a.anneeScolaire.localeCompare(b.anneeScolaire) || a.trimestre - b.trimestre);
 
-  const classeIds = [...new Set(d.evenements.flatMap((e) => ("classeId" in e ? [e.classeId] : "versClasseId" in e ? [e.versClasseId] : [])).filter((x): x is string => !!x))];
+  const classeIds = [...new Set(d.evenements.flatMap((e) => [
+    "classeId" in e ? e.classeId : null, "versClasseId" in e ? e.versClasseId : null, "deClasseId" in e ? e.deClasseId : null,
+  ]).filter((x): x is string => !!x))];
   const classes = classeIds.length ? await base().select({ id: schema.classes.id, libelle: schema.classes.libelle }).from(schema.classes).where(inArray(schema.classes.id, classeIds)) : [];
 
   const chefIci = !!d.situation.etablissementId && profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === d.situation.etablissementId);
+  const scolariseIci = chefIci && d.situation.statut === "scolarise";
+  const enAttente = scolariseIci ? await transfertEnAttente(apprenantId) : null;
   const a = d.apprenant;
   return c.json({
     decision: r.decision,
@@ -74,7 +79,8 @@ complementsEtablissement.get("/apprenants/:id/dossier-gestion", authentifie, asy
     certificats: d.certificats,
     etablissements: d.etablissements,
     classes: Object.fromEntries(classes.map((x) => [x.id, x.libelle])),
-    actions: { transfert: chefIci && d.situation.statut === "scolarise", abandon: chefIci && d.situation.statut === "scolarise" },
+    actions: { transfert: scolariseIci && !enAttente, changementClasse: scolariseIci, abandon: scolariseIci },
+    transfertEnAttente: enAttente,
   });
 });
 

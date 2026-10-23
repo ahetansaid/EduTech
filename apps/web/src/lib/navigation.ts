@@ -1,6 +1,6 @@
 import type { Profil, Role } from "@beile/contracts";
 import {
-  Activity, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Compass, Database, Download, FileSearch, FileSpreadsheet, GraduationCap,
+  Activity, ArrowRightLeft, BookOpenCheck, Building2, CalendarCheck, ChartNoAxesCombined, ClipboardCheck, Compass, Database, Download, FileSearch, FileSpreadsheet, GraduationCap,
   Inbox, KeyRound, Landmark, ListChecks, Map, MessageSquareText, Network, School, ScrollText, ShieldCheck, Siren, Sparkles, UsersRound, Stamp, UserPlus, Users, type LucideIcon,
 } from "lucide-react";
 
@@ -34,6 +34,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/territoire", libelle: "Console territoriale", icone: Landmark, roles: ["direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/visites", libelle: "Visites d'inspection", icone: Compass, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
   { href: "/saisie-ecoles", libelle: "Saisie pour une école", icone: ClipboardCheck, roles: ["inspecteur"], groupe: "Pilotage", processus: "P9" },
+  { href: "/transferts", libelle: "Transferts d'élèves", icone: ArrowRightLeft, roles: ["inspecteur"], groupe: "Pilotage", processus: "P6" },
   { href: "/annees-scolaires", libelle: "Années scolaires", icone: CalendarCheck, roles: ["direction_departementale"], groupe: "Pilotage", processus: "P9" },
   { href: "/personnels", libelle: "Personnels", icone: UsersRound, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
   { href: "/rapport", libelle: "Rapport mensuel", icone: ClipboardCheck, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
@@ -45,6 +46,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/etablissement/inscription", libelle: "Inscrire un apprenant", icone: UserPlus, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6" , cycles: K12 },
   { href: "/etablissement/import", libelle: "Importer une liste", icone: FileSpreadsheet, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6", cycles: K12 },
   { href: "/etablissement/eleves", libelle: "Apprenants", icone: Users, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P7 · P9" , cycles: K12 },
+  { href: "/etablissement/transferts", libelle: "Transferts", icone: ArrowRightLeft, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6", cycles: K12 },
   { href: "/etablissement/familles", libelle: "Familles sans NPI", icone: UsersRound, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P6", cycles: K12 },
   { href: "/etablissement/emploi-du-temps", libelle: "Emploi du temps", icone: CalendarCheck, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
   { href: "/etablissement/import-services", libelle: "Services d'enseignement", icone: ListChecks, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5", cycles: K12 },
