@@ -147,6 +147,21 @@ export const Evenement = z.discriminatedUnion("type", [
     versEtablissementId: z.string(),
     versClasseId: z.string(),
     anneeScolaire: z.string(),
+    /** Demande du circuit TRANSFERT qui l'a produit (accord de l'accueil ou décision de l'inspection). */
+    demandeId: z.string().optional(),
+    impose: z.boolean().optional(),
+  }),
+  /**
+   * Changement de classe dans le même établissement, la même année et le même niveau (rééquilibrage,
+   * erreur d'affectation). Les notes déjà saisies restent rattachées à la classe d'origine.
+   */
+  Base.extend({
+    type: z.literal("CHANGEMENT_CLASSE"),
+    apprenantId: z.string(),
+    deClasseId: z.string(),
+    versClasseId: z.string(),
+    anneeScolaire: z.string(),
+    motif: z.string().max(200),
   }),
   Base.extend({
     type: z.literal("ABANDON"),

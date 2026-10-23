@@ -25,7 +25,7 @@ try {
       from (
         select distinct on (apprenant_id) apprenant_id, type, donnees
         from ledger.evenements
-        where type in ('INSCRIPTION', 'REPRISE', 'TRANSFERT', 'ABANDON') and apprenant_id is not null
+        where type in ('INSCRIPTION', 'REPRISE', 'TRANSFERT', 'CHANGEMENT_CLASSE', 'ABANDON') and apprenant_id is not null
         order by apprenant_id, survenu_le desc, enregistre_le desc
       ) d
       left join core.classes c on c.id = coalesce(d.donnees->>'classeId', d.donnees->>'versClasseId')

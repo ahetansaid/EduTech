@@ -51,7 +51,11 @@ export async function periodesDesClasses(classes: { id: string; anneeScolaire: s
   await Promise.all([...parAnnee].map(async ([anneeScolaire, ids]) => {
     const t = await trimestreAuCalendrier(anneeScolaire);
     if (t) return void periodes.set(anneeScolaire, { anneeScolaire, trimestre: t, source: "calendrier" });
-    const [r] = await base().select({ t: sql<number | null>`max(${schema.notes.trimestre})::int` }).from(schema.notes).where(inArray(schema.notes.classeId, ids));
+    // Repli sur les notes de TOUTES les classes de l'année dans les mêmes établissements : une classe qui n'a reçu que
+    // des élèves changés de classe ou transférés (aucune note propre) ne retombe pas au trimestre 1.
+    const [r] = await base().select({ t: sql<number | null>`max(${schema.notes.trimestre})::int` }).from(schema.notes)
+      .where(sql`${schema.notes.classeId} in (select k.id from ${schema.classes} k where k.annee_scolaire = ${anneeScolaire}
+        and k.etablissement_id in (select c.etablissement_id from ${schema.classes} c where ${inArray(sql`c.id`, ids)}))`);
     periodes.set(anneeScolaire, r?.t ? { anneeScolaire, trimestre: r.t, source: "notes" } : { anneeScolaire, trimestre: 1, source: "defaut" });
   }));
   return periodes;

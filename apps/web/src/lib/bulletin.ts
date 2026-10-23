@@ -31,6 +31,8 @@ export interface BulletinView {
   absences: { total: number; justifiees: number };
   /** Période sur laquelle les absences sont comptées (« du … au … »), quand elle est connue. */
   absencesSur?: string;
+  /** Autres classes de l'année où des notes du trimestre ont été obtenues (changement de classe, transfert). */
+  autresClasses?: string[];
   genereLe: string;
 }
 
@@ -94,6 +96,7 @@ export function bulletinsDepuisClasse(b: BulletinsClasse): BulletinView[] {
     moyenneGenerale: x.moyenneGenerale,
     absences: x.absences,
     absencesSur: b.absencesSur,
+    autresClasses: x.autresClasses,
     genereLe,
   }));
 }

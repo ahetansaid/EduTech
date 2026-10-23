@@ -217,6 +217,9 @@ export function jalonsParcours(d: Dossier): Jalon[] {
       case "TRANSFERT":
         res.push({ id: e.id, date: e.survenuLe, type: "transfert", titre: "Transfert d'établissement", detail: `${etab(e.deEtablissementId)} → ${etab(e.versEtablissementId)} · le dossier a suivi, sans ressaisie`, source, accent: true });
         break;
+      case "CHANGEMENT_CLASSE":
+        res.push({ id: e.id, date: e.survenuLe, type: "transfert", titre: "Changement de classe", detail: `${etab(e.etablissementId)} · année ${e.anneeScolaire} · notes déjà obtenues conservées`, source, accent: false });
+        break;
       case "PASSAGE":
         res.push({ id: e.id, date: e.survenuLe, type: "passage", titre: e.decision === "admis" ? `Passage en ${e.versNiveau}` : `Redoublement en ${e.deNiveau}`, detail: `Décision du conseil de classe · année ${e.anneeScolaire}`, source, accent: false });
         break;

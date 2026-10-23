@@ -91,7 +91,14 @@ const examensEtab = await directrice!.appel("GET", `/etablissements/${PILOTE}/ex
 verifier("Directrice → examens nationaux (lecture seule)", examensEtab.statut, 200);
 verifier("Examens de l'établissement : sessions et diplômes", Array.isArray((examensEtab.json as { sessions?: unknown }).sessions) && Array.isArray((examensEtab.json as { diplomes?: unknown }).diplomes), true);
 verifier("Enseignant → examens de l'établissement", (await enseignant!.appel("GET", `/etablissements/${PILOTE}/examens`)).statut, 403);
-verifier("Transfert par un enseignant", (await enseignant!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: "CLS-COT-5eA-S" })).statut, 403);
+verifier("Transfert par un enseignant", (await enseignant!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: "CLS-COT-5eA-S", motif: "Recette : déménagement de la famille" })).statut, 403);
+verifier("Changement de classe par un enseignant", (await enseignant!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: "CLS-PAR-5eA-S", motif: "Recette : rééquilibrage des effectifs" })).statut, 403);
+verifier("Directrice : changement vers une classe d'un autre niveau → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: "CLS-PAR-3eA-S", motif: "Recette : rééquilibrage des effectifs" })).statut, 422);
+verifier("Directrice : transfert sans motif → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: "CLS-COT-5eA-S" })).statut, 422);
+verifier("Directrice : transferts de son école", (await directrice!.appel("GET", `/etablissements/${PILOTE}/transferts`)).statut, 200);
+verifier("Directrice : transferts d'une autre école", (await directrice!.appel("GET", "/etablissements/ETB-COT-PILOTE-CEG/transferts")).statut, 403);
+verifier("Inspecteur : transferts à arbitrer", (await inspecteur!.appel("GET", "/transferts/inspection")).statut, 200);
+verifier("Directrice : transferts à arbitrer (inspection seulement)", (await directrice!.appel("GET", "/transferts/inspection")).statut, 403);
 verifier("Directrice → registre national", (await directrice!.appel("GET", "/registre/personnes?nom=WOROU&prenoms=Sidonie")).statut, 200);
 verifier("Enseignant → registre national", (await enseignant!.appel("GET", "/registre/personnes?nom=WOROU")).statut, 403);
 verifier("Inscription dans un autre établissement", (await directrice!.appel("POST", "/inscriptions", { classeId: "CLS-COT-5eA-S", sansActe: { nom: "Test", prenoms: "Refus", sexe: "M", dateNaissance: "2013-05-01", responsable: "x" } })).statut, 403);
@@ -306,6 +313,19 @@ if (ECRITURES) {
   verifier("Inscription par NPI (201, ou 409 si déjà inscrite)", (await directrice!.appel("POST", "/inscriptions", { classeId: "CLS-PAR-6eA-S", npi: sidonie?.npi ?? "0000000000" })).statut, [201, 409]);
   verifier("Proposition d'accompagnement (circuit de validation)", (await directrice!.appel("POST", `/etablissements/${PILOTE}/accompagnement`, { apprenantIds: ["APP-000001"], objet: "Soutien en mathématiques" })).statut, 201);
   verifier("Inscription à une formation (201, ou 409 si déjà inscrit)", (await enseignant!.appel("POST", "/moi/formations", { code: "EVAL-FORM-MATHS" })).statut, [201, 409]);
+
+  // Transfert : une demande, rien ne bouge avant l'accord de l'accueil ; l'école de départ la retire.
+  const accueil = liste((await directrice!.appel("GET", "/apprenants/APP-000001/classes-accueil")).json.classes).find((x) => Number(x.places) > 0);
+  const demande = await directrice!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: String(accueil?.id ?? "CLS-COT-5eA-S"), motif: "Recette : déménagement de la famille" });
+  verifier("Transfert : demande adressée à l'école d'accueil", demande.statut, 201);
+  const demandeId = String(demande.json.demandeId ?? "DEM-inconnue");
+  verifier("Transfert : seconde demande pour le même élève → 409", (await directrice!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: String(accueil?.id ?? "CLS-COT-5eA-S"), motif: "Recette : déménagement de la famille" })).statut, 409);
+  verifier("Transfert : l'école de départ ne répond pas à la place de l'accueil", (await directrice!.appel("POST", `/transferts/${demandeId}/decision`, { decision: "accepte" })).statut, 403);
+  verifier("Transfert : la décision générique de circuit est refusée", (await directrice!.appel("POST", `/demandes/${demandeId}/decision`, { decision: "valide" })).statut, [403, 409]);
+  const dossierPendant = await directrice!.appel("GET", "/apprenants/APP-000001/dossier-gestion");
+  verifier("Transfert en attente : l'élève reste dans son école", (dossierPendant.json.situation as { etablissementId?: string })?.etablissementId === PILOTE && !!dossierPendant.json.transfertEnAttente, true);
+  verifier("Transfert : retrait par l'école de départ", (await directrice!.appel("POST", `/transferts/${demandeId}/retrait`, { motif: "Recette : la famille renonce au départ" })).statut, 200);
+  verifier("Transfert : second retrait d'une demande déjà retirée → 409", (await directrice!.appel("POST", `/transferts/${demandeId}/retrait`, { motif: "Recette : la famille renonce au départ" })).statut, 409);
 
   titre("Administration : création d'un compte, première connexion, assistance");
   const suffixe = Math.random().toString(36).slice(2, 7).replace(/\d/g, "x");

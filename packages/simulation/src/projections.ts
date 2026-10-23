@@ -43,7 +43,7 @@ export function indexer(evenements: Evenement[]): Index {
     const l = parApprenant.get(e.apprenantId);
     if (l) l.push(e); else parApprenant.set(e.apprenantId, [e]);
     if (e.type === "INSCRIPTION" || e.type === "REPRISE") { classeCourante.set(e.apprenantId, e.classeId); statut.set(e.apprenantId, "scolarise"); }
-    else if (e.type === "TRANSFERT") { classeCourante.set(e.apprenantId, e.versClasseId); statut.set(e.apprenantId, "scolarise"); }
+    else if (e.type === "TRANSFERT" || e.type === "CHANGEMENT_CLASSE") { classeCourante.set(e.apprenantId, e.versClasseId); statut.set(e.apprenantId, "scolarise"); }
     else if (e.type === "ABANDON") { classeCourante.set(e.apprenantId, null); statut.set(e.apprenantId, "abandon"); }
   }
   for (const l of parApprenant.values()) l.sort((a, b) => a.survenuLe.localeCompare(b.survenuLe));

@@ -42,7 +42,7 @@ export interface NouveauFait {
   donnees: Record<string, unknown>;
 }
 
-const PLACEMENT = new Set(["INSCRIPTION", "REPRISE", "TRANSFERT", "ABANDON"]);
+const PLACEMENT = new Set(["INSCRIPTION", "REPRISE", "TRANSFERT", "CHANGEMENT_CLASSE", "ABANDON"]);
 
 /** Colonne `date` calendaire, à partir de l'horodatage d'enregistrement du fait. */
 const auJour = (d: Date) => d.toISOString().slice(0, 10);

@@ -71,6 +71,7 @@ export const LIBELLE_FAIT: Record<string, string> = {
   PASSAGE: "Passage",
   CONSEIL_DE_CLASSE: "Conseil de classe",
   TRANSFERT: "Transfert",
+  CHANGEMENT_CLASSE: "Changement de classe",
   ABANDON: "Abandon",
   REPRISE: "Reprise",
   RESULTAT_EXAMEN: "Résultat d'examen",

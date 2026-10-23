@@ -20,14 +20,15 @@ const PERSONNEL = new Set(["ACTE_DISPONIBLE", "ACTE_REMIS", "ACTE_REFUSE", "ALLO
 const dateFr = (v: unknown) => String(v ?? "").split("-").reverse().join("/");
 
 export async function notifierFaits(faits: FaitNotifiable[]) {
-  const utiles = faits.filter((f) => ["ABSENCE", "EVALUATION", "INSCRIPTION", "CORRECTION_EVALUATION", "CERTIFICATION", "TRANSFERT", "DECISION_JUSTIFICATION", ...PERSONNEL].includes(f.type));
+  const utiles = faits.filter((f) => ["ABSENCE", "EVALUATION", "INSCRIPTION", "CORRECTION_EVALUATION", "CERTIFICATION", "TRANSFERT", "CHANGEMENT_CLASSE", "DECISION_JUSTIFICATION", ...PERSONNEL].includes(f.type));
   if (!utiles.length) return;
   const ids = [...new Set(utiles.map((f) => f.apprenantId))];
   const [apprenants, liens] = await Promise.all([
     base().select().from(schema.apprenants).where(inArray(schema.apprenants.id, ids)),
     base().select().from(schema.liensFamiliaux).where(inArray(schema.liensFamiliaux.apprenantId, ids)),
   ]);
-  const classeIds = [...new Set(utiles.map((f) => f.donnees.classeId).filter((x): x is string => typeof x === "string"))];
+  const classeDe = (f: FaitNotifiable) => f.donnees.classeId ?? (f.type === "CHANGEMENT_CLASSE" ? f.donnees.versClasseId : undefined);
+  const classeIds = [...new Set(utiles.map(classeDe).filter((x): x is string => typeof x === "string"))];
   const classes = classeIds.length ? await base().select().from(schema.classes).where(inArray(schema.classes.id, classeIds)) : [];
   // Un fait de guichet nomme la demande, pas l'acte : le libellé se lit dans la projection, jamais dans
   // un champ qu'un agent aurait pu saisir à la main.
@@ -40,7 +41,7 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
   for (const f of utiles) {
     const a = apprenants.find((x) => x.id === f.apprenantId);
     if (!a) continue;
-    const classe = classes.find((c) => c.id === f.donnees.classeId)?.libelle;
+    const classe = classes.find((c) => c.id === classeDe(f))?.libelle;
     const demandeId = String(f.donnees.demandeId ?? "");
     const rattachee = demandes.get(demandeId);
     const acte = rattachee ? LIBELLE_ACTE[rattachee.typeActe] : "Acte administratif";
@@ -56,6 +57,8 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
       : f.type === "ACTE_DISPONIBLE" ? [`${acte} : prêt à retirer`, `Mis à disposition le ${dateFr(f.donnees.disponibleLe)}. Vérifiez dans vos démarches le mode de retrait et la pièce d'identité exigés avant de vous déplacer.`]
       : f.type === "ACTE_REMIS" ? [`${acte} : remis`, `Remis le ${dateFr(f.donnees.remisLe)}. L'authenticité du document se vérifie en ligne avec l'identifiant ${demandeId}.`]
       : f.type === "ACTE_REFUSE" ? [`${acte} : demande refusée`, `Le guichet a refusé cette demande le ${dateFr(f.donnees.refuseLe)}${f.donnees.motif ? ` — motif : ${f.donnees.motif}` : ""}. Un refus ne se rouvre pas : une nouvelle demande se dépose une fois la pièce manquante obtenue.`]
+      // Le motif n'est pas repris : il peut être disciplinaire, et un téléphone se partage. L'école l'explique de vive voix.
+      : f.type === "CHANGEMENT_CLASSE" ? [`Changement de classe de ${a.prenoms}`, `${a.prenoms} rejoint la classe ${classe ?? ""} dans le même établissement. Ses notes déjà obtenues sont conservées.`]
       : f.type === "ALLOCATION_DECIDEE" ? [`Décision sur votre allocation ${String(f.donnees.anneeUniversitaire ?? "")}`.trim(), `L'autorité compétente a statué le ${dateFr(f.donnees.decideLe)} sur votre dossier d'allocation. Consultez le statut et la référence du texte dans votre espace. Aucune somme n'est précisée ici : la liquidation reste à l'administration payeuse.`]
       : [`Transfert de ${a.prenoms}`, `Le dossier de ${a.prenoms} a été transféré vers son nouvel établissement, sans ressaisie.`];
     const destinataires = new Set(PERSONNEL.has(f.type)
@@ -65,6 +68,23 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
   }
   if (lignes.length) await base().insert(schema.notifications).values(lignes);
   await avisSms(lignes, utiles);
+}
+
+/**
+ * Notification d'une étape qui n'est pas un fait du registre (demande de transfert, refus, retrait) : mêmes
+ * destinataires que pour un fait — responsables au lien vérifié et l'apprenant lui-même. Jamais bloquante.
+ */
+export async function notifierFamille(apprenantId: string, message: (prenoms: string) => [string, string]) {
+  try {
+    const [a] = await base().select().from(schema.apprenants).where(eq(schema.apprenants.id, apprenantId));
+    if (!a) return;
+    const liens = await base().select().from(schema.liensFamiliaux).where(and(eq(schema.liensFamiliaux.apprenantId, apprenantId), eq(schema.liensFamiliaux.verifie, true)));
+    const [titre, texte] = message(a.prenoms);
+    const destinataires = new Set([...liens.map((l) => l.responsableNpi), ...(a.npi ? [a.npi] : [])]);
+    if (destinataires.size) await base().insert(schema.notifications).values([...destinataires].map((npi) => ({ id: `NOT-${randomUUID()}`, destinataireNpi: npi, titre, texte, evenementId: null })));
+  } catch (err) {
+    console.error("Notification de la famille impossible :", err instanceof Error ? err.message : err);
+  }
 }
 
 /**

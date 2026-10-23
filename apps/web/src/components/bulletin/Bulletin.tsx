@@ -145,6 +145,9 @@ function Document({ view, libelleTrimestre }: { view: BulletinView; libelleTrime
             </tbody>
           </table>
         )}
+        {!!view.autresClasses?.length && (
+          <p className="mt-2 text-[12px] text-slate-500">Comprend des notes obtenues ce trimestre en {view.autresClasses.join(", ")}, avant le changement de classe ou le transfert.</p>
+        )}
       </section>
 
       <section className="mt-5 grid grid-cols-2 gap-3">
