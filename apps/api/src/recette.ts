@@ -327,6 +327,50 @@ if (ECRITURES) {
   verifier("Transfert : retrait par l'école de départ", (await directrice!.appel("POST", `/transferts/${demandeId}/retrait`, { motif: "Recette : la famille renonce au départ" })).statut, 200);
   verifier("Transfert : second retrait d'une demande déjà retirée → 409", (await directrice!.appel("POST", `/transferts/${demandeId}/retrait`, { motif: "Recette : la famille renonce au départ" })).statut, 409);
 
+  // Le périmètre de l'inspection se filtre là où la file est lue, plus après coup dans la réponse. La propriété
+  // vérifiée est celle qui compte : toute école qui apparaît dans sa file doit être une école dont il consulte déjà
+  // les transferts. Aucun nom de circonscription n'est codé ici, donc le cas ne s'inverse pas si les comptes de
+  // démonstration changent de périmètre.
+  const seconde = await directrice!.appel("POST", "/apprenants/APP-000001/transfert", { versClasseId: String(accueil?.id ?? "CLS-COT-5eA-S"), motif: "Recette : contrôle du périmètre de l'inspection" });
+  verifier("Transfert : une nouvelle demande est possible après retrait de la première", seconde.statut, 201);
+  const secondeId = String(seconde.json.demandeId ?? "");
+  const ecoleAccueil = String((liste((await directrice!.appel("GET", `/etablissements/${PILOTE}/transferts`)).json.sortants).find((x) => x.id === secondeId)?.vers as { id?: string } | undefined)?.id ?? "");
+  verifier("Transfert : l'école d'accueil de la demande se lit dans la file de l'école", /^ETB-/.test(ecoleAccueil), true, secondeId);
+  const aArbitrer = liste((await inspecteur!.appel("GET", "/transferts/inspection")).json.transferts);
+  let horsPortee = 0;
+  for (const x of aArbitrer.slice(0, 5)) {
+    const vers = String((x.vers as { id?: string } | undefined)?.id ?? "");
+    if (/^ETB-/.test(vers) && (await inspecteur!.appel("GET", `/etablissements/${vers}/transferts`)).statut !== 200) horsPortee++;
+  }
+  verifier("Inspection : sa file ne contient que des écoles qu'elle contrôle déjà", horsPortee, 0, `${aArbitrer.length} demande(s) dans la file`);
+  verifier("Transfert : la file de l'inspection reste bornée", aArbitrer.length <= 200, true, `${aArbitrer.length} ligne(s)`);
+  verifier("Transfert : retrait de la demande de contrôle", (await directrice!.appel("POST", `/transferts/${secondeId}/retrait`, { motif: "Recette : la demande de contrôle est retirée" })).statut, 200);
+
+  // Changement de classe dans la même école. Le projet n'a qu'un seul compte d'administration d'établissement :
+  // l'accord de l'école d'accueil et l'imposition par l'inspection ne peuvent donc pas être joués en succès ici.
+  const classeOrigine = String((dossierPendant.json.situation as { classeId?: string } | undefined)?.classeId ?? "");
+  const ailleurs = await directrice!.appel("GET", "/apprenants/APP-000001/classes-ecole");
+  verifier("Directrice → classes de son école pour un changement", ailleurs.statut, 200);
+  verifier("Changement de classe par l'inspection (hors administration de l'école)", (await inspecteur!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: "CLS-PAR-6eA-S", motif: "Recette : l'inspection ne réaffecte pas" })).statut, 403);
+  verifier("Changement vers une classe d'un autre établissement → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: "CLS-COT-5eA-S", motif: "Recette : une autre école demande un transfert" })).statut, 422);
+  verifier("Changement vers la classe où l'élève est déjà → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: classeOrigine, motif: "Recette : l'élève est déjà dans cette classe" })).statut, 422);
+  verifier("Changement sans motif de 10 caractères au moins → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: "CLS-PAR-6eA-S", motif: "court" })).statut, 422);
+  const candidate = liste(ailleurs.json.classes).find((x) => Number(x.places) > 0);
+  const classeActuelle = liste((await directrice!.appel("GET", `/etablissements/${PILOTE}/tableau`)).json.classes).find((x) => x.id === classeOrigine);
+  // Une classe déjà au-dessus de sa capacité (constat §5 du cadrage) ne peut pas reprendre son élève : le retour
+  // serait refusé pour surcapacité et l'élève resterait déplacé. On ne joue l'aller-retour que s'il est possible.
+  const retourPossible = Number(classeActuelle?.effectif ?? 0) <= Number(classeActuelle?.capacite ?? 0);
+  if (candidate && retourPossible) {
+    // Aller et retour : la projection de scolarité et les places sont vérifiées sans déplacer l'élève durablement.
+    verifier("Changement de classe effectif", (await directrice!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: String(candidate.id), motif: "Recette : rééquilibrage des effectifs" })).statut, 201);
+    verifier("Changement : la scolarité suit l'élève dans la classe d'arrivée", ((await directrice!.appel("GET", "/apprenants/APP-000001/dossier-gestion")).json.situation as { classeId?: string } | undefined)?.classeId === candidate.id, true);
+    verifier("Changement : retour dans la classe d'origine", (await directrice!.appel("POST", "/apprenants/APP-000001/changement-classe", { versClasseId: classeOrigine, motif: "Recette : retour après contrôle de la projection" })).statut, 201);
+  } else if (candidate) {
+    verifier("Changement non joué : la surcapacité de la classe d'origine est déclarée à l'écran", Number(classeActuelle?.effectif ?? 0) > Number(classeActuelle?.capacite ?? 0), true, `${classeActuelle?.libelle} ${classeActuelle?.effectif}/${classeActuelle?.capacite}`);
+  } else {
+    verifier("Changement non joué : aucune classe de l'école avec une place libre", liste(ailleurs.json.classes).every((x) => Number(x.places) <= 0), true, `${liste(ailleurs.json.classes).length} classe(s) proposée(s)`);
+  }
+
   titre("Administration : création d'un compte, première connexion, assistance");
   const suffixe = Math.random().toString(36).slice(2, 7).replace(/\d/g, "x");
   const cree = await admin!.appel("POST", "/admin/utilisateurs", { nomAffiche: `Recette Chercheur ${suffixe}`, fonction: "Chercheur associé · recette", habilitations: [{ role: "chercheur", perimetre: { niveau: "national" } }] });

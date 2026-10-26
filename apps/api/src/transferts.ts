@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Profil } from "@beile/contracts";
+import type { Habilitation, Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { and, count, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -36,6 +36,8 @@ const MODELE = {
   code: "TRANSFERT", libelle: "Transfert d'établissement", version: "2.0",
   etapes: [{ ordre: 1, code: "DEMANDE", role: "chef_etablissement", delaiJours: 0 }, { ordre: 2, code: "ACCORD_ACCUEIL", role: "chef_etablissement", delaiJours: DELAI_JOURS }],
 };
+/** Versions publiées par ce projet avant le cadrage du 22/10 : les seules lignes que la réparation touchera. */
+const VERSIONS_OBSOLETES = ["1.0"];
 
 type Tx = Parameters<Parameters<ReturnType<typeof base>["transaction"]>[0]>[0];
 type Classe = typeof schema.classes.$inferSelect;
@@ -169,9 +171,12 @@ transferts.post("/apprenants/:id/transfert", authentifie, plafond, async (c) => 
     }
     await anneeOuverteOuRefus(profil, action, cible, classe);
     const [de, vers] = await Promise.all([sco.etablissementId!, classe.etablissementId].map(async (id) => (await base().select({ nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, id)))[0]?.nom ?? id));
-    // Le circuit se déclare une fois : une demande en usage ne réécrit pas le modèle, qui pourrait porter une
-    // version ajustée par ailleurs.
+    // Le circuit se déclare une fois, et ne se répare que sur les versions que ce projet a lui-même publiées
+    // avant ce cadrage : une demande en usage n'écrase jamais un modèle ajusté par ailleurs, mais une base semée
+    // avec l'ancien circuit (trois étapes, « parent » demandeur, délai de 5 jours) doit rattraper la définition.
     await base().insert(schema.modelesCircuit).values(MODELE).onConflictDoNothing({ target: schema.modelesCircuit.code });
+    await base().update(schema.modelesCircuit).set({ libelle: MODELE.libelle, etapes: MODELE.etapes, version: MODELE.version })
+      .where(and(eq(schema.modelesCircuit.code, MODELE.code), inArray(schema.modelesCircuit.version, VERSIONS_OBSOLETES)));
     const demandeId = `DEM-${randomUUID()}`;
     const echeance = new Date(Date.now() + DELAI_JOURS * 86_400_000);
     const donnees: DonneesTransfert = { apprenantId, deEtablissementId: sco.etablissementId!, versEtablissementId: classe.etablissementId, versClasseId: classe.id, niveau: classe.niveau, anneeScolaire: classe.anneeScolaire, motif };
@@ -377,7 +382,31 @@ transferts.get("/etablissements/:id/transferts", authentifie, async (c) => {
   return c.json({ entrants: decrits.filter((l) => l.vers.id === id), sortants: decrits.filter((l) => l.de.id === id), tronque: lignes.length === 200 });
 });
 
-/** Inspection : transferts vers les écoles de sa circonscription, en attente, expirés ou refusés depuis 90 jours. */
+/**
+ * Le périmètre de l'inspection devient une condition SQL, pas un tri après lecture. Filtrer en JS après avoir lu
+ * 1 000 demandes nationales envoyait sur le réseau des données hors périmètre, et mesurait la troncature sur le
+ * national : un inspecteur de circonscription pouvait ainsi perdre SES propres demandes les plus anciennes.
+ * `null` = le périmètre est national, aucune condition à ajouter.
+ */
+function porteInspection(habs: Habilitation[]) {
+  const cx: string[] = [];
+  const deps: string[] = [];
+  const etabs: string[] = [];
+  for (const h of habs) {
+    if (h.perimetre.niveau === "national") return null;
+    if (h.perimetre.niveau === "circonscription") cx.push(h.perimetre.circonscription);
+    if (h.perimetre.niveau === "departement") deps.push(h.perimetre.departementId);
+    if (h.perimetre.niveau === "etablissement") etabs.push(h.perimetre.etablissementId);
+  }
+  const conditions = [
+    ...(cx.length ? [inArray(schema.etablissements.circonscription, cx)] : []),
+    ...(deps.length ? [inArray(schema.etablissements.communeId, base().select({ id: schema.communes.id }).from(schema.communes).where(inArray(schema.communes.departementId, deps)))] : []),
+    ...(etabs.length ? [inArray(schema.demandes.ressource, etabs)] : []),
+  ];
+  return conditions.length ? or(...conditions) : sql`false`;
+}
+
+/** Inspection : les écoles de son périmètre, demandes en cours, refusées ou abouties depuis 90 jours (à arbitrer et récents). */
 transferts.get("/transferts/inspection", authentifie, async (c) => {
   const profil = c.get("profil");
   const habs = profil.habilitations.filter((h) => h.role === "inspecteur");
@@ -385,14 +414,14 @@ transferts.get("/transferts/inspection", authentifie, async (c) => {
     await journaliser(profil, "Consultation des transferts à arbitrer", "inspection", "controle", false, "role");
     refuser("Réservé à l'inspection : refus journalisé");
   }
-  const lignes = await base().select({ d: schema.demandes, communeId: schema.etablissements.communeId, circonscription: schema.etablissements.circonscription })
+  const porte = porteInspection(habs);
+  const lignes = await base().select({ d: schema.demandes })
     .from(schema.demandes).innerJoin(schema.etablissements, eq(schema.etablissements.id, schema.demandes.ressource))
-    .where(and(eq(schema.demandes.modele, "TRANSFERT"), inArray(schema.demandes.statut, ["en_cours", "refusee", "acceptee"]), gt(schema.demandes.creeeLe, new Date(Date.now() - 90 * 86_400_000))))
-    .orderBy(desc(schema.demandes.creeeLe)).limit(1000);
-  const miennes = lignes.filter((l) => habs.some((h) => couvreEtab(h, { id: l.d.ressource!, communeId: l.communeId, circonscription: l.circonscription }))).map((l) => l.d);
-  const decrits = await decrire(profil, miennes);
+    .where(and(eq(schema.demandes.modele, "TRANSFERT"), inArray(schema.demandes.statut, ["en_cours", "refusee", "acceptee"]), gt(schema.demandes.creeeLe, new Date(Date.now() - 90 * 86_400_000)), ...(porte ? [porte] : [])))
+    .orderBy(desc(schema.demandes.creeeLe)).limit(200);
+  const decrits = await decrire(profil, lignes.map((l) => l.d));
   await journaliser(profil, "Consultation des transferts à arbitrer", `${decrits.length} demande(s)`, "controle", true, null);
-  return c.json({ transferts: decrits, tronque: lignes.length === 1000 });
+  return c.json({ transferts: decrits, tronque: lignes.length === 200 });
 });
 
 /** Demande de transfert en attente pour un élève (dossier de gestion) — `null` s'il n'y en a pas. */
