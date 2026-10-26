@@ -12,6 +12,7 @@ import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, typ
 import { etatAnnee } from "./annees";
 import { classesCourantes, dejaSaisi, effectifClasse, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
+import { ADMET_FRAIS, estFaitFrais, lireSituationFrais } from "./frais";
 import { ouvertureDuTrimestre, trimestreAuCalendrier } from "./periode";
 
 /**
@@ -38,12 +39,20 @@ export async function dossier(profil: Profil, apprenantId: string, finalite: Fin
     base().select().from(schema.certificats).where(eq(schema.certificats.apprenantId, apprenantId)),
     idsEtab.length ? base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom }).from(schema.etablissements).where(inArray(schema.etablissements.id, idsEtab)) : Promise.resolve([]),
   ]);
+  // Un fait de frais ne descend dans aucune liste générale : ni sous une finalité pédagogique, ni sous la
+  // consultation par l'élève de son propre dossier. Seule une finalité qui l'admet (suivi familial, gestion de
+  // l'école) le reçoit, et dans un bloc séparé recalculé à la lecture plutôt que brut.
+  const annee = situation.classe?.anneeScolaire;
+  const etatFrais = ADMET_FRAIS.has(finalite) && annee && situation.etablissementId
+    ? await lireSituationFrais(ctx.evenements, situation.etablissementId, annee)
+    : null;
   return {
     decision,
     dossier: {
       apprenant: ctx.apprenant,
       situation: { classe: situation.classe, etablissementId: situation.etablissementId, statut: situation.statut },
-      evenements: ctx.evenements,
+      evenements: ctx.evenements.filter((e) => !estFaitFrais(e.type)),
+      frais: etatFrais,
       certificats,
       etablissements: Object.fromEntries(etabs.map((e) => [e.id, e.nom])),
     },

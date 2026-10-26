@@ -1,5 +1,7 @@
+import { TYPES_FAITS_FRAIS } from "@beile/contracts";
 import { connecter, schema } from "@beile/db";
 import { and, desc, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { COMPTES, codeFrais, Session, TOTP } from "./client-recette";
 
 /**
@@ -32,6 +34,28 @@ async function npiLibre(): Promise<string> {
   return p?.npi ?? "";
 }
 const liste = (j: unknown) => (Array.isArray(j) ? j : []) as Record<string, unknown>[];
+const FAITS_FRAIS = new Set<string>(TYPES_FAITS_FRAIS);
+
+/**
+ * Les clés d'une réponse qui désigneraient une somme, une dette, un moyen de paiement ou un compte bancaire.
+ * BEILE ne transporte que la trace d'une pièce existée : la présence d'une telle clé est une régression du
+ * cadrage, pas une nuance d'affichage. La comparaison se mot à mot — le camelCase est découpé AVANT la mise
+ * en minuscules (sinon `[A-Z]` ne matche plus rien), et les accents sont neutralisés (sinon « règlement » se
+ * coupe en « rè » + « glement »). Le vocabulaire reste borné aux mots qui ne désignent jamais autre chose
+ * qu'une somme dans cette plateforme : `total`, `reste` et `carte` y sont employés pour des comptes d'élèves,
+ * des délais ou une carte d'étudiant, et les inclure ferait échouer la recette à tort.
+ */
+const MONTANT = new Set(["montant", "montants", "somme", "sommes", "prix", "solde", "dette", "impaye", "impayes", "rib", "iban", "bic", "devise", "fcfa", "echeancier", "moyen", "paiement", "paye", "due", "avance", "avances", "reglement", "tarif", "tarifs", "bareme", "encaisse", "encaissement", "caisse", "cheque", "cheques", "espece", "liquidation"]);
+function clefsMontant(j: unknown, chemin = ""): string[] {
+  if (Array.isArray(j)) return j.flatMap((x) => clefsMontant(x, chemin));
+  if (j && typeof j === "object") return Object.entries(j).flatMap(([k, v]) => {
+    const mots = k.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    return [...(mots.some((m) => MONTANT.has(m) || MONTANT.has(`${m}s`)) ? [`${chemin}${k}`] : []), ...clefsMontant(v, `${chemin}${k}.`)];
+  });
+  return [];
+}
+/** Une réponse qui porterait une devise (FCFA, francs CFA, euro) dans l'un de ses textes aurait trahi le cadrage. */
+const deviseDansLeTexte = (j: unknown): number => JSON.stringify(j ?? null).toLowerCase().split(/[",]/).filter((s) => /(^|[^a-z])(fcfa|francs cfa|f\.c\.f|euros?|€)([^a-z]|$)/.test(s)).length;
 
 titre("Authentification");
 const anonyme = new Session();
@@ -272,6 +296,90 @@ verifier("Apprenante → trace des consultations d'un autre dossier", (await app
 const traceSoi = await apprenante!.appel("GET", "/droits/mes-consultations");
 verifier("Apprenante → sa propre trace, fenêtre de douze mois", traceSoi.statut, 200, `bornée au ${String(traceSoi.json?.depuis ?? "").slice(0, 10)}`);
 
+titre("Frais scolaires : qui lit, qui écrit (refus : aucune écriture au registre)");
+// Un fait nominatif de frais ne descend qu'auprès du responsable légal dont le lien de filiation est vérifié au
+// registre, et de l'administration de l'école qui scolarise l'élève. Ni l'enseignant, ni la tutelle, ni l'élève
+// mineur, ni un compte d'une autre école. Et la forme du contrat refuse une somme à la porte, pas à l'écran.
+const STATUTS_FRAIS = ["couvert", "exonere", "attendu", "en_cours", "sans_declaration"];
+const dossiers = liste(enfants.json);
+// Le bloc `frais` du dossier est le livrable de l'espace famille : il doit arriver avec l'enfant, sans appel
+// supplémentaire. Le cas se joue sur un enfant qui en porte un, pas sur un enfant hors scolarité.
+const enfantAvecFrais = dossiers.find((d) => d.frais != null);
+verifier("Espace famille : le dossier d'un enfant scolarisé porte son bloc de frais", enfantAvecFrais !== undefined, true, `${dossiers.length} enfant(s) rattaché(s)`);
+const eleveDeLaFamille = String((enfantAvecFrais?.apprenant as { id?: string } | undefined)?.id ?? "APP-000001");
+const monPasseport = await apprenante!.appel("GET", "/moi/passeport");
+const monIdEleve = String((monPasseport.json?.apprenant as { id?: string } | undefined)?.id ?? "");
+verifier("Passeport de l'élève : son propre identifiant est connu", /^APP-\d{6}$/.test(monIdEleve), true, monIdEleve);
+verifier("Sans session → situation d'un élève", (await anonyme.appel("GET", `/apprenants/${eleveDeLaFamille}/frais`)).statut, 401);
+verifier("Sans session → état de rapprochement d'une école", (await anonyme.appel("GET", `/etablissements/${PILOTE}/frais`)).statut, 401);
+verifier("Enseignant → frais d'un élève de sa classe", (await enseignant!.appel("GET", "/apprenants/APP-000001/frais")).statut, 403);
+verifier("Enseignant → frais d'un élève inexistant : même refus, aucune existence dénombrable", (await enseignant!.appel("GET", "/apprenants/APP-999999/frais")).statut, 403);
+verifier("Inspection → frais d'un élève de son périmètre", (await inspecteur!.appel("GET", `/apprenants/${eleveDeLaFamille}/frais`)).statut, 403);
+verifier("Inspection → état de rapprochement de l'école de son périmètre", (await inspecteur!.appel("GET", `/etablissements/${PILOTE}/frais`)).statut, 403);
+verifier("Direction départementale → état de rapprochement de l'école", (await departement!.appel("GET", `/etablissements/${PILOTE}/frais`)).statut, 403);
+verifier("L'élève lui-même → ses propres traces de frais", (await apprenante!.appel("GET", `/apprenants/${monIdEleve}/frais`)).statut, 403);
+// Règle 2 du cadrage, côté écriture : personne d'autre que le compte d'administration de l'école qui scolarise
+// l'élève ne consigne un fait. Le parent, même au lien vérifié, déclare une pièce — il ne l'émet pas.
+verifier("Parent → consigner une quittance pour son enfant", (await parent!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/quittance`, { anneeScolaire: "2026-2027", terme: "T1", delivreeLe: AUJOURDHUI, referenceQuittance: "REC-ESSAI-PARENT", qualiteAgent: "intendance", agent: null, cle: randomUUID() })).statut, 403);
+verifier("Élève → consigner sa propre exonération", (await apprenante!.appel("POST", `/apprenants/${monIdEleve}/frais/exoneration`, { anneeScolaire: "2026-2027", terme: "T1", nature: "exoneration", motif: "Essai de l'élève", autorite: "Élève", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() })).statut, 403);
+const vueFamille = await parent!.appel("GET", `/apprenants/${eleveDeLaFamille}/frais`);
+const statutFamille = (vueFamille.json?.situation as { statut?: string } | undefined)?.statut ?? "";
+verifier("Parent au lien vérifié → situation complète de son enfant", vueFamille.statut === 200 && vueFamille.json?.situation != null && STATUTS_FRAIS.includes(statutFamille), true, `statut ${statutFamille || "aucun"}`);
+const vueEcole = await directrice!.appel("GET", `/etablissements/${PILOTE}/frais`);
+verifier("Administration de l'école → état de rapprochement", vueEcole.statut, 200,
+  `${liste(vueEcole.json?.lignes).length} ligne(s) · ${String(vueEcole.json?.effectif)} élève(s) scolarisés`);
+verifier("Parent → état de rapprochement de l'école", (await parent!.appel("GET", `/etablissements/${PILOTE}/frais`)).statut, 403);
+verifier("École qu'il n'administre pas → état de rapprochement refusé", (await directrice!.appel("GET", "/etablissements/ETB-COT-PILOTE-CEG/frais")).statut, 403);
+verifier("Année qu'aucune classe de l'école n'a ouverte → 422", (await directrice!.appel("GET", `/etablissements/${PILOTE}/frais?anneeScolaire=1999-2000`)).statut, 422);
+// L'invariant « aucun montant » se vérifie mécaniquement, sur la réponse entière : aucune clé ne désigne une
+// somme, une dette, un moyen de paiement ou un identifiant bancaire, aucune valeur ne porte une devise. Le
+// contrôle exige une réponse peuplée — un scan sur un tableau vide est vert sans rien regarder.
+const enfantServe = liste(enfants.json).length;
+verifier("Aucun montant dans la lecture d'une famille", vueFamille.statut === 200 && vueFamille.json?.situation != null && clefsMontant(vueFamille.json).length + deviseDansLeTexte(vueFamille.json) === 0, true, clefsMontant(vueFamille.json).join(", "));
+verifier("Aucun montant dans l'état lu par l'école", vueEcole.statut === 200 && clefsMontant(vueEcole.json).length + deviseDansLeTexte(vueEcole.json) === 0, true, clefsMontant(vueEcole.json).join(", "));
+verifier("Aucun montant dans l'espace famille", enfantServe > 0 && clefsMontant(enfants.json).length + deviseDansLeTexte(enfants.json) === 0, true, `${enfantServe} enfant(s) lu(s)`);
+// Le dossier général reste une liste de parcours : les faits de frais en sont retirés avant la réponse, sous
+// quelque finalité que ce soit — une date de quittance y suffirait à faire état d'une situation de paiement.
+const dossierGeneral = await directrice!.appel("GET", "/apprenants/APP-000001?finalite=gestion");
+const typesDuDossier = liste(dossierGeneral.json?.parcours).map((e) => String(e.type));
+verifier("Dossier général servi et peuplé, aucun fait de frais n'y descend", dossierGeneral.statut === 200 && typesDuDossier.length > 0 && typesDuDossier.every((t) => !FAITS_FRAIS.has(t)), true, `${typesDuDossier.length} fait(s) au parcours`);
+// Règle 2, troisième audience fermée : le pilotage. Le filtre est en base (pas après coup), et il s'applique
+// avant toute écriture de recette — un flux propre se prouve sur la base réelle, pas seulement sur une branche
+// où la recette vient de consigner ses propres pièces.
+const fluxLu = await central!.appel("GET", "/pilotage/flux?limite=30");
+const typesFlus = [...liste(fluxLu.json?.parType).map((t) => String(t.type)), ...liste(fluxLu.json?.derniers).map((e) => String(e.type))];
+verifier("Flux du pilotage (base réelle) : servi, peuplé, sans aucun fait de frais", fluxLu.statut === 200 && typesFlus.length > 0 && typesFlus.every((t) => !FAITS_FRAIS.has(t)), true, `${typesFlus.length} type(s) vus`);
+const fluxDepartement = await departement!.appel("GET", "/pilotage/flux?limite=30");
+verifier("Flux d'une direction départementale : même cloisonnement", fluxDepartement.statut === 200 && [...liste(fluxDepartement.json?.parType), ...liste(fluxDepartement.json?.derniers)].every((x) => !FAITS_FRAIS.has(String(x.type))), true, `${liste(fluxDepartement.json?.derniers).length} fait(s) listé(s)`);
+// Un compte sans école administrée est écarté AVANT toute lecture en base : sans ce garde, un enseignant
+// parcourrait APP-000001, APP-000002… en distinguant « non scolarisé » (409) de « hors périmètre » (403).
+const essaiPiece = { anneeScolaire: String(vueEcole.json?.anneeScolaire ?? "2026-2027"), terme: "T1", delivreeLe: AUJOURDHUI, referenceQuittance: "REC-TEST-FORME", qualiteAgent: "intendance", agent: null, cle: randomUUID() };
+const essaiMesure = { anneeScolaire: String(vueEcole.json?.anneeScolaire ?? "2026-2027"), terme: "T1", nature: "exoneration", motif: "Essai de forme pour la recette", autorite: "Conseil d'administration", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() };
+verifier("Enseignant → consigner une quittance", (await enseignant!.appel("POST", "/apprenants/APP-000001/frais/quittance", essaiPiece)).statut, 403);
+verifier("Enseignant → quittance sur un élève inexistant : même refus, rien n'est dénombrable", (await enseignant!.appel("POST", "/apprenants/APP-999999/frais/quittance", essaiPiece)).statut, 403);
+verifier("Enseignant → consigner une exonération", (await enseignant!.appel("POST", "/apprenants/APP-000001/frais/exoneration", essaiMesure)).statut, 403);
+verifier("Enseignant → exonération sur un élève inexistant : même refus, rien n'est dénombrable", (await enseignant!.appel("POST", "/apprenants/APP-999999/frais/exoneration", essaiMesure)).statut, 403);
+verifier("Enseignant → déclarer la cadence d'une école", (await enseignant!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: essaiPiece.anneeScolaire, termes: [{ terme: "T1", exigibleLe: AUJOURDHUI }], cadre: "Acquittement à l'intendance du collège.", referenceDeliberation: null, cle: randomUUID() })).statut, 403);
+verifier("Sans session → consigner une quittance", (await anonyme.appel("POST", "/apprenants/APP-000001/frais/quittance", essaiPiece)).statut, 401);
+verifier("Sans session → consigner une exonération", (await anonyme.appel("POST", "/apprenants/APP-000001/frais/exoneration", essaiMesure)).statut, 401);
+verifier("Sans session → déclarer la cadence d'une école", (await anonyme.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: essaiPiece.anneeScolaire, termes: [{ terme: "T1", exigibleLe: AUJOURDHUI }], cadre: "Acquittement à l'intendance du collège.", referenceDeliberation: null, cle: randomUUID() })).statut, 401);
+if (vueEcole.statut === 200 && vueEcole.json?.anneeScolaire) {
+  verifier("Quittance portant un montant → refusée par le contrat", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), montant: 15000 })).statut, 422);
+  verifier("Appel déclarant une somme par terme → refusé par le contrat", (await directrice!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: essaiPiece.anneeScolaire, termes: [{ terme: "T1", exigibleLe: AUJOURDHUI, montant: 15000 }], cadre: "Acquittement à l'intendance du collège, trois termes.", referenceDeliberation: null, cle: randomUUID() })).statut, 422);
+  // La clé `montant` est fermée par le contrat ; le texte libre de l'agent ne l'était pas. Un cadre qui nomme
+  // une devise fait entrer au registre national ce qu'il ne doit pas contenir — refusé à l'écriture, pas à l'écran.
+  verifier("Cadre de l'appel écrivant une somme en toutes lettres → 422", (await directrice!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: essaiPiece.anneeScolaire, termes: [{ terme: "T1", exigibleLe: AUJOURDHUI }], cadre: "Quinze mille francs CFA par terme, à l'intendance.", referenceDeliberation: null, cle: randomUUID() })).statut, 422);
+  verifier("Motif d'exonération chiffré en devise → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/exoneration", { ...essaiMesure, cle: randomUUID(), motif: "Exonération de 15 000 FCFA accordée par le conseil" })).statut, 422);
+  verifier("Quittance signée d'un jour à venir → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), delivreeLe: "2099-01-01" })).statut, 422);
+  verifier("Quittance « autre agent » sans fonction précise → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), qualiteAgent: "autre" })).statut, 422);
+  verifier("Terme hors nomenclature (T4) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), terme: "T4" })).statut, 422);
+  verifier("Identifiant d'élève mal formé → 422, rien n'est écrit", (await directrice!.appel("POST", "/apprenants/APP-1/frais/quittance", { ...essaiPiece, cle: randomUUID() })).statut, 422);
+} else {
+  // Le chemin « non joué » n'est jamais vert tout seul : s'il y est arrivé, c'est que la lecture de l'école a
+  // échoué, et il faut que la recette le dise comme une anomalie plutôt que comme une convenance.
+  verifier("Formes de contrat non jouées : l'école pilote devait rendre une année d'exercice", vueEcole.statut === 200 && vueEcole.json?.anneeScolaire == null && liste(vueEcole.json?.annees).length === 0, true, `${String(vueEcole.statut)} sans année déclarée`);
+}
+
 titre("Concurrence : 40 lectures simultanées de profils différents");
 const debut = Date.now();
 const lots = await Promise.all(Array.from({ length: 40 }, (_, i) => [
@@ -369,6 +477,184 @@ if (ECRITURES) {
     verifier("Changement non joué : la surcapacité de la classe d'origine est déclarée à l'écran", Number(classeActuelle?.effectif ?? 0) > Number(classeActuelle?.capacite ?? 0), true, `${classeActuelle?.libelle} ${classeActuelle?.effectif}/${classeActuelle?.capacite}`);
   } else {
     verifier("Changement non joué : aucune classe de l'école avec une place libre", liste(ailleurs.json.classes).every((x) => Number(x.places) <= 0), true, `${liste(ailleurs.json.classes).length} classe(s) proposée(s)`);
+  }
+
+  titre("Frais scolaires : déclarer l'appel, consigner les pièces, rapprocher (écritures)");
+  {
+    // La saisie se fait sur un élève de la liste du jour, de préférence un enfant dont le lien de filiation est
+    // vérifié : la trace de la pièce ne part en notification qu'à ce responsable-là, et le cas contrôle du même
+    // coup le destinataire réel.
+    const rattaches = new Set(liste(enfants.json).map((d) => String((d.apprenant as { id?: string } | undefined)?.id ?? "")));
+    const premier = await directrice!.appel("GET", `/etablissements/${PILOTE}/frais`);
+    const premieres = liste(premier.json?.lignes);
+    const propose = premieres.find((l) => rattaches.has(String(l.apprenantId)) && !l.horsEffectif) ?? premieres.find((l) => !l.horsEffectif);
+    // L'année que la recette écrit est celle que L'ÉLÈVE lit, non la dernière année où l'école a ouvert des
+    // classes : les deux peuvent différer, et une pièce consignée sur l'autre année disparaîtrait des deux
+    // écrans en restant parfaitement inscrite au registre.
+    const vuePropose = propose ? await directrice!.appel("GET", `/apprenants/${String(propose.apprenantId)}/frais`) : null;
+    const annee = String(vuePropose?.json?.anneeScolaire ?? "");
+    // Relecture de l'état borné à cette année : cadence, lignes et effectifs sont ceux que les écritures vont
+    // déplacer, et l'année demandée doit être une année que l'école reconnaît (422 sinon).
+    const etat = annee ? await directrice!.appel("GET", `/etablissements/${PILOTE}/frais?anneeScolaire=${encodeURIComponent(annee)}`) : premier;
+    const lignes = liste(etat.json?.lignes);
+    const cible = lignes.find((l) => String(l.apprenantId) === String(propose?.apprenantId ?? "")) ?? null;
+    const autre = lignes.find((l) => l !== cible && !l.horsEffectif);
+    const marque = Date.now().toString(36).toUpperCase().slice(-5);
+    // Le cadre est du texte d'agent : comment on paie dans CETTE école. Ni somme ni devise — la recette le
+    // vérifie plus bas sur la réponse entière, et le contrat refuserait la clé à l'écriture.
+    const CADRE = "Droits tenus à l'intendance du collège, ou auprès du régisseur de recettes, contre pièce numérotée.";
+    if (!annee || !cible || etat.json?.anneeScolaire !== annee) {
+      verifier("Frais : l'année lue par l'élève est aussi celle que l'état de l'école rend", false, true, `élève ${String(propose?.apprenantId ?? "aucun")} · année ${annee || "aucune"} · état ${String(etat.json?.anneeScolaire ?? "aucun")} · ${lignes.length} ligne(s)`);
+    } else {
+      const id = String(cible.apprenantId);
+      const passe = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+      const demain = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+      const situation = (j: unknown) => (j as { situation?: { statut?: string; termes?: unknown } } | undefined)?.situation;
+
+      // 1) La régression que le statut ne doit jamais commettre : une pièce consignée alors que rien n'était
+      //    appelé reste visible après coup. Recalculée seulement sur les termes appelés, elle aurait disparu des
+      //    deux écrans — la famille détiendrait un papier que le registre prétendrait ne jamais avoir vu.
+      if (etat.json?.cadence == null) {
+        verifier("Aucun appel déclaré → consigner une pièce retrouvée", (await directrice!.appel("POST", `/apprenants/${id}/frais/quittance`, { anneeScolaire: annee, terme: "T3", delivreeLe: AUJOURDHUI, referenceQuittance: `REC-HORS-APPEL-${marque}`, qualiteAgent: "intendance", agent: null, cle: randomUUID() })).statut, 201);
+        verifier("Appel déclaré après coup", (await directrice!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: annee, termes: [{ terme: "T1", exigibleLe: passe }, { terme: "T2", exigibleLe: demain }], cadre: CADRE, referenceDeliberation: `CA-REC-${marque}`, cle: randomUUID() })).statut, 201);
+        const relue = await directrice!.appel("GET", `/apprenants/${id}/frais`);
+        const termesRelus = liste(situation(relue.json)?.termes);
+        verifier("La pièce hors appel est rendue en « sans_appel », jamais effacée", termesRelus.some((t) => t.terme === "T3" && t.etat === "sans_appel"), true, `${termesRelus.length} terme(s) rendu(s)`);
+        // Déterministe : T1 exigible au passé sans pièce, T2 dans le futur, la pièce T3 hors appel exclue du
+        // calcul. Attendre les deux statuts aurait affaibli le cas en « à peu près ».
+        verifier("Et le statut de l'année se calcule sur les seuls termes appelés", situation(relue.json)?.statut === "attendu", true, String(situation(relue.json)?.statut));
+      } else {
+        // Une cadence est déjà déclarée pour cette année (registre en ajout seul) : la consigne « avant l'appel »
+        // ne peut plus être jouée. Ce qu'on contrôle à la place est un état réel du registre — rien ne doit être
+        // rendu « sans_appel » quand tout a été appelé, sinon la ligne orpheline serait la norme.
+        const relue = await directrice!.appel("GET", `/apprenants/${id}/frais`);
+        const rendu = liste(situation(relue.json)?.termes);
+        verifier("Cadence déjà déclarée : aucune ligne orpheline rendue « sans_appel »", rendu.length > 0 && rendu.every((t) => t.etat !== "sans_appel"), true, `${rendu.length} terme(s) rendu(s) · cadence du ${String((etat.json?.cadence as { declareeLe?: string } | undefined)?.declareeLe ?? "")}`);
+      }
+
+      // 2) La déclaration de l'année : des termes et des dates, libres à l'école, et aucune somme.
+      const cleDeclaration = randomUUID();
+      const declaration = { anneeScolaire: annee, termes: [{ terme: "T1", exigibleLe: passe }, { terme: "T2", exigibleLe: demain }], cadre: CADRE, referenceDeliberation: `CA-REC-${marque}`, cle: cleDeclaration };
+      verifier("Déclaration de l'appel de l'année", (await directrice!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, declaration)).statut, 201);
+      const rejouee = await directrice!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, declaration);
+      verifier("Déclaration rejouée (réponse perdue) : renvoyée, pas réécrite", rejouee.statut === 200 && rejouee.json?.deja === true, true);
+
+      // 3) Une école qui a appelé ses termes ne consigne pas de pièce pour un terme qu'elle n'a pas appelé.
+      verifier("Pièce sur un terme non appelé → 422", (await directrice!.appel("POST", `/apprenants/${id}/frais/quittance`, { anneeScolaire: annee, terme: "ANNEE", delivreeLe: AUJOURDHUI, referenceQuittance: `REC-HORS-TERME-${marque}`, qualiteAgent: "intendance", agent: null, cle: randomUUID() })).statut, 422);
+
+      // 3bis) La règle 1 du cadrage, jouée au moment précis où elle peut être violée : l'élève est là, exactement,
+      //     en « attendu » — un terme exigible et aucune pièce. Rien ne se suspend : ni le bulletin de sa classe,
+      //     ni le dossier que sa famille lit. Un jour, une note, un conseil, c'est la même réponse.
+      const pendant = await directrice!.appel("GET", `/apprenants/${id}/frais`);
+      verifier("Un terme exigible sans pièce rend l'année « attendu »", situation(pendant.json)?.statut === "attendu", true, String(situation(pendant.json)?.statut));
+      const classeDeLEleve = String(liste((await directrice!.appel("GET", `/etablissements/${PILOTE}/eleves`)).json).find((e) => String(e.id) === id)?.classeId ?? "");
+      if (/^CLS-[A-Za-z0-9-]+$/.test(classeDeLEleve)) {
+        const bulletins = await directrice!.appel("GET", `/etablissements/${PILOTE}/classes/${classeDeLEleve}/bulletins`);
+        verifier("« Attendu » ne suspend pas le bulletin : la classe s'imprime, l'élève y figure", bulletins.statut === 200 && liste(bulletins.json?.bulletins).some((b) => String((b.apprenant as { id?: string } | undefined)?.id) === id), true, `${liste(bulletins.json?.bulletins).length} bulletin(s) servi(s) · ${(bulletins.json as { classe?: { libelle?: string } }).classe?.libelle ?? "classe sans libellé"}`);
+      } else {
+        verifier("Bulletin non comparé : l'élève saisi ne porte aucune classe exploitable", liste((await directrice!.appel("GET", `/etablissements/${PILOTE}/eleves`)).json).some((e) => String(e.id) === id && String(e.classeId ?? "") !== ""), false);
+      }
+      if (rattaches.has(id)) {
+        const suivi = await parent!.appel("GET", `/apprenants/${id}?finalite=suivi_familial`);
+        verifier("« Attendu » ne suspend pas la lecture par la famille", suivi.statut === 200 && clefsMontant(suivi.json).length + deviseDansLeTexte(suivi.json) === 0, true, "dossier lu pendant l'attente");
+      } else {
+        verifier("Lecture famille non jouée : l'élève saisi n'est rattaché à aucun compte parent testé", rattaches.has(id), false);
+      }
+
+      // 4) La quittance, son idempotence, et le destinataire de la trace.
+      const nonLuesAvant = Number(((await parent!.appel("GET", "/moi/notifications")).json as { nonLues?: number } | undefined)?.nonLues ?? 0);
+      const clePiece = randomUUID();
+      const piece = { anneeScolaire: annee, terme: "T1", delivreeLe: AUJOURDHUI, referenceQuittance: `REC-${marque}-T1`, qualiteAgent: "regisseur_de_recettes", agent: null, cle: clePiece };
+      verifier("Quittance du 1er terme consignée", (await directrice!.appel("POST", `/apprenants/${id}/frais/quittance`, piece)).statut, 201);
+      const pieceRejoue = await directrice!.appel("POST", `/apprenants/${id}/frais/quittance`, piece);
+      verifier("Quittance rejouée (même clé de saisie) : une seule ligne au registre", pieceRejoue.statut === 200 && pieceRejoue.json?.deja === true, true);
+      if (rattaches.has(id)) {
+        const nonLuesApres = Number(((await parent!.appel("GET", "/moi/notifications")).json as { nonLues?: number } | undefined)?.nonLues ?? 0);
+        verifier("La trace de la pièce part au responsable au lien vérifié", nonLuesApres > nonLuesAvant, true, `${nonLuesAvant} → ${nonLuesApres} non lue(s)`);
+        const lues = liste((await parent!.appel("GET", "/moi/notifications")).json?.notifications);
+        verifier("Et le message rendu au parent ne porte ni somme ni devise", lues.length > 0 && clefsMontant(lues).length + deviseDansLeTexte(lues) === 0, true, `${lues.length} notification(s)`);
+      } else {
+        verifier("Notification non jouable : l'élève saisi n'est pas rattaché au compte parent testé", rattaches.has(id), false);
+      }
+      // Règle 2 du même coup jouée du côté de l'élève : le bloc de frais de son propre passeport reste vide
+      // (finalité `consultation_personnelle` non admise), et son téléphone ne reçoit rien — un téléphone d'élève
+      // se prête en classe, et il n'a aucun devoir de paiement (loi n°2009-09 du 22/05/2009).
+      const passeportApres = await apprenante!.appel("GET", "/moi/passeport");
+      verifier("Passeport de l'élève : aucun bloc de frais, aucune somme", passeportApres.statut === 200 && passeportApres.json?.frais == null && liste(passeportApres.json?.evenements).every((e) => !FAITS_FRAIS.has(String(e.type))) && clefsMontant(passeportApres.json).length + deviseDansLeTexte(passeportApres.json) === 0, true, `${liste(passeportApres.json?.evenements).length} fait(s) au passeport`);
+      if (id === monIdEleve) {
+        const notifEleve = await apprenante!.appel("GET", "/moi/notifications");
+        const textes = liste(notifEleve.json?.notifications).map((n) => `${String(n.titre ?? "")} ${String(n.texte ?? "")}`);
+        verifier("Aucune trace de pièce sur le téléphone de l'élève", notifEleve.statut === 200 && textes.every((t) => !/quittance|frais|exonération|prise en charge/i.test(t)), true, `${textes.length} notification(s) lue(s)`);
+      } else {
+        verifier("Téléphone de l'élève non comparé : l'élève saisi est un autre compte que l'apprenante testée", id !== monIdEleve, true, `${id} · ${monIdEleve}`);
+      }
+
+      // 5) La vigie — seul contrôle anti-détournement possible sans montants : une même référence sur deux élèves,
+      //    y compris recopiée dans un autre alphabet (« q-12 » et « Q 12 » sont le même carnet).
+      if (autre) {
+        const vers = String(autre.apprenantId);
+        const doublon = await directrice!.appel("POST", `/apprenants/${vers}/frais/quittance`, { ...piece, cle: randomUUID() });
+        verifier("Même référence pour un autre élève : consignée, vigie levée", doublon.statut === 201 && doublon.json?.alerte === "reference_deja_utilisee_dans_cette_ecole", true, String(doublon.json?.alerte));
+        const recopiee = await directrice!.appel("POST", `/apprenants/${vers}/frais/quittance`, { ...piece, cle: randomUUID(), terme: "T2", referenceQuittance: `rec ${marque} t1` });
+        verifier("Référence recopiée en minuscules et sans tirets : la vigie la reconnaît", recopiee.statut === 201 && recopiee.json?.alerte != null, true, String(recopiee.json?.alerte));
+        // L'alerte est un fait de sécurité, pas un fait d'élève : elle se lit du seul côté du DPO (et de
+        // l'administrateur), et son texte ne doit désigner aucun enfant — ni par son nom, ni par son identifiant.
+        const alertes = await dpo!.appel("GET", "/securite/alertes?statut=ouvertes");
+        const dupliees = liste(alertes.json).filter((a) => String(a.type) === "quittance_reference_dupliquee");
+        verifier("Vigie : l'alerte de référence dupliquée est ouverte et lisible par le DPO", alertes.statut === 200 && dupliees.length >= 1 && dupliees.every((a) => String(a.gravite) === "haute"), true, `${dupliees.length} alerte(s)`);
+        verifier("Et sa teneur ne nomme aucun apprenant", dupliees.length > 0 && dupliees.every((a) => !/APP-\d{6}/.test(String(a.detail ?? ""))), true, `${String((alertes.json as unknown[] | undefined)?.length ?? 0)} alerte(s) ouverte(s) au total`);
+        const mesure = await directrice!.appel("POST", `/apprenants/${vers}/frais/exoneration`, { anneeScolaire: annee, terme: null, nature: "exoneration", motif: "Exonération accordée par le conseil d'administration", autorite: "Conseil d'administration de l'établissement", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() });
+        verifier("Exonération de l'année entière (mesure sans terme)", mesure.statut, 201);
+        const couverte = await directrice!.appel("GET", `/apprenants/${vers}/frais`);
+        verifier("Une mesure annuelle couvre les termes appelés, pièces déjà consignées comprises", situation(couverte.json)?.statut === "exonere", true, String(situation(couverte.json)?.statut));
+      } else {
+        verifier("Vigie et mesure annuelle non jouables : un seul élève sur la liste du jour", lignes.filter((l) => !l.horsEffectif).length, 1);
+      }
+
+      // 6) La prise en charge ferme l'année de l'élève : la mesure remplace la pièce attendue, à l'écran de
+      //    l'école comme à celui de la famille, sans que rien n'ait jamais été encaissé ici.
+      verifier("Prise en charge du 2e terme consignée", (await directrice!.appel("POST", `/apprenants/${id}/frais/exoneration`, { anneeScolaire: annee, terme: "T2", nature: "prise_en_charge", motif: "Prise en charge déclarée par l'école", autorite: "Chef d'établissement", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() })).statut, 201);
+      const finale = await directrice!.appel("GET", `/apprenants/${id}/frais`);
+      verifier("Termes appelés tous couverts (pièce + mesure)", situation(finale.json)?.statut === "couvert", true, String(situation(finale.json)?.statut));
+      verifier("Aucun montant dans la situation après écritures", finale.statut === 200 && clefsMontant(finale.json).length + deviseDansLeTexte(finale.json) === 0, true, `${liste(situation(finale.json)?.termes).length} terme(s) rendu(s)`);
+      // Relire l'espace famille APRÈS les écritures : l'invariant ne doit rien à un état vierge. Et la famille
+      // doit lire le même statut que l'école — deux projections du même registre, pas deux calculs.
+      const familleApres = await parent!.appel("GET", "/famille/enfants");
+      verifier("Aucun montant dans l'espace famille après écritures", familleApres.statut === 200 && liste(familleApres.json).length > 0 && clefsMontant(familleApres.json).length + deviseDansLeTexte(familleApres.json) === 0, true, `${liste(familleApres.json).length} enfant(s) · ${clefsMontant(familleApres.json).join(", ")}`);
+      if (rattaches.has(id)) {
+        const vueFamilleApres = await parent!.appel("GET", `/apprenants/${id}/frais`);
+        verifier("Aucun montant dans la situation relue par le parent", vueFamilleApres.statut === 200 && clefsMontant(vueFamilleApres.json).length + deviseDansLeTexte(vueFamilleApres.json) === 0, true, clefsMontant(vueFamilleApres.json).join(", "));
+        verifier("La famille et l'école lisent le même statut des mêmes faits", String(situation(vueFamilleApres.json)?.statut) === String(situation(finale.json)?.statut), true, `famille ${String(situation(vueFamilleApres.json)?.statut)} · école ${String(situation(finale.json)?.statut)}`);
+      } else {
+        verifier("Comparaison famille/école non jouée : l'élève saisi n'est rattaché à aucun compte parent testé", rattaches.has(id), false);
+      }
+
+      // 7) Le rapprochement de l'école, et la recherche faite en base : filtrer après coup ne retrouverait
+      //    personne dans une école de plus de 300 élèves.
+      const apres = await directrice!.appel("GET", `/etablissements/${PILOTE}/frais?anneeScolaire=${encodeURIComponent(annee)}`);
+      const parTerme = liste(apres.json?.parTerme);
+      verifier("Rapprochement terme par terme sur les seuls termes appelés", parTerme.length === 2, true, parTerme.map((t) => `${String(t.terme)} ${String(t.couvertes)}/${String(t.attendues)}`).join(" · "));
+      const t1 = parTerme.find((t) => t.terme === "T1");
+      // « L'effectif reste la liste scolarisée du jour » se prouve par l'égalité, pas par `>= 1` : le compte de
+      // l'état doit être exactement le nombre de lignes d'élèves présents, triés ou non.
+      const surLaListe = liste(apres.json?.lignes).filter((l) => !l.horsEffectif).length;
+      verifier("Des pièces sont comptées, l'effectif reste la liste scolarisée du jour", Number(t1?.couvertes ?? 0) >= 1 && Number(apres.json?.effectif ?? 0) > 0 && !apres.json?.tronque && Number(apres.json?.effectif) === surLaListe, true, `effectif ${String(apres.json?.effectif)} = ${surLaListe} ligne(s) du jour · ${String(apres.json?.horsEffectif)} sorti(s) avec une pièce`);
+      verifier("Aucun montant dans l'état de l'école après écritures", apres.statut === 200 && clefsMontant(apres.json).length + deviseDansLeTexte(apres.json) === 0, true, `${liste(apres.json?.lignes).length} ligne(s) servie(s)`);
+      const premierNom = String(cible.nom ?? "").split(" ")[0]!.toLocaleLowerCase("fr");
+      verifier("L'élève saisi porte un nom exploitable par la recherche", premierNom !== "", true, `${id} · ${premierNom.length} lettre(s)`);
+      const recherche = await directrice!.appel("GET", `/etablissements/${PILOTE}/frais?anneeScolaire=${encodeURIComponent(annee)}&recherche=${encodeURIComponent(premierNom)}`);
+      const trouvees = liste(recherche.json?.lignes);
+      verifier("Recherche nominative côté serveur : l'élève saisi revient, et aucune autre ligne que les siennes", recherche.statut === 200 && recherche.json?.recherche === premierNom && trouvees.length >= 1 && trouvees.every((l) => String(l.nom).toLocaleLowerCase("fr").includes(premierNom)) && trouvees.some((l) => String(l.apprenantId) === id), true, `${trouvees.length} ligne(s) sur ${String(apres.json?.effectif)}, filtre ${String(recherche.json?.recherche)}`);
+
+      // 8) Le flux que lit la tutelle : un décompte « QUITTANCE_FRAIS · CEG X · 10 h 12 » serait déjà un état de
+      //    rapprochement nominatif, ou presque. Les faits de frais en sortent pour tout le monde.
+      const flux = await central!.appel("GET", "/pilotage/flux?limite=30");
+      const typesFlux = [...liste(flux.json?.parType).map((t) => String(t.type)), ...liste(flux.json?.derniers).map((e) => String(e.type))];
+      verifier("Flux du pilotage servi et peuplé, aucun fait de frais ni compté ni listé", flux.statut === 200 && typesFlux.length > 0 && typesFlux.every((t) => !FAITS_FRAIS.has(t)), true, `${typesFlux.length} type(s) vus`);
+      const dossierApres = await directrice!.appel("GET", "/apprenants/APP-000001?finalite=gestion");
+      const parcoursApres = liste(dossierApres.json?.parcours);
+      verifier("Et le dossier général d'un élève peuplé n'en montre toujours pas", dossierApres.statut === 200 && parcoursApres.length > 0 && parcoursApres.every((e) => !FAITS_FRAIS.has(String(e.type))), true, `${parcoursApres.length} fait(s) au parcours`);
+    }
   }
 
   titre("Administration : création d'un compte, première connexion, assistance");

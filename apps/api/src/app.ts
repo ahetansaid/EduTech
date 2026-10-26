@@ -31,6 +31,7 @@ import { importServices } from "./import-services";
 import { emploiDuTemps } from "./emploi-du-temps";
 import { annees } from "./annees";
 import { transferts } from "./transferts";
+import { frais, estFaitFrais } from "./frais";
 import { familles } from "./familles";
 import { delegation } from "./delegation";
 import { filtrePortail } from "./portails";
@@ -272,7 +273,9 @@ app.get("/apprenants/:id", authentifie, async (c) => {
     situation: { classe: situation.classe?.libelle ?? null, etablissementId: situation.etablissementId, statut: situation.statut },
     ...enTete(periode),
     moyennesTrimestre: [...parMatiere].map(([matiere, notes]) => ({ matiere, moyenne: notes.reduce((s, x) => s + x, 0) / notes.length })),
-    parcours: ctx.evenements.filter((e) => e.type !== "EVALUATION").map((e) => ({ id: e.id, type: e.type, survenuLe: e.survenuLe, source: e.source })),
+    // Les faits de frais ne sortent pas d'une liste générale : leur lecture passe par `/apprenants/:id/frais`,
+    // où la finalité décide — jamais par un parcours qui montrerait une date de quittance à un enseignant.
+    parcours: ctx.evenements.filter((e) => e.type !== "EVALUATION" && !estFaitFrais(e.type)).map((e) => ({ id: e.id, type: e.type, survenuLe: e.survenuLe, source: e.source })),
   });
 });
 
@@ -364,6 +367,7 @@ app.route("/", importServices);
 app.route("/", emploiDuTemps);
 app.route("/", annees);
 app.route("/", transferts);
+app.route("/", frais);
 app.route("/", familles);
 app.route("/", delegation);
 app.route("/", securiteComptes);

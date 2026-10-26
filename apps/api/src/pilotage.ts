@@ -1,12 +1,12 @@
 import type { Perimetre, Profil, RequeteSemantique } from "@beile/contracts";
 import type { CouchesNationales } from "@beile/simulation/macro";
-import { NIVEAUX } from "@beile/contracts";
+import { NIVEAUX, TYPES_FAITS_FRAIS } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { ANNEE_COURANTE, ANNEES } from "@beile/simulation/macro";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { calculer, communesDuPerimetre, priorites } from "@beile/simulation/semantique";
 import { communeById, departementById } from "@beile/simulation/territoire";
-import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -28,9 +28,15 @@ export const ROLES_TUTELLE = ["inspecteur", "direction_departementale", "adminis
  * Filtre du flux des faits pour ce profil. Une visite d'inspection se lit entre agents de tutelle : hors tutelle
  * (un chercheur), elle est retirée du flux ET du décompte, sinon « VISITE · CEG X · 10 h 12 » dirait quelle
  * école est inspectée aujourd'hui à qui ne lit pas les visites.
+ *
+ * Les faits de frais, eux, sortent du flux pour tout le monde : un décompte « QUITTANCE_FRAIS · CEG X · 10 h 12 »
+ * par école et par jour serait déjà un état de rapprochement lu depuis le pilotage, alors que la trace n'appartient
+ * qu'au responsable légal et au compte d'administration de l'école (docs/cadrage/FRAIS_SCOLARITE.md).
  */
-export const filtreFluxDuProfil = (profil: Profil) =>
-  profil.habilitations.some((h) => (ROLES_TUTELLE as readonly string[]).includes(h.role)) ? undefined : ne(schema.evenements.type, "VISITE_D_INSPECTION");
+export const filtreFluxDuProfil = (profil: Profil) => and(
+  ...(profil.habilitations.some((h) => (ROLES_TUTELLE as readonly string[]).includes(h.role)) ? [] : [ne(schema.evenements.type, "VISITE_D_INSPECTION")]),
+  notInArray(schema.evenements.type, [...TYPES_FAITS_FRAIS]),
+);
 
 export function perimetrePilotage(profil: Profil): Perimetre {
   const h = profil.habilitations.find((x) => (ROLES_PILOTAGE as readonly string[]).includes(x.role));

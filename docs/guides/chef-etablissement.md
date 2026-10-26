@@ -87,6 +87,21 @@
 - « Exporter » : CSV des lignes affichées, avec le score et le niveau de risque ; la date de naissance devient une classe d'âge et le fichier porte une ligne de provenance.
 - « Imprimer » : état nominatif, feuille d'appel ou PV de conseil, sur la sélection affichée.
 
+### Frais scolaires
+
+`/etablissement/frais` — Déclarez les termes que votre école appelle et enregistrez les pièces que vous avez délivrées. Aucun montant ne passe par BEILE.
+
+- « Déclarer l'appel de l'année » : les termes (jusqu'à quatre), leur date d'exigibilité, le cadre de l'appel en texte libre et la référence de la délibération. La grille tarifaire reste chez vous : BEILE ne la transporte pas et ne la contraint pas.
+- Modifier l'appel ne réécrit pas le passé : la déclaration précédente reste au registre, c'est la nouvelle qui s'affiche.
+- « Situation de l'école » : cinq comptes d'élèves (pièces partout, exonérés, un terme exigible sans pièce, année en cours, aucun appel déclaré), comparés à l'effectif de l'année.
+- « Appel de l'année » : pour chaque terme, une jauge des pièces consignées rapportées à l'effectif — ce sont des comptes de pièces, jamais des sommes.
+- « État par apprenant » : les élèves sans pièce sur un terme exigible viennent en tête ; recherchez par nom pour cibler un élève.
+- « Quittance » : terme, date de délivrance (jamais future), référence portée sur la pièce papier, qualité de l'agent qui a encaissé. Rien n'est encaissé ici — vous consignez une pièce déjà délivrée.
+- Une même référence inscrite pour deux élèves différents est acceptée et signalée : la vigie en est saisie, vérifiez la pièce d'origine.
+- « Exonération » : nature (exonération ou prise en charge par un tiers), portée (un terme ou toute l'année), motif, autorité qui décide, texte de référence. Un statut légitime, pas une anomalie — c'est ainsi que la gratuité des filles dans le secondaire public se consigne.
+- Chaque pièce consignée pour un élève part en notification au responsable légal dont le lien de filiation est vérifié — et à lui seul. Un enseignant, une classe, l'inspection ne reçoivent rien ; la déclaration d'appel de l'année, elle, ne notifie personne.
+- Un terme « attendu » ne bloque ni le bulletin, ni les examens, ni l'accès à l'école : l'absence d'une pièce au registre ne prouve pas un paiement absent.
+
 ### Examens nationaux
 
 `/etablissement/examens` — Vos candidats au CEP, au BEPC et au BAC, et leurs verdicts officiels.
@@ -221,10 +236,10 @@
 
 ### Faire tenir un conseil de passage
 
-> Le conseil décide du passage de chaque élève ; l'application respecte les capacités et ouvre une division si nécessaire. La séance est enregistrée elle aussi : sa date, les membres qui y siègent, la référence du procès-verbal.
+> Le conseil décide du passage de chaque élève ; l'application respecte les capacités et ouvre une division si nécessaire. La séance est enregistrée elle aussi : sa date, les qualités des membres qui y siègent, la référence du procès-verbal.
 
 1. Dans le tableau des classes, touchez « Passage » sur la classe (hors niveau terminal).
-2. Datez la séance — jamais future — et nommez les membres qui y ont siégé : professeur principal, parents délégués, représentant de la tutelle. Ils n'ont pas besoin d'un compte sur la plateforme.
+2. Datez la séance — jamais future — et comptez les membres présents par qualité : professeur principal, parents délégués, représentant de l'inspection… Aucun nom n'est inscrit au registre : les noms restent au procès-verbal.
 3. Portez la référence du procès-verbal si vous en tenez un dans votre registre papier.
 4. Indiquez l'« Année scolaire de réinscription » au format AAAA-AAAA.
 5. Pour chaque élève, touchez le statut pour basculer entre « Admis » (passage au niveau supérieur) et « Maintien » (réinscription dans la classe).
@@ -236,6 +251,42 @@
 1. Ouvrez « Apprenants », puis le dossier de l'élève.
 2. Touchez « Transférer », cherchez la classe d'accueil, cochez la confirmation, puis « Confirmer le transfert ».
 3. Ou touchez « Déclarer un abandon », indiquez le motif, puis « Confirmer l'abandon ».
+
+### Déclarer les termes que l'école appelle
+
+> Sans appel déclaré, aucune pièce ne peut être comparée à votre effectif : l'école consigne, mais ne peut pas vérifier qu'elle n'a rien oublié.
+
+1. Ouvrez « Frais scolaires » dans le menu « Établissement ».
+2. Touchez « Déclarer l'appel de l'année » — ou « Modifier l'appel de l'année » si une déclaration existe déjà.
+3. Choisissez l'année, puis pour chaque terme (jusqu'à quatre) portez sa date d'exigibilité : BEILE ne devine aucune échéance à votre place.
+4. Décrivez le cadre de l'appel avec vos mots — jours d'accueil de l'intendance, régie de recettes, association de parents — dix caractères au minimum.
+5. Portez la référence de la délibération qui autorise l'appel (PV du conseil d'établissement, arrêté) : c'est ce qui permet de retrouver l'acte.
+6. Aucun montant, aucun barème : votre grille tarifaire reste dans votre comptabilité.
+7. Touchez « Enregistrer l'appel ». Modifier la déclaration n'efface pas la précédente : elle reste au registre, et l'écran affiche celle que vous venez de porter.
+
+### Consigner une quittance déjà délivrée
+
+> Une pièce que le parent a reçue et que rien ne rappelle au registre devient litigieuse ; la consigner prend une minute et ferme l'inquiétude des deux côtés.
+
+1. Ouvrez « Frais scolaires », puis retrouvez l'élève dans « État par apprenant » (les élèves sans pièce sur un terme exigible viennent en tête).
+2. Touchez « Quittance » sur sa ligne.
+3. Choisissez le terme : la liste se limite aux termes appelés, et reste libre si aucun appel n'est déclaré.
+4. Indiquez la date de délivrance — jamais future — et la référence portée sur la pièce papier.
+5. Nommez la qualité de l'agent qui a encaissé : comptable public, régisseur de recettes, intendance, ou « autre » en précisant la fonction.
+6. Ne saisissez ni somme ni mode de paiement : vous consignez une pièce existante, BEILE n'encaisse rien.
+7. Touchez « Enregistrer la pièce ». Le responsable légal au lien vérifié en est informé ; l'élève, son enseignant et sa classe ne reçoivent rien.
+8. Si cette référence figure déjà pour un autre élève de l'école la même année, la pièce est enregistrée et un avertissement s'affiche : la vigie en est saisie, vérifiez la pièce d'origine.
+
+### Consigner une exonération ou une prise en charge
+
+> Un élève exonéré n'est pas un élève en anomalie : sans trace, son statut se lit à tort comme un terme attendu.
+
+1. Sur la ligne de l'élève, dans « État par apprenant », touchez « Exonération ».
+2. Choisissez la nature : exonération, ou prise en charge par un tiers.
+3. Portez la portée — un terme précis ou toute l'année.
+4. Décrivez le motif (cinq caractères minimum) : par exemple la gratuité des frais de scolarité des filles dans le secondaire public, décidée en Conseil des ministres le 3 juin 2026.
+5. Nommez l'autorité qui décide et la date de la décision ; ajoutez le texte de référence si vous en avez un (note de service, arrêté).
+6. Touchez « Enregistrer la décision ». La ligne du terme passe à « Exonération enregistrée » chez l'école comme chez le parent, et rien n'est attendu pour cette période ; si tous les termes appelés sont couverts, l'élève passe à « Exonéré ou pris en charge ».
 
 ### Imprimer un état (nominatif, appel, conseil)
 

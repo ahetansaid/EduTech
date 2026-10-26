@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { LIBELLE_ACTE } from "@beile/contracts";
+import { LIBELLE_ACTE, LIBELLE_TERME_FRAIS, type FraisTerme } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { and, eq, gte, inArray } from "drizzle-orm";
 import { base } from "./commun";
@@ -17,10 +17,19 @@ export interface FaitNotifiable { id: string; type: string; apprenantId: string;
  */
 const PERSONNEL = new Set(["ACTE_DISPONIBLE", "ACTE_REMIS", "ACTE_REFUSE", "ALLOCATION_DECIDEE"]);
 
+/**
+ * Une trace de frais regarde le foyer qui paie, personne d'autre. Elle part au seul responsable au lien
+ * vérifié — jamais à l'élève, qui n'a aucun devoir de paiement et dont le téléphone circule en classe
+ * (loi n°2009-09 du 22/05/2009 : protection renforcée des données d'un mineur). La cadence déclarée par
+ * l'école, elle, ne notifie personne : elle n'est pas un fait d'élève, et une alerte collective à toute
+ * l'école par trimestre serait du bruit.
+ */
+const AU_RESPONSABLE_SEUL = new Set(["QUITTANCE_FRAIS", "EXONERATION_FRAIS"]);
+
 const dateFr = (v: unknown) => String(v ?? "").split("-").reverse().join("/");
 
 export async function notifierFaits(faits: FaitNotifiable[]) {
-  const utiles = faits.filter((f) => ["ABSENCE", "EVALUATION", "INSCRIPTION", "CORRECTION_EVALUATION", "CERTIFICATION", "TRANSFERT", "CHANGEMENT_CLASSE", "DECISION_JUSTIFICATION", ...PERSONNEL].includes(f.type));
+  const utiles = faits.filter((f) => ["ABSENCE", "EVALUATION", "INSCRIPTION", "CORRECTION_EVALUATION", "CERTIFICATION", "TRANSFERT", "CHANGEMENT_CLASSE", "DECISION_JUSTIFICATION", ...PERSONNEL, ...AU_RESPONSABLE_SEUL].includes(f.type));
   if (!utiles.length) return;
   const ids = [...new Set(utiles.map((f) => f.apprenantId))];
   const [apprenants, liens] = await Promise.all([
@@ -59,11 +68,15 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
       : f.type === "ACTE_REFUSE" ? [`${acte} : demande refusée`, `Le guichet a refusé cette demande le ${dateFr(f.donnees.refuseLe)}${f.donnees.motif ? ` — motif : ${f.donnees.motif}` : ""}. Un refus ne se rouvre pas : une nouvelle demande se dépose une fois la pièce manquante obtenue.`]
       // Le motif n'est pas repris : il peut être disciplinaire, et un téléphone se partage. L'école l'explique de vive voix.
       : f.type === "CHANGEMENT_CLASSE" ? [`Changement de classe de ${a.prenoms}`, `${a.prenoms} rejoint la classe ${classe ?? ""} dans le même établissement. Ses notes déjà obtenues sont conservées.`]
+      : f.type === "QUITTANCE_FRAIS" ? [`Quittance enregistrée pour ${a.prenoms}`, `L'établissement a consigné la quittance ${String(f.donnees.referenceQuittance ?? "")} pour ${LIBELLE_TERME_FRAIS[f.donnees.terme as FraisTerme] ?? "la période"} (${dateFr(f.donnees.delivreeLe)}). Aucune somme n'est indiquée ici : le montant reste sur la pièce papier et dans la comptabilité de l'école.`]
+      : f.type === "EXONERATION_FRAIS" ? [`${f.donnees.nature === "prise_en_charge" ? "Prise en charge" : "Exonération"} enregistrée pour ${a.prenoms}`, `L'établissement a consigné cette mesure${f.donnees.terme ? ` pour ${LIBELLE_TERME_FRAIS[f.donnees.terme as FraisTerme]}` : " pour l'année entière"} le ${dateFr(f.donnees.decideLe)}. Rien n'est attendu de votre côté pour cette période.`]
       : f.type === "ALLOCATION_DECIDEE" ? [`Décision sur votre allocation ${String(f.donnees.anneeUniversitaire ?? "")}`.trim(), `L'autorité compétente a statué le ${dateFr(f.donnees.decideLe)} sur votre dossier d'allocation. Consultez le statut et la référence du texte dans votre espace. Aucune somme n'est précisée ici : la liquidation reste à l'administration payeuse.`]
       : [`Transfert de ${a.prenoms}`, `Le dossier de ${a.prenoms} a été transféré vers son nouvel établissement, sans ressaisie.`];
     const destinataires = new Set(PERSONNEL.has(f.type)
       ? (a.npi ? [a.npi] : [])
-      : [...liens.filter((l) => l.apprenantId === a.id && l.verifie).map((l) => l.responsableNpi), ...(a.npi ? [a.npi] : [])]);
+      : AU_RESPONSABLE_SEUL.has(f.type)
+        ? liens.filter((l) => l.apprenantId === a.id && l.verifie).map((l) => l.responsableNpi)
+        : [...liens.filter((l) => l.apprenantId === a.id && l.verifie).map((l) => l.responsableNpi), ...(a.npi ? [a.npi] : [])]);
     for (const npi of destinataires) lignes.push({ id: `NOT-${randomUUID()}`, destinataireNpi: npi, titre, texte, evenementId: f.id });
   }
   if (lignes.length) await base().insert(schema.notifications).values(lignes);
