@@ -63,6 +63,8 @@
 - Identité, classe, établissement.
 - Moyenne, évolution, absences, évaluations.
 - Absences à justifier, résultats par matière, dernières notes, parcours.
+- « Frais scolaires » : le statut de l'année, terme par terme, avec la référence et la date de la dernière pièce consignée par l'école. Aucun montant n'apparaît — la somme reste sur le papier que l'établissement vous remet.
+- Un terme marqué « Exigible, aucune pièce à ce jour » ne bloque ni le bulletin, ni les examens, ni l'accès à l'école.
 
 ### Notifications
 
@@ -110,6 +112,12 @@ Un sélecteur avec leurs prénoms apparaît en haut de l'écran « Mes enfants �
 
 **L'absence reste « Transmise ».**  
 L'établissement doit valider votre justificatif. Elle passera ensuite à « Justifiée ».
+
+**L'absence d'une pièce au registre veut-elle dire que je n'ai pas payé ?**  
+Non. BEILE ne garde que la trace des quittances que l'école y consigne : un paiement fait et reçu mais non enregistré affiche « aucune pièce à ce jour ». Reportez-vous à l'intendance avec la référence de votre quittance ; l'école consignera la pièce, et vous en serez informé. En attendant, rien n'est bloqué : ni le bulletin, ni les examens, ni l'accès à l'école.
+
+**L'écran n'affiche aucun montant.**  
+C'est voulu. Les sommes ne circulent pas dans BEILE : elles restent sur la pièce papier et dans la comptabilité de l'établissement. Pour toute question de montant, adressez-vous à l'intendance de l'école.
 
 **BEILE fonctionne-t-il sur un téléphone ?**  
 Oui. Tous les écrans s'adaptent au téléphone, à la tablette et à l'ordinateur. Les espaces enseignant, famille et apprenant sont pensés d'abord pour le téléphone.

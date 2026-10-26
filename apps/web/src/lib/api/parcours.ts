@@ -1,7 +1,7 @@
 "use client";
 
 import { rafraichir } from "@/lib/economie";
-import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification } from "@beile/contracts";
+import type { Apprenant, Certificat, Classe, Evenement, Matiere, ResultatVerification, SituationFrais } from "@beile/contracts";
 import { MATIERES, NOM_DIPLOME_ATTESTE } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire, requete } from "@/lib/http";
@@ -24,6 +24,11 @@ export interface Dossier {
   evenements: EvenementDossier[];
   certificats: Certificat[];
   etablissements: Record<string, string>;
+  /**
+   * Situation des frais de l'année courante, recalculée par l'API. Présente seulement quand la finalité de la
+   * lecture l'autorise (`suivi_familial`, `gestion`) : un enseignant qui ouvre un dossier reçoit `null`.
+   */
+  frais: SituationFrais | null;
 }
 
 /* ================================================================== Hooks */

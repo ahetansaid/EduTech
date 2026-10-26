@@ -2,7 +2,7 @@
 
 import {
   ArrowRightLeft, Award, Bell, BookOpenCheck, CalendarCheck, CalendarX2, Check, ChevronDown, ChevronRight, Fingerprint, GraduationCap,
-  History, Lock, NotebookPen, Printer, RefreshCw, School, Send, ShieldAlert, Sigma, TrendingUp, UserRound, X, type LucideIcon,
+  History, Lock, NotebookPen, Printer, Receipt, RefreshCw, School, Send, ShieldAlert, Sigma, TrendingUp, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -18,6 +18,10 @@ import {
   absencesParJour, ageAu, initiales, jalonsParcours, libelleTrimestre, nomComplet, syntheseScolaire, useEnfants, useJustifierAbsenceMutation,
   type Dossier, type JourAbsence, type TypeJalon,
 } from "@/lib/api/parcours";
+import { LIBELLE_TERME_FRAIS } from "@beile/contracts";
+import {
+  LIBELLE_ETAT_TERME, LIBELLE_STATUT_FRAIS, TON_ETAT_TERME, TON_STATUT_FRAIS, decrireMesure, decrireQuittance,
+} from "@/lib/api/frais";
 import { bulletinDepuisDossier } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
 import { date, dateLongue, nombre } from "@/lib/format";
@@ -151,6 +155,7 @@ function FicheEnfant({ d }: { d: Dossier }) {
       <WidgetEcheances nombre={3} />
       <Resultats s={s} onBulletin={s.courant != null ? () => setBulletinOuvert(true) : undefined} />
       <DernieresNotes s={s} />
+      <Frais d={d} />
       <Parcours d={d} />
 
       {bulletinOuvert && tBulletin != null && (
@@ -247,6 +252,55 @@ function DernieresNotes({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
           <ChevronDown size={15} className={cn("transition-transform", tout && "rotate-180")} aria-hidden />
         </button>
       )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ Frais scolaires */
+
+/**
+ * Ce que l'école a consigné : l'appel qu'elle a déclaré, les quittances enregistrées, les exonérations. Jamais un
+ * montant — BEILE ne transporte que la trace d'une pièce existante. Et un statut se lit : il ne suspend rien.
+ * La carte n'apparaît que si la finalité de la lecture admet ces faits (`suivi_familial`).
+ */
+function Frais({ d }: { d: Dossier }) {
+  const f = d.frais;
+  if (!f) return null;
+  return (
+    <Card data-guide="famille-frais" className="min-w-0">
+      <CardHeader icon={Receipt} title="Frais scolaires" subtitle={`Année ${f.anneeScolaire} · BEILE ne montre aucun montant : la somme reste sur la pièce remise par l'école`} />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <BadgePoint ton={TON_STATUT_FRAIS[f.statut]}>{LIBELLE_STATUT_FRAIS[f.statut]}</BadgePoint>
+        {f.statut === "attendu" && <span className="text-xs text-ink-muted">Cela ne bloque ni le bulletin, ni les examens, ni l&apos;accès à l&apos;école.</span>}
+      </div>
+      {f.cadence ? (
+        <p className="mb-3 rounded-md bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">
+          {f.cadence.cadre}
+          <span className="mt-0.5 block text-xs text-ink-muted">Appel déclaré le {date(f.cadence.declareeLe)}{f.cadence.referenceDeliberation ? ` · délibération ${f.cadence.referenceDeliberation}` : ""}</span>
+        </p>
+      ) : (
+        <p className="mb-3 rounded-md bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">
+          L&apos;école n&apos;a pas déclaré l&apos;appel de l&apos;année {f.anneeScolaire}. {f.termes.length ? "Les pièces déjà consignées apparaissent ci-dessous." : "Rien n'y est encore consigné : le registre ne dit pas ce que l'école attend de vous, il dit seulement ce qu'elle a enregistré. Pour la somme et les dates, voyez l'intendance."}
+        </p>
+      )}
+      {f.termes.length === 0 ? (
+        <div className="flex items-center gap-3 rounded-lg bg-info-bg px-4 py-3 text-sm text-info"><Check size={17} aria-hidden /> Aucune pièce et aucun appel enregistrés pour cette année.</div>
+      ) : (
+        <ul className="divide-y divide-line">
+          {f.termes.map((t) => (
+            <li key={t.terme} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2.5">
+              <span className="text-sm font-medium text-ink">
+                {LIBELLE_TERME_FRAIS[t.terme]}
+                {t.exigibleLe && <span className="ml-1.5 text-xs font-normal text-ink-muted">exigible le {date(t.exigibleLe)}</span>}
+              </span>
+              <BadgePoint ton={TON_ETAT_TERME[t.etat]}>{LIBELLE_ETAT_TERME[t.etat]}</BadgePoint>
+              {t.quittance && <p className="w-full text-xs text-ink-2">{decrireQuittance(t.quittance)}</p>}
+              {t.mesure && <p className="w-full text-xs text-ink-2">{decrireMesure(t.mesure)}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-xs text-ink-muted">L&apos;absence d&apos;une pièce au registre ne prouve pas un paiement absent. Si vous détenez un papier que l&apos;école n&apos;a pas consigné, signalez-le à l&apos;intendance.</p>
     </Card>
   );
 }

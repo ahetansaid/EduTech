@@ -52,10 +52,36 @@ const Base = z.object({
   auteurId: z.string(),
   source: SourceDonnee,
   etablissementId: z.string().nullable(),
+  /** Clé d'idempotence de la saisie : un repère technique du registre, jamais une donnée métier. */
+  idSaisie: z.string().optional(),
 });
 
 export const Examen = z.enum(["CEP", "BEPC", "BAC"]);
 export type Examen = z.infer<typeof Examen>;
+
+/**
+ * Terme d'appel des frais scolaires. Quatre valeurs, aucune n'est un montant : l'établissement choisit les
+ * termes qu'il appelle et leur date d'exigibilité, et c'est toute la souplesse que le registre national
+ * avait à offrir (« on ne contraint pas le standard, on permet de l'adapter »).
+ */
+export const FraisTerme = z.enum(["T1", "T2", "T3", "ANNEE"]);
+export type FraisTerme = z.infer<typeof FraisTerme>;
+export const LIBELLE_TERME_FRAIS: Record<FraisTerme, string> = {
+  T1: "1er terme", T2: "2e terme", T3: "3e terme", ANNEE: "Annualité",
+};
+
+/**
+ * Qualité de celui qui a encaissé, d'après le RGCP (décret n°2014-571 du 07/10/2014) : l'article 27 organise
+ * les régies de recettes auprès d'un ordonnateur « pour le compte d'un comptable public », et l'article 50
+ * attache la quittance au versement. `intendance` reste ouverte parce que le texte ne nomme pas les services
+ * d'un collège ; la ligne ne prétend donc pas décrire un organigramme, elle décrit une responsabilité.
+ */
+export const QualiteAgentEncaisseur = z.enum(["comptable_public", "regisseur_de_recettes", "intendance", "autre"]);
+export type QualiteAgentEncaisseur = z.infer<typeof QualiteAgentEncaisseur>;
+export const LIBELLE_AGENT_ENCAISSEUR: Record<QualiteAgentEncaisseur, string> = {
+  comptable_public: "Comptable public", regisseur_de_recettes: "Régisseur de recettes",
+  intendance: "Intendance", autre: "Autre agent désigné",
+};
 
 export const Evenement = z.discriminatedUnion("type", [
   Base.extend({
@@ -489,9 +515,75 @@ export const Evenement = z.discriminatedUnion("type", [
     autorite: z.enum(["dbau", "mesrs"]),
     intitule: z.string(),
   }),
+
+  /* -------------------------------------------------- Frais scolaires.
+   * Aucun montant, aucun échéancier chiffré, aucun RIB : la somme reste sur la pièce papier et dans la
+   * comptabilité de l'établissement. Ce que le registre redit tient dans ce que la quittance contient déjà —
+   * une référence, une date, la qualité de qui a encaissé (RGCP, art. 50 et 27). La colonne `type` de
+   * `ledger.evenements` étant un texte libre, ces trois membres ne demandent aucune migration.
+   *
+   * Un statut, jamais une sanction : « attendu » ne suspend ni bulletin, ni examen, ni accès à l'école. Et
+   * l'absence de pièce enregistrée n'est pas la preuve d'un paiement absent — la loi n°2009-09 du 22 mai 2009
+   * entoure les données d'un mineur d'une protection renforcée, ce qui interdit de transformer une trace
+   * comptable en étiquette scolaire.
+   */
+
+  /** Déclaration de l'école : les termes qu'elle appelle pour l'année et quand ils sont exigibles. */
+  Base.extend({
+    type: z.literal("CADENCE_FRAIS"),
+    etablissementId: z.string(),
+    anneeScolaire: z.string(),
+    termes: z.array(z.object({
+      terme: FraisTerme,
+      /** Date d'exigibilité déclarée par l'école — le registre ne devine aucune échéance à sa place. */
+      exigibleLe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).strict()).min(1).max(4),
+    /** Comment on paie ici, en texte d'agent (jours d'accueil de l'intendance, régie, APE…). */
+    cadre: z.string().trim().min(10).max(400),
+    /** Délibération du conseil d'administration, arrêté… : de quoi retrouver l'acte qui autorise l'appel. */
+    referenceDeliberation: z.string().trim().max(120).nullable(),
+  }).strict(),
+  /** Une quittance délivrée à un élève pour un terme. La référence est la preuve : elle est exigée. */
+  Base.extend({
+    type: z.literal("QUITTANCE_FRAIS"),
+    apprenantId: z.string(),
+    etablissementId: z.string(),
+    anneeScolaire: z.string(),
+    terme: FraisTerme,
+    delivreeLe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    referenceQuittance: z.string().trim().min(3).max(60),
+    /** Clé de rapprochement calculée par le serveur (casse/espaces/ponctuation retirées) : jamais une donnée saisie. */
+    referenceNormalisee: z.string().optional(),
+    qualiteAgent: QualiteAgentEncaisseur,
+    /** Nom ou fonction de l'agent, requis seulement hors les qualités nommées ci-dessus. */
+    agent: z.string().trim().max(80).nullable(),
+    // `.strict()` ici n'est pas un détail de style : c'est ce qui empêche un montant, un RIB ou un moyen de
+    // paiement d'entrer dans la charge utile d'un fait de frais, par quelque point d'écriture que ce soit.
+  }).strict(),
+  /** Exonération ou prise en charge : un statut légitime (gratuité des filles dans le secondaire public, 03/06/2026). */
+  Base.extend({
+    type: z.literal("EXONERATION_FRAIS"),
+    apprenantId: z.string(),
+    etablissementId: z.string(),
+    anneeScolaire: z.string(),
+    /** null quand la mesure couvre l'année entière. */
+    terme: FraisTerme.nullable(),
+    nature: z.enum(["exoneration", "prise_en_charge"]),
+    motif: z.string().trim().min(5).max(300),
+    autorite: z.string().trim().min(3).max(120),
+    referenceTexte: z.string().trim().max(160).nullable(),
+    decideLe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).strict(),
 ]);
 export type Evenement = z.infer<typeof Evenement>;
 export type TypeEvenement = Evenement["type"];
+
+/**
+ * Les trois faits de frais. Ils ne sortent jamais d'une lecture générale du dossier : seule une finalité
+ * `suivi_familial` (le responsable qui paie) ou `gestion` (l'administration de l'école) les fait redescendre.
+ */
+export const TYPES_FAITS_FRAIS = ["CADENCE_FRAIS", "QUITTANCE_FRAIS", "EXONERATION_FRAIS"] as const;
+export type TypeFaitFrais = (typeof TYPES_FAITS_FRAIS)[number];
 
 /** Distributive Omit : conserve le discriminant de chaque membre de l'union. */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

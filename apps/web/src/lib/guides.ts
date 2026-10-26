@@ -465,6 +465,12 @@ export const GUIDES: Guide[] = [
         texte: "Chaque barre montre la moyenne sur 20. Le petit trait rappelle le trimestre précédent.",
       },
       {
+        cible: "famille-frais",
+        titre: "Frais scolaires : la trace d'une pièce, jamais un montant",
+        texte: "L'école consigne ici les quittances qu'elle vous a délivrées et les exonérations qu'elle a décidées. Les sommes n'existent pas dans BEILE : elles restent sur le papier et dans la comptabilité de l'école.",
+        pourquoi: "Un terme sans pièce enregistrée ne prouve pas un paiement absent — et ne bloque ni le bulletin, ni les examens, ni l'accès à l'école.",
+      },
+      {
         cible: "famille-direct",
         titre: "Toujours à jour",
         texte: "Les informations se mettent à jour seules. Touchez ce bouton pour actualiser tout de suite.",
