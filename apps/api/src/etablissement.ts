@@ -378,6 +378,9 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
   const ids = saisie.decisions.map((d) => d.apprenantId);
   await inscrireAuRegistre(faits, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`conseil:${classeId}`}))`);
+    // Verrou de chaque élève (ordre trié : pas d'interblocage entre deux conseils), le même que les transferts et
+    // changements de classe : un transfert accepté ou imposé au même instant ne croise pas la réinscription.
+    for (const a of [...ids].sort()) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`placement:${a}`}))`);
     const [{ n } = { n: 0 }] = (await tx.execute(sql`select count(*)::int n from core.scolarites where classe_id = ${classeId} and apprenant_id in ${ids}`)) as unknown as { n: number }[];
     if (n !== ids.length) throw new HTTPException(409, { message: "Ce conseil vient d'être enregistré : la classe a déjà changé" });
     if (nouvellesClasses.length) await tx.insert(schema.classes).values(nouvellesClasses);
@@ -407,7 +410,12 @@ etablissement.post("/apprenants/:id/abandon", authentifie, async (c) => {
   const { motif } = await corps(c, z.object({ motif: z.string().trim().min(5).max(200) }).strict());
   const { profil, sco } = await chefDeLApprenant(c, apprenantId);
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, sco.classeId!));
-  const [id] = await inscrireAuRegistre([{ type: "ABANDON", auteurId: profil.id, etablissementId: sco.etablissementId, apprenantId, donnees: { apprenantId, anneeScolaire: classe?.anneeScolaire ?? "", motif } }]);
+  const [id] = await inscrireAuRegistre([{ type: "ABANDON", auteurId: profil.id, etablissementId: sco.etablissementId, apprenantId, donnees: { apprenantId, anneeScolaire: classe?.anneeScolaire ?? "", motif } }], async (tx) => {
+    // Sous le verrou de l'élève (celui des transferts) : relu dans la transaction, il est toujours ici et scolarisé.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`placement:${apprenantId}`}))`);
+    const [actuelle] = await tx.select({ statut: schema.scolarites.statut, etablissementId: schema.scolarites.etablissementId }).from(schema.scolarites).where(eq(schema.scolarites.apprenantId, apprenantId));
+    if (actuelle?.statut !== "scolarise" || actuelle.etablissementId !== sco.etablissementId) throw new HTTPException(409, { message: "La situation de l'élève a changé entre-temps (transfert ou sortie) : rechargez la page" });
+  });
   await journaliser(profil, "Déclaration d'abandon", apprenantId, "gestion", true, null);
   return c.json({ enregistre: id }, 201);
 });
