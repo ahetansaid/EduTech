@@ -54,8 +54,13 @@ function clefsMontant(j: unknown, chemin = ""): string[] {
   });
   return [];
 }
-/** Une réponse qui porterait une devise (FCFA, francs CFA, euro) dans l'un de ses textes aurait trahi le cadrage. */
-const deviseDansLeTexte = (j: unknown): number => JSON.stringify(j ?? null).toLowerCase().split(/[",]/).filter((s) => /(^|[^a-z])(fcfa|francs cfa|f\.c\.f|euros?|€)([^a-z]|$)/.test(s)).length;
+/**
+ * Une réponse qui porterait une devise (CFA, francs CFA, euro, dollar) dans l'un de ses textes aurait trahi le
+ * cadrage. Le juge ne peut pas être plus souple que la règle : la liste reprend celle de `DEVISE` (`commun.ts`),
+ * mêmes bornes de mot, mêmes symboles — une réponse que `sansSomme` refuserait à l'écriture doit lever ici.
+ */
+const DEVISE_SCAN = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|francs? cfa|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]/gi;
+const deviseDansLeTexte = (j: unknown): number => (JSON.stringify(j ?? null).match(DEVISE_SCAN) ?? []).length;
 
 titre("Authentification");
 const anonyme = new Session();
@@ -363,6 +368,20 @@ verifier("Enseignant → déclarer la cadence d'une école", (await enseignant!.
 verifier("Sans session → consigner une quittance", (await anonyme.appel("POST", "/apprenants/APP-000001/frais/quittance", essaiPiece)).statut, 401);
 verifier("Sans session → consigner une exonération", (await anonyme.appel("POST", "/apprenants/APP-000001/frais/exoneration", essaiMesure)).statut, 401);
 verifier("Sans session → déclarer la cadence d'une école", (await anonyme.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: essaiPiece.anneeScolaire, termes: [{ terme: "T1", exigibleLe: AUJOURDHUI }], cadre: "Acquittement à l'intendance du collège.", referenceDeliberation: null, cle: randomUUID() })).statut, 401);
+// La réclamation « j'ai payé, rien n'est enregistré » se dépose au nom de l'enfant, par le responsable légal au
+// lien vérifié. L'école elle-même ne dépose pas à la place de la famille : ce serait effacer la contradiction qui
+// fait tout l'intérêt du rapprochement. Ces cas ne demandent qu'un refus, donc n'écrivent rien.
+const essaiReclamation = { anneeScolaire: String(vueEcole.json?.anneeScolaire ?? "2026-2027"), terme: "T1", texte: "Quittance remise à l'intendance du collège, aucune trace n'apparaît au registre." };
+verifier("Sans session → déposer une réclamation", (await anonyme.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/reclamation`, essaiReclamation)).statut, 401);
+verifier("Enseignant → déposer une réclamation pour un élève de sa classe", (await enseignant!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/reclamation`, essaiReclamation)).statut, 403);
+verifier("Enseignant → réclamation sur un élève inexistant : même refus, rien n'est dénombrable", (await enseignant!.appel("POST", "/apprenants/APP-999999/frais/reclamation", essaiReclamation)).statut, 403);
+verifier("Inspection → déposer une réclamation pour un élève de son périmètre", (await inspecteur!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/reclamation`, essaiReclamation)).statut, 403);
+verifier("Administration de l'école → elle n'écrit pas la réclamation à la place de la famille", (await directrice!.appel("POST", "/apprenants/APP-999999/frais/reclamation", essaiReclamation)).statut, 403);
+verifier("L'élève lui-même → sa propre réclamation de frais", (await apprenante!.appel("POST", `/apprenants/${monIdEleve}/frais/reclamation`, essaiReclamation)).statut, 403);
+verifier("Parent → réclamation pour un élève qui n'est pas le sien : même refus", (await parent!.appel("POST", "/apprenants/APP-999999/frais/reclamation", essaiReclamation)).statut, 403);
+verifier("Texte de réclamation nommant une devise → 422, rien n'est écrit", (await parent!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/reclamation`, { ...essaiReclamation, texte: "J'ai versé 15 000 FCFA à l'intendance, aucune quittance au registre." })).statut, 422);
+verifier("Texte trop court pour décrire une pièce → 422", (await parent!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/reclamation`, { ...essaiReclamation, texte: "Payé." })).statut, 422);
+verifier("Réclamation portant un montant → refusée par le contrat", (await parent!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/reclamation`, { ...essaiReclamation, montant: 15000 })).statut, 422);
 if (vueEcole.statut === 200 && vueEcole.json?.anneeScolaire) {
   verifier("Quittance portant un montant → refusée par le contrat", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), montant: 15000 })).statut, 422);
   verifier("Appel déclarant une somme par terme → refusé par le contrat", (await directrice!.appel("POST", `/etablissements/${PILOTE}/frais/cadence`, { anneeScolaire: essaiPiece.anneeScolaire, termes: [{ terme: "T1", exigibleLe: AUJOURDHUI, montant: 15000 }], cadre: "Acquittement à l'intendance du collège, trois termes.", referenceDeliberation: null, cle: randomUUID() })).statut, 422);
@@ -499,7 +518,10 @@ if (ECRITURES) {
     const lignes = liste(etat.json?.lignes);
     const cible = lignes.find((l) => String(l.apprenantId) === String(propose?.apprenantId ?? "")) ?? null;
     const autre = lignes.find((l) => l !== cible && !l.horsEffectif);
-    const marque = Date.now().toString(36).toUpperCase().slice(-5);
+    // Marqueur chiffré, et uniquement chiffré : il se glisse dans des textes que la route scanne (référence
+    // d'une pièce, texte d'une réclamation, motif d'une réponse). Une lettre pourrait y composer un nom de
+    // devise au hasard — « CFA » tient en base 36 — et le refus deviendrait un tirage. Des chiffres ne le peuvent pas.
+    const marque = String(Date.now()).slice(-9);
     // Le cadre est du texte d'agent : comment on paie dans CETTE école. Ni somme ni devise — la recette le
     // vérifie plus bas sur la réponse entière, et le contrat refuserait la clé à l'écriture.
     const CADRE = "Droits tenus à l'intendance du collège, ou auprès du régisseur de recettes, contre pièce numérotée.";
@@ -561,6 +583,31 @@ if (ECRITURES) {
         verifier("Lecture famille non jouée : l'élève saisi n'est rattaché à aucun compte parent testé", rattaches.has(id), false);
       }
 
+      // 3ter) La réclamation, jouée au moment où elle a un sens : l'élève est exactement `attendu` sur T1, aucune
+      //     pièce au registre. Ce que l'école ne peut PAS faire, c'est la clore par un avis — la réponse `valide`
+      //     exige la pièce consignée. Sans ce verrou, la réclamation deviendrait une promesse de paiement et le
+      //     rapprochement un mot. L'ordre des gardes compte : l'autorisation d'abord, le domaine ensuite.
+      let reclamation: string | null = null;
+      if (rattaches.has(id)) {
+        const depot = await parent!.appel("POST", `/apprenants/${id}/frais/reclamation`, { anneeScolaire: annee, terme: "T1", texte: `Quittance remise à l'intendance le ${AUJOURDHUI}, numéro ${marque} au carnet de reçus.` });
+        reclamation = /^DEM-/.test(String(depot.json?.id ?? "")) ? String(depot.json?.id) : null;
+        verifier("Famille → « j'ai payé, rien n'est enregistré »", depot.statut === 201 && reclamation !== null, true, `${depot.statut} · ${String(depot.json?.id ?? "aucun identifiant")}`);
+        const rejoue = await parent!.appel("POST", `/apprenants/${id}/frais/reclamation`, { anneeScolaire: annee, terme: "T1", texte: "Second envoi : la réponse du premier s'est perdue en route." });
+        verifier("Dépôt rejoué : la demande existante est rendue, pas empilée", rejoue.statut === 200 && rejoue.json?.deja === true && String(rejoue.json?.id ?? "") === String(reclamation ?? ""), true, String(rejoue.json?.id ?? rejoue.statut));
+        verifier("Réclamation sur un terme que l'école n'a pas appelé → 422", (await parent!.appel("POST", `/apprenants/${id}/frais/reclamation`, { anneeScolaire: annee, terme: "ANNEE", texte: "L'année entière a été réglée à l'intendance, rien n'apparaît." })).statut, 422);
+        if (reclamation) {
+          verifier("Un enseignant ne statue pas sur la réclamation d'un élève", (await enseignant!.appel("POST", `/demandes/${reclamation}/decision`, { decision: "refuse", motif: "Aucune pièce n'a été retrouvée au cahier de l'intendance." })).statut, 403);
+          verifier("Réponse de l'école nommant une devise → 422, rien n'est écrit", (await directrice!.appel("POST", `/demandes/${reclamation}/decision`, { decision: "refuse", motif: "Pièce de 15 000 FCFA introuvable au cahier de l'intendance." })).statut, 422);
+          verifier("Réponse trop courte → 422 : une famille n'obtient pas un silence", (await directrice!.appel("POST", `/demandes/${reclamation}/decision`, { decision: "refuse", motif: "Non." })).statut, 422);
+          verifier("Renvoyer la réclamation à son dépôt → 422, aucune file ne la présente", (await directrice!.appel("POST", `/demandes/${reclamation}/decision`, { decision: "renvoye", motif: "À redéposer avec le papier original de la quittance." })).statut, 422);
+          verifier("Reconnaître sans pièce au registre → 422 : la réclamation ne se clos pas par un avis", (await directrice!.appel("POST", `/demandes/${reclamation}/decision`, { decision: "valide", motif: "La famille est de bonne foi, nous la croyons sur parole." })).statut, 422);
+        } else {
+          verifier("Gardes de la réponse non jouées : le dépôt de la réclamation a échoué", depot.statut === 201, true, `${depot.statut} · ${String(depot.json?.message ?? "")}`);
+        }
+      } else {
+        verifier("Réclamation non jouée : l'élève saisi n'est rattaché à aucun compte parent testé", rattaches.has(id), false);
+      }
+
       // 4) La quittance, son idempotence, et le destinataire de la trace.
       const nonLuesAvant = Number(((await parent!.appel("GET", "/moi/notifications")).json as { nonLues?: number } | undefined)?.nonLues ?? 0);
       const clePiece = randomUUID();
@@ -587,6 +634,29 @@ if (ECRITURES) {
         verifier("Aucune trace de pièce sur le téléphone de l'élève", notifEleve.statut === 200 && textes.every((t) => !/quittance|frais|exonération|prise en charge/i.test(t)), true, `${textes.length} notification(s) lue(s)`);
       } else {
         verifier("Téléphone de l'élève non comparé : l'élève saisi est un autre compte que l'apprenante testée", id !== monIdEleve, true, `${id} · ${monIdEleve}`);
+      }
+
+      // 4bis) La pièce est au registre : la réclamation peut enfin être close en `valide`, et c'est la seule voie
+      //     qui la ferme ainsi. La réponse part en notification écrite à la famille — sans somme, comme partout
+      //     ailleurs dans BEILE. Et sa visibilité ne s'élargit pas : l'enseignant ne la lit pas plus qu'il ne la
+      //     statue, la famille qui l'a déposée en lit le détail et l'historique des décisions.
+      if (reclamation && rattaches.has(id)) {
+        verifier("Un enseignant ne lit pas la réclamation d'un élève", (await enseignant!.appel("GET", `/demandes/${reclamation}`)).statut, 403);
+        const nonLuesAvantReponse = Number(((await parent!.appel("GET", "/moi/notifications")).json as { nonLues?: number } | undefined)?.nonLues ?? 0);
+        const close = await directrice!.appel("POST", `/demandes/${reclamation}/decision`, { decision: "valide", motif: `Quittance ${marque} retrouvée au cahier de l'intendance et consignée ce jour.` });
+        verifier("Pièce consignée → la réclamation est close, reconnue par l'école", close.statut === 200 && close.json?.statut === "acceptee", true, String(close.json?.statut ?? close.statut));
+        const nonLuesApresReponse = Number(((await parent!.appel("GET", "/moi/notifications")).json as { nonLues?: number } | undefined)?.nonLues ?? 0);
+        verifier("La réponse part en notification à la famille qui a déposé", nonLuesApresReponse > nonLuesAvantReponse, true, `${nonLuesAvantReponse} → ${nonLuesApresReponse} non lue(s)`);
+        const detail = await parent!.appel("GET", `/demandes/${reclamation}`);
+        verifier("La famille lit le détail de sa réclamation et les décisions rendues", detail.statut === 200 && liste(detail.json?.decisions).length >= 1 && clefsMontant(detail.json).length + deviseDansLeTexte(detail.json) === 0, true, `${liste(detail.json?.decisions).length} décision(s)`);
+        const relueFamille = await parent!.appel("GET", `/apprenants/${id}/frais`);
+        const miennes = liste(relueFamille.json?.reclamations);
+        verifier("La famille relit sa réclamation close et la réponse écrite de l'école", relueFamille.statut === 200 && miennes.some((x) => String(x.id) === reclamation && String(x.statut) === "acceptee" && String((x.reponse as { motif?: string | null } | null)?.motif ?? "").includes(marque)), true, `${miennes.length} réclamation(s) rendue(s)`);
+        verifier("Aucun montant dans les réclamations relues par la famille", miennes.length > 0 && clefsMontant(miennes).length + deviseDansLeTexte(miennes) === 0, true, `${miennes.length} réclamation(s) · ${clefsMontant(miennes).join(", ")}`);
+        const relueEcole = await directrice!.appel("GET", `/etablissements/${PILOTE}/frais?anneeScolaire=${encodeURIComponent(annee)}`);
+        const siennes = liste(relueEcole.json?.reclamations);
+        verifier("L'école relit la réclamation close, le nom de l'élève y est joint", siennes.some((x) => String(x.id) === reclamation && String(x.nomApprenant ?? "") === String(cible.nom ?? "")), true, `${siennes.length} réclamation(s) à l'écran de l'école`);
+        verifier("Aucun montant dans l'état de l'école après la réclamation", relueEcole.statut === 200 && clefsMontant(relueEcole.json).length + deviseDansLeTexte(relueEcole.json) === 0, true, `${siennes.length} réclamation(s) · ${liste(relueEcole.json?.lignes).length} ligne(s)`);
       }
 
       // 5) La vigie — seul contrôle anti-détournement possible sans montants : une même référence sur deux élèves,

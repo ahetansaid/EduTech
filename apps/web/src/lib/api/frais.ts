@@ -1,6 +1,6 @@
 "use client";
 
-import { LIBELLE_AGENT_ENCAISSEUR, LIBELLE_TERME_FRAIS, type CouvertureTerme, type DeclarationCadence, type FraisTerme, type LigneFraisEcole, type QualiteAgentEncaisseur, type StatutFrais } from "@beile/contracts";
+import { LIBELLE_AGENT_ENCAISSEUR, LIBELLE_TERME_FRAIS, type CouvertureTerme, type DeclarationCadence, type FraisTerme, type LigneFraisEcole, type QualiteAgentEncaisseur, type ReclamationFrais, type SituationFrais, type StatutFrais } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
 import { date } from "@/lib/format";
@@ -35,13 +35,23 @@ export interface EtatFraisEcole {
   horsEffectif: number;
   totaux: Partial<Record<StatutFrais, number>>;
   parTerme: { terme: FraisTerme; libelle: string; exigibleLe: string; couvertes: number; exonerees: number; attendues: number; aVenir: number }[];
+  /** Réclamations déposées par les familles pour les élèves de l'année lue — à instruire depuis cet écran. */
+  reclamations: ReclamationFrais[];
   /** Lignes correspondant à la recherche, avant troncature. */
   trouves: number;
   tronque: boolean;
   lignes: LigneFraisEcole[];
 }
 
-export type { CouvertureTerme, DeclarationCadence, LigneFraisEcole, StatutFrais };
+/** GET /apprenants/:id/frais — la même situation, lue pour un enfant (finalité décidé par l'ABAC). */
+export interface FraisApprenant {
+  apprenantId: string;
+  anneeScolaire: string | null;
+  situation: SituationFrais | null;
+  reclamations: ReclamationFrais[];
+}
+
+export type { CouvertureTerme, DeclarationCadence, LigneFraisEcole, ReclamationFrais, SituationFrais, StatutFrais };
 export { LIBELLE_AGENT_ENCAISSEUR, LIBELLE_TERME_FRAIS };
 export const TERMES_FRAIS: FraisTerme[] = ["T1", "T2", "T3", "ANNEE"];
 export const QUALITES_AGENT: QualiteAgentEncaisseur[] = ["comptable_public", "regisseur_de_recettes", "intendance", "autre"];
@@ -84,6 +94,7 @@ const e = encodeURIComponent;
 export const clesFrais = {
   tout: ["frais"] as const,
   ecole: (id: string, annee: string | null, recherche: string | null) => ["frais", "etablissement", id, annee ?? "", recherche ?? ""] as const,
+  apprenant: (id: string) => ["frais", "apprenant", id] as const,
 };
 
 export function useFraisEcole(id: string | null, anneeScolaire?: string | null, recherche?: string | null) {
@@ -97,6 +108,18 @@ export function useFraisEcole(id: string | null, anneeScolaire?: string | null, 
       return lire<EtatFraisEcole>(`/etablissements/${e(id!)}/frais${url ? `?${url}` : ""}`, signal);
     },
     enabled: !!id,
+  });
+}
+
+/**
+ * Situation des frais d'un élève, lue pour la famille (ou par l'administration de son école). La réponse porte
+ * aussi les réclamations déjà déposées et la dernière réponse de l'école : un seul appel, un seul écran.
+ */
+export function useFraisApprenant(apprenantId: string | null) {
+  return useQuery({
+    queryKey: clesFrais.apprenant(apprenantId ?? "-"),
+    queryFn: ({ signal }) => lire<FraisApprenant>(`/apprenants/${e(apprenantId!)}/frais`, signal),
+    enabled: !!apprenantId,
   });
 }
 
@@ -152,6 +175,38 @@ export function useExonerationMutation(apprenantId: string) {
   });
 }
 
+export interface CorpsReclamation { anneeScolaire: string; terme: FraisTerme | null; texte: string }
+
+/**
+ * Déposer « j'ai payé, rien n'est enregistré ». Le corps ne porte ni somme, ni `cle` : la route refuse une
+ * devise dans le texte et une réclamation vivante pour le même élève, la même année et le même terme est
+ * rendue telle quelle (`deja: true`) plutôt qu'empilée.
+ */
+export function useReclamationMutation(apprenantId: string) {
+  const invalider = useInvaliderFrais();
+  return useMutation({
+    mutationFn: (v: CorpsReclamation) => ecrire<{ id: string; echeance?: string; deja?: boolean; statut?: string }>(
+      `/apprenants/${e(apprenantId)}/frais/reclamation`, { anneeScolaire: v.anneeScolaire, ...(v.terme ? { terme: v.terme } : {}), texte: v.texte }),
+    onSuccess: invalider,
+  });
+}
+
+/**
+ * Réponse de l'école, par le moteur de circuits : `valide` ferme la réclamation (et l'API l'exige — la pièce
+ * doit être consignée AVANT), `refuse` la ferme avec un motif écrit. `renvoye` est refusé par la route.
+ */
+export function useStatuerReclamationMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; decision: "valide" | "refuse"; motif: string }) =>
+      ecrire<{ demandeId: string; decision: string; etape: string; statut: string }>(`/demandes/${e(v.id)}/decision`, { decision: v.decision, motif: v.motif }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: clesFrais.tout });
+      client.invalidateQueries({ queryKey: ["demandes"] });
+    },
+  });
+}
+
 /* ================================================================== Affichage */
 
 /** La pièce d'un terme, réduite à ce qui est légal à afficher : référence, date, qualité de qui l'a délivrée. */
@@ -160,3 +215,28 @@ export const decrireQuittance = (q: NonNullable<CouvertureTerme["quittance"]>) =
 
 export const decrireMesure = (m: NonNullable<CouvertureTerme["mesure"]>) =>
   `${m.nature === "prise_en_charge" ? "Prise en charge" : "Exonération"} — ${m.motif} · décidé par ${m.autorite} le ${date(m.decideLe)}`;
+
+/**
+ * Où en est une réclamation, dans les mots du circuit — et dans ceux de la règle 1 : un « en_cours » ne suspend
+ * rien, pas plus qu'un « attendu ». Le refus de l'école n'est pas une fin de non-recevoir : il est motivé par
+ * écrit, et la famille le lit ici.
+ */
+export const LIBELLE_STATUT_RECLAMATION: Record<ReclamationFrais["statut"], string> = {
+  ouverte: "Déposée, pas encore instruite",
+  en_cours: "En cours d'instruction par l'école",
+  acceptee: "Reconnue par l'école — la pièce est consignée",
+  refusee: "Refusée par l'école, avec motif écrit",
+  close: "Close",
+};
+export const TON_RECLAMATION: Record<ReclamationFrais["statut"], TonFrais> = {
+  ouverte: "info", en_cours: "avertissement", acceptee: "succes", refusee: "avertissement", close: "neutre",
+};
+
+/** Une ligne, lisible telle quelle par la famille comme par l'école : dépôt, terme visé, dernière réponse. */
+export function decrireReclamation(r: ReclamationFrais): string {
+  const ou = r.terme ? ` ${LIBELLE_TERME_FRAIS[r.terme]}` : " toute l'année";
+  const rendue = r.reponse
+    ? `Réponse de l'école le ${date(r.reponse.le)} — ${r.reponse.decision === "valide" ? "pièce reconnue" : "refus, avec motif"}${r.reponse.motif ? ` : ${r.reponse.motif}` : ""}`
+    : r.echeance ? `Réponse attendue de l'école avant le ${date(r.echeance)}` : "Réponse attendue de l'école";
+  return `Pièce payée non consignée pour${ou} · déposée le ${date(r.deposeeLe)} · ${rendue}`;
+}

@@ -18,9 +18,10 @@ import {
   absencesParJour, ageAu, initiales, jalonsParcours, libelleTrimestre, nomComplet, syntheseScolaire, useEnfants, useJustifierAbsenceMutation,
   type Dossier, type JourAbsence, type TypeJalon,
 } from "@/lib/api/parcours";
-import { LIBELLE_TERME_FRAIS } from "@beile/contracts";
+import { LIBELLE_TERME_FRAIS, type FraisTerme } from "@beile/contracts";
 import {
-  LIBELLE_ETAT_TERME, LIBELLE_STATUT_FRAIS, TON_ETAT_TERME, TON_STATUT_FRAIS, decrireMesure, decrireQuittance,
+  LIBELLE_ETAT_TERME, LIBELLE_STATUT_FRAIS, LIBELLE_STATUT_RECLAMATION, TON_ETAT_TERME, TON_RECLAMATION, TON_STATUT_FRAIS,
+  decrireMesure, decrireQuittance, decrireReclamation, useFraisApprenant, useReclamationMutation,
 } from "@/lib/api/frais";
 import { bulletinDepuisDossier } from "@/lib/bulletin";
 import { cn } from "@/lib/cn";
@@ -265,7 +266,13 @@ function DernieresNotes({ s }: { s: ReturnType<typeof syntheseScolaire> }) {
  */
 function Frais({ d }: { d: Dossier }) {
   const f = d.frais;
+  const [deposer, setDeposer] = useState(false);
+  // Réclamations lues par la route dédiée — la même ABAC que la carte : la finalité qui admet les faits de frais
+  // admet la réclamation, et aucune autre. `d.frais` reste le gate de la carte pour ne pas doubler l'affichage.
+  const suivies = useFraisApprenant(f ? d.apprenant.id : null);
+  const reclamations = suivies.data?.reclamations ?? [];
   if (!f) return null;
+  const candidates = f.termes.filter((t) => t.etat === "attendu" || t.etat === "a_venir");
   return (
     <Card data-guide="famille-frais" className="min-w-0">
       <CardHeader icon={Receipt} title="Frais scolaires" subtitle={`Année ${f.anneeScolaire} · BEILE ne montre aucun montant : la somme reste sur la pièce remise par l'école`} />
@@ -300,8 +307,82 @@ function Frais({ d }: { d: Dossier }) {
           ))}
         </ul>
       )}
-      <p className="mt-3 text-xs text-ink-muted">L&apos;absence d&apos;une pièce au registre ne prouve pas un paiement absent. Si vous détenez un papier que l&apos;école n&apos;a pas consigné, signalez-le à l&apos;intendance.</p>
+      {reclamations.length > 0 && (
+        <ul className="mt-3 space-y-2" aria-label="Vos réclamations sur une pièce de frais">
+          {reclamations.map((r) => (
+            <li key={r.id} className="rounded-md border border-line bg-surface px-3 py-2.5">
+              <BadgePoint ton={TON_RECLAMATION[r.statut]}>{LIBELLE_STATUT_RECLAMATION[r.statut]}</BadgePoint>
+              <p className="mt-1.5 text-[13px] text-ink-2">{decrireReclamation(r)}</p>
+              <p className="mt-1 text-xs text-ink-muted">« {r.texte} »</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+        <p className="max-w-prose text-xs text-ink-muted">L&apos;absence d&apos;une pièce au registre ne prouve pas un paiement absent. Si vous détenez un papier que l&apos;école n&apos;a pas consigné, dites-le ici : l&apos;administration de l&apos;école répond par écrit, et sa réponse est enregistrée. BEILE n&apos;encaisse rien.</p>
+        <Button variante="secondaire" icone={Send} onClick={() => setDeposer(true)}>J&apos;ai payé, rien n&apos;est enregistré</Button>
+      </div>
+      <FeuilleReclamation apprenantId={d.apprenant.id} eleve={nomComplet(d.apprenant)} anneeScolaire={f.anneeScolaire}
+        candidats={candidates.map((t) => t.terme)} ouverte={deposer} onFermer={() => setDeposer(false)} />
+      {suivies.isError && <p className="mt-2 text-xs text-ink-muted">Vos réclamations n&apos;ont pas pu être rechargées pour le moment ; la situation ci-dessus reste celle de l&apos;école.</p>}
     </Card>
+  );
+}
+
+/**
+ * Dépôt d'une réclamation : le terme visé, un texte court, et rien d'autre. Pas de numéro de quittance, pas de
+ * montant — la route refuse une devise, et la pièce en main se montre à l'école, pas au registre national.
+ */
+function FeuilleReclamation({ apprenantId, eleve, anneeScolaire, candidats, ouverte, onFermer }: {
+  apprenantId: string; eleve: string; anneeScolaire: string; candidats: FraisTerme[]; ouverte: boolean; onFermer: () => void;
+}) {
+  const [terme, setTerme] = useState<FraisTerme | null>(null);
+  const [texte, setTexte] = useState("");
+  const depot = useReclamationMutation(apprenantId);
+  const propre = texte.trim();
+  const tropCourt = propre.length < 15;
+  const erreur = depot.error instanceof ErreurApi ? depot.error.message : depot.error ? "Envoi impossible pour le moment." : null;
+
+  const fermer = () => { setTexte(""); onFermer(); };
+  const envoyer = () => depot.mutate({ anneeScolaire, terme, texte: propre }, {
+    onSuccess: (r) => {
+      notifier({ ton: "succes", titre: "Réclamation transmise à l'école", texte: r.deja ? "Une réclamation est déjà ouverte pour ce terme : c'est le même dossier, déjà sous les yeux de l'école. Deux responsables d'un même enfant ne déposent pas deux fois." : `L'administration de l'école de ${eleve} doit répondre par écrit.` });
+      fermer();
+    },
+  });
+
+  return (
+    <Feuille ouverte={ouverte} onFermer={fermer} titre="Signaler une pièce non consignée" sousTitre={`Année ${anneeScolaire} · ${eleve}`}
+      pied={<>
+        <Button variante="secondaire" onClick={fermer}>Annuler</Button>
+        <Button icone={Send} disabled={tropCourt} chargement={depot.isPending} onClick={envoyer}>Transmettre à l'école</Button>
+      </>}>
+      {candidats.length > 0 && (
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium text-ink">Terme concerné</legend>
+          <div className="flex flex-wrap gap-2">
+            {candidats.map((t) => (
+              <button key={t} type="button" onClick={() => setTerme(terme === t ? null : t)} aria-pressed={terme === t}
+                className={cn("h-10 rounded-full px-3.5 text-[13px] font-medium ring-1 ring-inset transition active:scale-[0.97]", terme === t ? "text-white ring-transparent" : "bg-surface text-ink-2 ring-line hover:bg-surface-2")}
+                style={terme === t ? { background: "var(--acc)" } : undefined}>{LIBELLE_TERME_FRAIS[t]}</button>
+            ))}
+            <button type="button" onClick={() => setTerme(null)} aria-pressed={terme === null}
+              className={cn("h-10 rounded-full px-3.5 text-[13px] font-medium ring-1 ring-inset transition active:scale-[0.97]", terme === null ? "text-white ring-transparent" : "bg-surface text-ink-2 ring-line hover:bg-surface-2")}
+              style={terme === null ? { background: "var(--acc)" } : undefined}>Toute l&apos;année</button>
+          </div>
+        </fieldset>
+      )}
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-ink">Ce que vous détenez <span className="font-normal text-ink-muted">(15 caractères au moins)</span></span>
+        <textarea value={texte} onChange={(ev) => setTexte(ev.target.value.slice(0, 500))} rows={4}
+          placeholder="Ex. : quittance du 1er terme remise à l'intendance le 12 octobre, numéro 471 sur le carnet"
+          className="w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-ink outline-none focus:border-blue focus:ring-4 focus:ring-blue/15" />
+        {tropCourt && propre !== "" && <span className="mt-1 block text-xs text-critical">Encore quelques mots : précisez la pièce et la date à laquelle vous l'avez reçue.</span>}
+      </label>
+      {erreur && <p className="rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical" role="alert">{erreur}</p>}
+      <p className="text-xs text-ink-muted">N&apos;écrivez aucun montant ici : BEILE ne consigne ni somme ni devise. Conservez le papier reçu de l&apos;école — c&apos;est lui la preuve, et c&apos;est devant elle qu&apos;il se montre.</p>
+      <p className="text-xs text-ink-muted">Une réponse attendue sous 7 jours. Si l&apos;école refuse, son motif est écrit et enregistré ; ce que la plateforme ne sait pas encore faire, c&apos;est vous donner un recours au-dessus d&apos;elle.</p>
+    </Feuille>
   );
 }
 

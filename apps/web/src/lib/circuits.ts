@@ -21,6 +21,16 @@ export const ETAPES_DROITS = [
   { code: "INSTRUCTION", libelle: "Instruction et réponse" },
 ] as const;
 
+/**
+ * Réclamation sur une pièce de frais : deux étapes, pas trois. La « correction par la direction départementale »
+ * du circuit générique n'existe pas ici — seul le compte d'administration de l'école qui scolarise l'élève peut
+ * écrire un fait de frais, donc aucune étape au-dessus ne peut réparer à sa place (`docs/cadrage/FRAIS_SCOLARITE.md`).
+ */
+export const ETAPES_RECLAMATION_FRAIS = [
+  { code: "DEPOT", libelle: "Dépôt par la famille" },
+  { code: "INSTRUCTION", libelle: "Réponse écrite de l'école" },
+] as const;
+
 /** Droits exerçables et leur libellé (circuit DROITS). */
 export const LIBELLE_DROIT: Record<string, string> = {
   acces: "Accès à mes données",
@@ -35,6 +45,7 @@ export const CIRCUIT_LIBELLE: Record<string, string> = {
   RELANCE_TRANSMISSION: "Relance de transmission",
   TRANSFERT: "Transfert d'établissement",
   RECLAMATION: "Réclamation sur une donnée",
+  RECLAMATION_FRAIS: "Pièce de frais payée et non consignée",
   AFFECTATION: "Affectation d'un enseignant",
   SUIVI_ALERTE: "Suivi d'une alerte territoriale",
 };
@@ -56,6 +67,7 @@ export function etapesDuCircuit(code: string): { code: string; libelle: string }
   if (code === "ACCOMPAGNEMENT") return [...ETAPES_ACCOMPAGNEMENT];
   if (code === "RELANCE_TRANSMISSION") return [...ETAPES_RELANCE];
   if (code === "DROITS") return [...ETAPES_DROITS];
+  if (code === "RECLAMATION_FRAIS") return [...ETAPES_RECLAMATION_FRAIS];
   return [];
 }
 

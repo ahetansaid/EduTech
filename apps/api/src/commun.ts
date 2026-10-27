@@ -306,6 +306,28 @@ export function dateCalendaire(d: string) {
   return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
 }
 
+/**
+ * Le registre national ne contient ni somme ni devise, et n'en contiendra jamais. La règle du cadrage des frais
+ * ne porte donc pas seulement sur les faits de frais : elle garde la prose qu'écrit un agent et qui descend
+ * jusqu'à un écran ou un téléphone de la famille — cadre d'un appel, fonction de l'agent encaisseur, motif et
+ * autorité d'une mesure, texte d'une réclamation, motif de toute réponse rendue par une demande, motif d'un refus
+ * de justificatif d'absence. Les CLÉS `montant` sont déjà fermées par les schémas `.strict()` ; ce texte-ci ferme
+ * les TEXTES.
+ *
+ * Ce qu'elle ne ferme pas, et pourquoi : une devise dans un motif d'abandon ou de refus de transfert resterait
+ * dans le dossier de l'école, où la somme n'a rien à faire mais où elle ne se promène pas non plus — le motif
+ * d'un refus de transfert n'est pas repris dans la notification à la famille, et celui d'un abandon ne descend
+ * à aucun écran famille. Ces deux-là se discutent si l'un d'eux change de destinataire.
+ *
+ * Une devise est ancrée sur ses limites de mot : « effacer » ou « euro-africain » dans un texte ne se refusent
+ * pas, « 30 € » oui. Un nombre nu n'est pas une somme (un numéro de salle, une année) : c'est le nom de devise
+ * qui trahit l'intention.
+ */
+const DEVISE = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|francs? cfa|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]/i;
+export function sansSomme(champ: string, texte: string | null | undefined) {
+  if (texte && DEVISE.test(texte)) throw new HTTPException(422, { message: `${champ} : ni somme ni devise ne se consignent dans BEILE — le montant reste sur la pièce papier et dans la comptabilité de l'établissement` });
+}
+
 /** Révoque toutes les sessions d'un compte ET les retire du cache de cette instance (effet immédiat). */
 export async function revoquerSessionsDuCompte(compteId: string) {
   const r = await base().update(schema.sessions).set({ revoquee: true }).where(and(eq(schema.sessions.compteId, compteId), eq(schema.sessions.revoquee, false))).returning({ e: schema.sessions.empreinte });
