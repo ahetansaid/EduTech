@@ -50,6 +50,7 @@ export default function AuditPage() {
   const [q, setQ] = useState("");
   const [decision, setDecision] = useState<FiltreDecision>("tous");
   const [finalite, setFinalite] = useState<Finalite | null>(null);
+  const [exportEnCours, setExportEnCours] = useState(false);
 
   // Recherche envoyée au serveur après une courte pause de frappe.
   useEffect(() => {
@@ -80,7 +81,17 @@ export default function AuditPage() {
   }
 
   const t = stats.data?.totaux;
-  const exporter = () => { exporterCsv("journal-audit", lignes, AUDIT_COLONNES); notifier({ ton: "succes", titre: "Export prêt", texte: `${entier(lignes.length)} ligne(s) exportée(s).` }); };
+  // Le fichier n'existe qu'APRÈS la trace : `exporterCsv` écrit d'abord au serveur d'audit et rend `false` sans
+  // rien produire si cette écriture échoue. Promettre « Export prêt » dans ce cas annoncerait un fichier absent.
+  // Le bouton se désole pendant l'aller-retour : deux clics écriraient deux traces et deux fichiers.
+  const exporter = async () => {
+    setExportEnCours(true);
+    try {
+      if (await exporterCsv("journal-audit", lignes, AUDIT_COLONNES)) notifier({ ton: "succes", titre: "Export prêt", texte: `${entier(lignes.length)} ligne(s) exportée(s).` });
+    } finally {
+      setExportEnCours(false);
+    }
+  };
 
   return (
     <EntreePage>
@@ -92,7 +103,7 @@ export default function AuditPage() {
           actions={
             <>
               <EnDirect misAJour={journal.dataUpdatedAt} actif={journal.isFetching} />
-              <Button data-guide="audit-exporter" variante="secondaire" taille="sm" icone={Download} onClick={exporter} disabled={!lignes.length}>Exporter (CSV)</Button>
+              <Button data-guide="audit-exporter" variante="secondaire" taille="sm" icone={Download} onClick={() => { void exporter(); }} disabled={!lignes.length || exportEnCours}>{exportEnCours ? "Export en cours…" : "Exporter (CSV)"}</Button>
             </>
           }
         />

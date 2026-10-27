@@ -149,7 +149,7 @@ interop.post("/interop/educmaster/absences", avecLot("absences", false, async (c
     date: DATE, absents: z.array(NPI).min(1).max(120),
   }).strict(), p.json);
   const idSaisie = `LOT-${p.lot}`;
-  const deja = await dejaSaisi(idSaisie, "ABSENCE");
+  const deja = await dejaSaisi(idSaisie, "ABSENCE", { auteurId: p.auteur.id });
   if (deja) return c.json({ lot: p.lot, deja: true, enregistres: deja.length });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, m.classeId));
   if (!classe || classe.etablissementId !== m.etablissementId) throw new HTTPException(422, { message: "Classe inconnue ou hors de cet établissement" });
@@ -208,7 +208,7 @@ interop.post("/interop/uac/pv-diplome", avecLot("pv-diplome", false, async (c, p
     }).strict()).min(1).max(500),
   }).strict(), p.json);
   const idSaisie = `LOT-${p.lot}`;
-  const deja = await dejaSaisi(idSaisie, "CERTIFICATION");
+  const deja = await dejaSaisi(idSaisie, "CERTIFICATION", { auteurId: p.auteur.id });
   if (deja) return c.json({ lot: p.lot, deja: true, certifies: deja.length });
 
   const [filiere] = await base().select().from(schema.filiereSuperieure).where(eq(schema.filiereSuperieure.id, m.filiereId));
@@ -274,7 +274,7 @@ interop.post("/interop/dbau/allocations", avecLot("allocations", false, async (c
     }).strict()).min(1).max(2000),
   }).strict(), p.json);
   const idSaisie = `LOT-${p.lot}`;
-  const deja = await dejaSaisi(idSaisie, "ALLOCATION_DECIDEE");
+  const deja = await dejaSaisi(idSaisie, "ALLOCATION_DECIDEE", { auteurId: p.auteur.id });
   if (deja) return c.json({ lot: p.lot, deja: true, enregistres: deja.length });
   const personnes = await parNpi(m.decisions.map((d) => d.npi));
   const [echeances, inscriptions] = await Promise.all([

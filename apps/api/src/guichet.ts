@@ -206,7 +206,7 @@ guichet.post("/moi/actes/demande", authentifie, limiteDebit(20, 60_000, cleUtili
     motifDemande: z.string().trim().max(200).nullable().default(null),
     idSaisie: ID_SAISIE,
   }).strict());
-  const deja = await dejaSaisi(saisie.idSaisie, "DEMANDE_ACTE", apprenantId);
+  const deja = await dejaSaisi(saisie.idSaisie, "DEMANDE_ACTE", { apprenantId, auteurId: profil.id });
   if (deja) return c.json({ demandeId: null, evenementId: deja[0], deja: true }, 200);
 
   const insc = await inscriptionCourante(apprenantId, saisie.anneeUniversitaire);

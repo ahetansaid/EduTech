@@ -106,7 +106,7 @@ parcours.post("/evenements/evaluations", authentifie, async (c) => {
   const hors = saisie.notes.filter((n) => courantes.get(n.apprenantId) !== saisie.classeId).map((n) => n.apprenantId);
   if (hors.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${hors.join(", ")}` });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
-  const deja = await dejaSaisi(saisie.idSaisie, "EVALUATION");
+  const deja = await dejaSaisi(saisie.idSaisie, "EVALUATION", { auteurId: enseignant!.id });
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   // Pas de note pour un trimestre que le calendrier officiel n'a pas encore ouvert (une année qu'il ne couvre pas
   // n'est pas bornée : rien ne permet de le prouver).
@@ -142,7 +142,7 @@ parcours.post("/evenements/corrections", authentifie, async (c) => {
     await journaliser(profil, "Correction de note", saisie.evenementCorrigeId, "evaluation", false, !enseignant ? "role" : "relation");
     refuser("Correction réservée à l'enseignant de la matière dans cette classe");
   }
-  const deja = await dejaSaisi(saisie.idSaisie, "CORRECTION_EVALUATION");
+  const deja = await dejaSaisi(saisie.idSaisie, "CORRECTION_EVALUATION", { auteurId: enseignant!.id });
   if (deja) return c.json({ enregistre: deja[0], deja: true }, 200);
   // Les notes d'une année close ne se corrigent plus (sauf réouverture par la direction départementale).
   const [classeNote] = await base().select({ etablissementId: schema.classes.etablissementId, anneeScolaire: schema.classes.anneeScolaire }).from(schema.classes).where(eq(schema.classes.id, d.classeId));

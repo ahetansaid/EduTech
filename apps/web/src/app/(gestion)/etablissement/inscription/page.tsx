@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, CircleUserRound, Database, FileWarning, Fingerprint, FolderOpen, Search, ShieldCheck, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
@@ -32,13 +33,22 @@ function Inscription({ id }: { id: string }) {
   const [sansActe, setSansActe] = useState<SansActe | null>(null);
   const [classeId, setClasseId] = useState<string | null>(null);
   const [resultat, setResultat] = useState<ResultatInscription | null>(null);
+  // Ce que l'écran de confirmation doit afficher, recopié SANS l'identifiant national : le NPI n'a plus de
+  // raison d'être en mémoire une fois l'inscription écrite, et il ne doit pas survivre à l'écran.
+  const [fin, setFin] = useState<{ identite: { nom: string; prenoms: string }; classe: ClasseTableau | null } | null>(null);
 
   const recherche = useRechercheRegistre(requete?.nom ?? "", requete?.prenoms ?? "", !!requete);
   const tableau = useTableau(id);
   const inscrire = useInscriptionMutation();
+  const client = useQueryClient();
+
+  // Une recherche au registre national rend jusqu'à huit identifiants nationaux. L'inscription écrite, ils
+  // n'ont plus de raison de rester en mémoire du navigateur : la cache React Query les garderait cinq minutes
+  // (gcTime) sous le nom et les prénoms cherchés, alors que l'écran est passé à autre chose.
+  const purgerRecherche = () => client.removeQueries({ queryKey: ["etablissement", "registre"] });
 
   const aller = (e: Etape) => { setSens(e > etape ? 1 : -1); setEtape(e); inscrire.reset(); };
-  const recommencer = () => { setResultat(null); setEnfant(null); setSansActe(null); setClasseId(null); setNom(""); setPrenoms(""); setRequete(null); setSens(-1); setEtape(1); inscrire.reset(); };
+  const recommencer = () => { setResultat(null); setFin(null); setEnfant(null); setSansActe(null); setClasseId(null); setNom(""); setPrenoms(""); setRequete(null); setSens(-1); setEtape(1); inscrire.reset(); purgerRecherche(); };
 
   const identite = enfant
     ? { nom: enfant.nom, prenoms: enfant.prenoms, sexe: enfant.sexe, dateNaissance: enfant.dateNaissance }
@@ -61,10 +71,14 @@ function Inscription({ id }: { id: string }) {
   const confirmer = () => {
     if (!classeId || !identite) return;
     const corps: CorpsInscription = enfant ? { classeId, npi: enfant.npi } : { classeId, sansActe: { ...identite, responsable: sansActe!.responsable.trim() } };
-    inscrire.mutate(corps, { onSuccess: (r) => setResultat(r) });
+    // L'identité affichée est recopiée avant l'envoi ; le corps de la réponse, lui, ne contient pas le NPI.
+    const affiche = { identite: { nom: identite.nom, prenoms: identite.prenoms }, classe };
+    // `inscrire.reset()` ferme le cache de la mutation : sans lui, le corps envoyé — donc le NPI — resterait
+    // conservé par React Query après l'inscription, alors que plus aucun écran n'en a besoin.
+    inscrire.mutate(corps, { onSuccess: (r) => { setResultat(r); setFin(affiche); setEnfant(null); setSansActe(null); setRequete(null); setNom(""); setPrenoms(""); inscrire.reset(); purgerRecherche(); } });
   };
 
-  if (resultat && identite) return <Succes r={resultat} identite={identite} classe={classe} onNouveau={recommencer} />;
+  if (resultat && fin) return <Succes r={resultat} identite={fin.identite} classe={fin.classe} onNouveau={recommencer} />;
 
   const erreur = inscrire.error instanceof ErreurApi ? inscrire.error : null;
 

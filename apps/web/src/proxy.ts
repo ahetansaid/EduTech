@@ -49,7 +49,11 @@ export const config = {
   matcher: [
     {
       // Ressources publiques exclues : icônes, manifeste et images doivent se charger sans session.
-      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|robots.txt|images|icons).*)",
+      // Les trois exclusions de dossiers s'ancrent sur leur barre finale : sans elle, « /apiX », « /imagesX »
+      // et « /iconsX » échappaient au filtre — donc au nonce et au renvoi vers la connexion — et un futur
+      // « /api-docs » ou « /icons-maison » deviendrait public par accident. L'API, réécrite sous /api/v1/…,
+      // reste exclue comme avant : ses refus viennent du serveur, pas d'une redirection du front.
+      source: "/((?!api/|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|robots.txt|images/|icons/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

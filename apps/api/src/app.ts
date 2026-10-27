@@ -300,7 +300,7 @@ app.post("/evenements/absences", authentifie, async (c) => {
   const horsClasse = saisie.apprenantIds.filter((id) => courantes.get(id) !== saisie.classeId);
   if (horsClasse.length) throw new HTTPException(422, { message: `Apprenants hors de la classe : ${horsClasse.join(", ")}` });
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, saisie.classeId));
-  const deja = await dejaSaisi(saisie.idSaisie, "ABSENCE");
+  const deja = await dejaSaisi(saisie.idSaisie, "ABSENCE", { auteurId: enseignant.id });
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   const enregistres = await inscrireAuRegistre(saisie.apprenantIds.map((apprenantId) => ({
     type: "ABSENCE", auteurId: enseignant.id, etablissementId: classe!.etablissementId, apprenantId,

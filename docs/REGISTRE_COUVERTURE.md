@@ -23,7 +23,7 @@ Les fonctionnalités s'appuient sur ces moteurs ; aucun module ne réimplémente
 |---|---|---|---|
 | 1 | Identité | Identité éducative ancrée sur l'identité nationale (NPI) ; aucune identité civile créée | Prototype : registre national simulé, procédure pour l'enfant sans acte |
 | 2 | Accès et politiques | RBAC + ABAC (rôle, périmètre, relation, finalité), journalisation des refus | Prototype : `packages/simulation/src/abac.ts` ; production : API + RLS |
-| 3 | Workflow | Demandes, validations, transferts, réclamations, inspections, sans coder chaque circuit en dur | Schéma `workflow` créé ; moteur à construire |
+| 3 | Workflow | Demandes, validations, transferts, réclamations, inspections, sans coder chaque circuit en dur | **En service** : `workflow.modeles / demandes / decisions`, décision jugée par rôle ET périmètre, historique en ajout seul, passe d'étape conditionné à l'état relu. Sept circuits déclarés — `TRANSFERT`, `DROITS`, `RECLAMATION_FRAIS`, `RELANCE_TRANSMISSION`, `ACCOMPAGNEMENT`, `AFFECTATION`, `SUIVI_ALERTE` |
 | 4 | Événements | Registre en ajout seul, parcours reconstitués, corrections tracées | Prototype + schéma `ledger` (ajout seul) |
 | 5 | Qualité des données | Doublons, incohérences, valeurs impossibles, fraîcheur, couverture | Prototype : indice de confiance, couverture ; règles à étendre |
 | 6 | Interopérabilité et API | Contrats versionnés, validation de schéma, provenance, source de vérité | API v1 (Hono) ; connecteurs ANIP / EducMaster / examens à écrire |
@@ -102,9 +102,10 @@ Prototype : ✅ démontré · 🟡 partiel · ⬜ non couvert.
 | Univers | Processus | Acteurs | Données | Système existant | Action | Moteurs | Sens. | Prio. | Proto. |
 |---|---|---|---|---|---|---|---|---|---|
 | Financement | Budget → programme → projet → établissement → dépense → résultat ; coût par apprenant | Ministères, finances | Budget, dépenses | Systèmes budgétaires | I | 6, 10 | 2 | P3 | ⬜ |
+| Financement | **Situation des frais scolaires** : termes appelés déclarés librement par l'école, pièces (quittance, exonération, prise en charge) consignées en statut daté — aucun montant, aucun RIB, jamais un blocage | Établissement (intendance), famille | Faits `ledger`, pièces papier référencées | Cahiers d'intendance, régies de recettes | D | 4, 3, 2 | 3 | P2 | 🟡 |
 | Partenaires | Registre des programmes (zone, bénéficiaires, budget, indicateurs), coordination | PTF, ONG, collectivités | Programmes | — | D | 3, 7 | 2 | P2 | ⬜ |
 | Communication | Calendrier, annonces, convocations, alertes multicanal | Ministères, établissements | Messages | — | D | 8 | 1 | P2 | 🟡 |
-| Service | **Service d'assistance** (réclamations, corrections de données, suivi, escalade) | Tous | Tickets | — | D | 3, 8 | 3 | P2 | ⬜ |
+| Service | **Service d'assistance** (réclamations, corrections de données, suivi, escalade) | Tous | Tickets | — | D | 3, 8 | 3 | P2 | 🟡 |
 | Gouvernance | Dictionnaire, propriétaire, gestionnaire, source de référence, règle de qualité, politique d'accès, conservation | Gouvernance des données | Métadonnées | — | D | 5, 10 | 2 | P1 | 🟡 |
 | Qualité | Détection des doublons, incohérences, valeurs impossibles, anomalies | Gouvernance | Règles | — | D | 5 | 2 | P1 | 🟡 |
 | Temporalité | Validité dans le temps de chaque information (affectations, référentiels, programmes) | Tous | Périodes de validité | — | D | 4 | 2 | P1 | 🟡 |

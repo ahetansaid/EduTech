@@ -38,6 +38,7 @@ const passeport = (data: Carriere): LignePasseport[] => [
 export default function PageCarriere() {
   useSynchronisationEnseignant();
   const { data, isPending, error, refetch, isRefetching } = useCarriere();
+  const [exportEnCours, setExportEnCours] = useState(false);
 
   if (isPending) return <Chargement />;
   if (!data) return <Erreur erreur={error!} relancer={() => refetch()} enCours={isRefetching} titre="Impossible de charger votre parcours" />;
@@ -45,6 +46,18 @@ export default function PageCarriere() {
   const e = data.enseignant;
   const obligatoire = data.catalogue.find((f) => f.obligatoire && !f.statut);
   const validees = data.formations.filter((f) => f.statut === "validee").length;
+  // Attendu : `exporterCsv` écrit d'abord la trace de l'export et renvoie `false` sans produire de fichier si
+  // cette écriture échoue. Annoncer « Passeport exporté » dans ce cas promettrait un fichier qui n'existe pas.
+  // Le bouton se désole pendant l'aller-retour : deux clics = deux traces et deux fichiers.
+  const exporterPasseport = async () => {
+    setExportEnCours(true);
+    try {
+      const l = passeport(data);
+      if (await exporterCsv(`passeport_${e.id}`, l, COLONNES_PASSEPORT)) notifier({ ton: "succes", titre: "Passeport exporté", texte: `${entier(l.length)} jalon(s) du recrutement à aujourd'hui.` });
+    } finally {
+      setExportEnCours(false);
+    }
+  };
 
   return (
     <EntreePage>
@@ -54,8 +67,8 @@ export default function PageCarriere() {
           titre={`${e.prenoms} ${e.nom}`}
           sousTitre="Votre carrière se reconstitue à partir des événements du registre : aucun dossier papier à recomposer lors d'une mutation."
           actions={
-            <Button variante="secondaire" icone={Download} onClick={() => { const l = passeport(data); exporterCsv(`passeport_${e.id}`, l, COLONNES_PASSEPORT); notifier({ ton: "succes", titre: "Passeport exporté", texte: `${entier(l.length)} jalon(s) du recrutement à aujourd'hui.` }); }} title="Exporter tout le parcours (recrutement, affectations, formations) au format CSV">
-              Exporter le parcours
+            <Button variante="secondaire" icone={Download} disabled={exportEnCours} onClick={() => { void exporterPasseport(); }} title="Exporter tout le parcours (recrutement, affectations, formations) au format CSV">
+              {exportEnCours ? "Export en cours…" : "Exporter le parcours"}
             </Button>
           }
         />

@@ -277,7 +277,7 @@ frais.post("/apprenants/:id/frais/quittance", authentifie, limiteDebit(30, 60_00
   }
 
   const idSaisie = `QUITTANCE-${profil.id}-${apprenantId}-${m.cle}`;
-  const deja = await dejaSaisi(idSaisie, "QUITTANCE_FRAIS", apprenantId);
+  const deja = await dejaSaisi(idSaisie, "QUITTANCE_FRAIS", { apprenantId });
   if (deja) return c.json({ id: deja[0], apprenantId, deja: true });
   const [idEvenement] = await inscrireAuRegistre([{
     type: "QUITTANCE_FRAIS", auteurId: profil.id, etablissementId, apprenantId, source: "beile",
@@ -328,7 +328,7 @@ frais.post("/apprenants/:id/frais/exoneration", authentifie, limiteDebit(30, 60_
   if (m.terme && cadence?.termes.length && !cadence.termes.some((t) => t.terme === m.terme)) throw new HTTPException(422, { message: "Terme non appelé par l'école cette année" });
 
   const idSaisie = `EXONERATION-${profil.id}-${apprenantId}-${m.cle}`;
-  const deja = await dejaSaisi(idSaisie, "EXONERATION_FRAIS", apprenantId);
+  const deja = await dejaSaisi(idSaisie, "EXONERATION_FRAIS", { apprenantId });
   if (deja) return c.json({ id: deja[0], apprenantId, deja: true });
   const [idEvenement] = await inscrireAuRegistre([{
     type: "EXONERATION_FRAIS", auteurId: profil.id, etablissementId, apprenantId, source: "beile",

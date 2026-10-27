@@ -7,7 +7,7 @@ import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, journaliser, refuser, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, journaliser, limiteDebit, refuser, type Variables } from "./commun";
 import { chargerCouches, memo } from "./donnees";
 import { perimetrePilotage } from "./pilotage";
 
@@ -59,8 +59,10 @@ const echapperLike = (t: string) => t.replace(/[\\%_]/g, (m) => `\\${m}`);
  * Journal des exports : un fichier qui quitte la plateforme est un accès aux données comme un autre.
  * Le navigateur déclare l'export AVANT de produire le fichier ; si cette trace ne peut pas être écrite,
  * le fichier n'est pas produit. Le journal retient qui, quoi (fichier, colonnes), combien de lignes.
+ * Le journal étant en ajout seul, cette écriture est un débit comme les autres : plafond par compte, pour
+ * qu'une session de navigateur automatisée ne puisse pas l'engorger de fausses déclarations d'export.
  */
-complementsGouvernance.post("/audit/exports", authentifie, async (c) => {
+complementsGouvernance.post("/audit/exports", authentifie, limiteDebit(60, 60_000, cleUtilisateur), async (c) => {
   const profil = c.get("profil");
   const r = z.object({
     fichier: z.string().trim().min(1).max(120),

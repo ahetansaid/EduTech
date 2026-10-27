@@ -390,8 +390,21 @@ export const ID_SAISIE = z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional();
  * son identifiant (`idSaisie:ue`, `idSaisie:apprenant`) : on passe alors la liste exacte des clés
  * attendues. Égalité sur l'expression indexée et prédicat de l'index partiel : la recherche reste une
  * lecture d'index, jamais un parcours de tous les faits du type.
+ *
+ * `auteurId` ferme une clé d'idempotence à son auteur — la valeur exacte que l'écriture va poser en
+ * `auteur_id`, pas une autre identité du même compte (un enseignant saisit sous son matricule, un agent
+ * sous son profil). Sans cette portée, deux émetteurs qui se donnent la même clé liraient les faits l'un
+ * de l'autre : les identifiants d'événements d'un autre périmètre redescendraient dans la réponse, et le
+ * second repartirait avec un « déjà enregistré » pour une écriture qui n'a jamais eu lieu. Un partenaire
+ * d'interopérabilité numerote ses lots (`LOT-<numéro>`), donc le risque est ici évident ; il existe sur
+ * chaque route où la clé vient du client.
+ *
+ * Ce filtrage est plus étroit que l'index d'unicité du registre, qui ne connaît pas l'auteur
+ * (`evenements_id_saisie_idx` = clé + type + apprenant) : une clé heurtée chez un autre émetteur n'est pas
+ * rendue comme sienne, elle est refusée par la base en 409 « saisie déjà enregistrée ». Élargir l'index à
+ * l'auteur serait le bon réglage — c'est une action sur la base, à arbitrer.
  */
-export async function dejaSaisi(idSaisie: string | readonly string[] | undefined, type: string, apprenantId?: string) {
+export async function dejaSaisi(idSaisie: string | readonly string[] | undefined, type: string, filtre: { apprenantId?: string; auteurId?: string } = {}) {
   const cles = typeof idSaisie === "string" ? [idSaisie] : [...(idSaisie ?? [])];
   if (!cles.length) return null;
   const lignes = await base().select({ id: schema.evenements.id }).from(schema.evenements)
@@ -399,7 +412,8 @@ export async function dejaSaisi(idSaisie: string | readonly string[] | undefined
       eq(schema.evenements.type, type),
       sql`${schema.evenements.donnees} ? 'idSaisie'`,
       sql`${schema.evenements.donnees}->>'idSaisie' in (${sql.join(cles.map((c) => sql`${c}`), sql`, `)})`,
-      ...(apprenantId ? [eq(schema.evenements.apprenantId, apprenantId)] : []),
+      ...(filtre.apprenantId ? [eq(schema.evenements.apprenantId, filtre.apprenantId)] : []),
+      ...(filtre.auteurId ? [eq(schema.evenements.auteurId, filtre.auteurId)] : []),
     ));
   return lignes.length ? lignes.map((l) => l.id) : null;
 }

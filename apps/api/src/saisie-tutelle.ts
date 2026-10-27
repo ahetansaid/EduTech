@@ -58,7 +58,7 @@ saisieTutelle.post("/inspection/etablissements/:id/absences", authentifie, limit
   }).strict());
   const classe = await porteSaisie(profil, etablissementId, s.classeId, "Saisie d'absences pour le compte d'une école");
   await elevesDeLaClasse(s.apprenantIds, s.classeId);
-  const deja = await dejaSaisi(s.idSaisie, "ABSENCE");
+  const deja = await dejaSaisi(s.idSaisie, "ABSENCE", { auteurId: profil.id });
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   const saisiePour = { autorite: "inspection" as const, piece: s.piece };
   const enregistres = await inscrireAuRegistre(s.apprenantIds.map((apprenantId) => ({
@@ -88,7 +88,7 @@ saisieTutelle.post("/inspection/etablissements/:id/evaluations", authentifie, li
     const ouverture = await ouvertureDuTrimestre(classe.anneeScolaire, s.trimestre);
     throw new HTTPException(422, { message: `Ce trimestre n'est pas ouvert${ouverture ? ` (calendrier officiel : ${ouverture})` : ""} : la note se saisit au trimestre ${enCours}.` });
   }
-  const deja = await dejaSaisi(s.idSaisie, "EVALUATION");
+  const deja = await dejaSaisi(s.idSaisie, "EVALUATION", { auteurId: profil.id });
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   const saisiePour = { autorite: "inspection" as const, piece: s.piece };
   const enregistres = await inscrireAuRegistre(s.notes.map((n) => ({
