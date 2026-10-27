@@ -65,6 +65,8 @@
 - Absences à justifier, résultats par matière, dernières notes, parcours.
 - « Frais scolaires » : le statut de l'année, terme par terme, avec la référence et la date de la dernière pièce consignée par l'école. Aucun montant n'apparaît — la somme reste sur le papier que l'établissement vous remet.
 - Un terme marqué « Exigible, aucune pièce à ce jour » ne bloque ni le bulletin, ni les examens, ni l'accès à l'école.
+- Le bouton « J'ai payé, rien n'est enregistré » ouvre un dépôt en deux champs : l'administration de l'école vous répond par écrit, et sa réponse reste lisible ici.
+- Chaque réclamation déposée reste affichée avec son statut — « En cours d'instruction par l'école », puis « Reconnue par l'école — la pièce est consignée », ou « Refusée par l'école, avec motif écrit ».
 
 ### Notifications
 
@@ -97,6 +99,18 @@
 3. « Dernières notes » liste les évaluations récentes.
 4. Touchez « Bulletin » pour ouvrir le relevé du trimestre et l'imprimer (ou l'enregistrer en PDF) ; changez de trimestre depuis l'en-tête.
 
+### Signaler une pièce que l'école n'a pas enregistrée
+
+> Un paiement reçu mais non consigné laisse votre enfant marqué « aucune pièce à ce jour ». Le dire ici oblige l'administration de l'école à répondre par écrit sous 7 jours, et sa réponse reste enregistrée.
+
+1. Dans la carte « Frais scolaires » de votre enfant, touchez « J'ai payé, rien n'est enregistré ».
+2. Choisissez le terme concerné (ou « Toute l'année »).
+3. Décrivez la pièce que vous détenez : sa référence et la date à laquelle l'école vous l'a remise. Quinze caractères au moins.
+4. N'écrivez aucun montant : BEILE ne consigne ni somme ni devise, et le papier reçu reste la vraie preuve.
+5. Touchez « Transmettre à l'école ». La carte affiche alors « En cours d'instruction par l'école », avec la date limite de réponse que le système annonce pour l'école (7 jours).
+6. Suivez-la dans la même carte : l'école consigne la pièce et elle passe à « Reconnue par l'école — la pièce est consignée » ; si elle refuse, le statut devient « Refusée par l'école, avec motif écrit » et ce motif s'affiche tel quel.
+7. Un même terme ne peut porter qu'une réclamation ouverte : renvoyer le même signalement reprend celui déjà en cours.
+
 ### Présenter un diplôme
 
 1. Ouvrez « Documents ».
@@ -114,7 +128,10 @@ Un sélecteur avec leurs prénoms apparaît en haut de l'écran « Mes enfants �
 L'établissement doit valider votre justificatif. Elle passera ensuite à « Justifiée ».
 
 **L'absence d'une pièce au registre veut-elle dire que je n'ai pas payé ?**  
-Non. BEILE ne garde que la trace des quittances que l'école y consigne : un paiement fait et reçu mais non enregistré affiche « aucune pièce à ce jour ». Reportez-vous à l'intendance avec la référence de votre quittance ; l'école consignera la pièce, et vous en serez informé. En attendant, rien n'est bloqué : ni le bulletin, ni les examens, ni l'accès à l'école.
+Non. BEILE ne garde que la trace des quittances que l'école y consigne : un paiement fait et reçu mais non enregistré affiche « aucune pièce à ce jour ». Dites-le depuis la carte « Frais scolaires » avec le bouton « J'ai payé, rien n'est enregistré » : l'administration de l'école reçoit votre signalement, consigne la pièce si elle la reconnaît, et vous répond par écrit sous 7 jours. Vous pouvez aussi vous rendre à l'intendance avec la référence de votre quittance. En attendant, rien n'est bloqué : ni le bulletin, ni les examens, ni l'accès à l'école.
+
+**L'école a refusé ma réclamation.**  
+Le motif est écrit, daté et enregistré : il reste lisible dans votre carte « Frais scolaires ». BEILE ne sait pas encore vous donner un recours au-dessus de l'école — portez le différend devant la direction départementale de l'enseignement avec votre pièce papier et la réponse reçue.
 
 **L'écran n'affiche aucun montant.**  
 C'est voulu. Les sommes ne circulent pas dans BEILE : elles restent sur la pièce papier et dans la comptabilité de l'établissement. Pour toute question de montant, adressez-vous à l'intendance de l'école.

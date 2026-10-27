@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, type Habilitation, type Niveau } from "@beile/contracts";
+import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, TYPES_FAITS_FRAIS, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { communesDuPerimetre } from "@beile/simulation/semantique";
@@ -8,7 +8,7 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
+import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, sansSomme, type Variables } from "./commun";
 import { etatAnnee } from "./annees";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { enBaisse, scolarisesEtablissement } from "./lectures";
@@ -378,6 +378,9 @@ etablissement.post("/etablissements/:id/classes/:classeId/conseil-passage", auth
   const ids = saisie.decisions.map((d) => d.apprenantId);
   await inscrireAuRegistre(faits, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`conseil:${classeId}`}))`);
+    // Verrou de chaque élève (ordre trié : pas d'interblocage entre deux conseils), le même que les transferts et
+    // changements de classe : un transfert accepté ou imposé au même instant ne croise pas la réinscription.
+    for (const a of [...ids].sort()) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`placement:${a}`}))`);
     const [{ n } = { n: 0 }] = (await tx.execute(sql`select count(*)::int n from core.scolarites where classe_id = ${classeId} and apprenant_id in ${ids}`)) as unknown as { n: number }[];
     if (n !== ids.length) throw new HTTPException(409, { message: "Ce conseil vient d'être enregistré : la classe a déjà changé" });
     if (nouvellesClasses.length) await tx.insert(schema.classes).values(nouvellesClasses);
@@ -407,7 +410,12 @@ etablissement.post("/apprenants/:id/abandon", authentifie, async (c) => {
   const { motif } = await corps(c, z.object({ motif: z.string().trim().min(5).max(200) }).strict());
   const { profil, sco } = await chefDeLApprenant(c, apprenantId);
   const [classe] = await base().select().from(schema.classes).where(eq(schema.classes.id, sco.classeId!));
-  const [id] = await inscrireAuRegistre([{ type: "ABANDON", auteurId: profil.id, etablissementId: sco.etablissementId, apprenantId, donnees: { apprenantId, anneeScolaire: classe?.anneeScolaire ?? "", motif } }]);
+  const [id] = await inscrireAuRegistre([{ type: "ABANDON", auteurId: profil.id, etablissementId: sco.etablissementId, apprenantId, donnees: { apprenantId, anneeScolaire: classe?.anneeScolaire ?? "", motif } }], async (tx) => {
+    // Sous le verrou de l'élève (celui des transferts) : relu dans la transaction, il est toujours ici et scolarisé.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`placement:${apprenantId}`}))`);
+    const [actuelle] = await tx.select({ statut: schema.scolarites.statut, etablissementId: schema.scolarites.etablissementId }).from(schema.scolarites).where(eq(schema.scolarites.apprenantId, apprenantId));
+    if (actuelle?.statut !== "scolarise" || actuelle.etablissementId !== sco.etablissementId) throw new HTTPException(409, { message: "La situation de l'élève a changé entre-temps (transfert ou sortie) : rechargez la page" });
+  });
   await journaliser(profil, "Déclaration d'abandon", apprenantId, "gestion", true, null);
   return c.json({ enregistre: id }, 201);
 });
@@ -485,6 +493,9 @@ etablissement.post("/etablissements/:id/justificatifs/:justificationId/decision"
     decision: z.enum(["validee", "refusee"]),
     motif: z.string().trim().max(200).optional(),
   }).strict().refine((s) => s.decision === "validee" || (s.motif ?? "").length >= 5, "Un motif d'au moins 5 caractères est requis pour refuser un justificatif"));
+  // Le motif d'un refus s'affiche tel quel sur l'écran de la famille (`Refusé : …`). La prose d'un agent qui
+  // descend jusqu'à un téléphone se garde donc de la même façon qu'une réponse sur une pièce de frais.
+  sansSomme("Motif de la décision", saisie.motif);
 
   const [justif] = await base().select().from(schema.evenements)
     .where(and(eq(schema.evenements.id, justificationId), eq(schema.evenements.type, "JUSTIFICATION_ABSENCE"), eq(schema.evenements.etablissementId, id)));
@@ -742,7 +753,12 @@ async function contexteDemande(profil: import("@beile/contracts").Profil, demand
     ? await base().select({ id: schema.etablissements.id, communeId: schema.etablissements.communeId, circonscription: schema.etablissements.circonscription, nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, demande.ressource))
     : [];
   const hab = etape ? profil.habilitations.find((h) => h.role === etape.role && couvreDemande(h, etab ?? null, demande.donnees)) : undefined;
-  return { demande, modele, etapes, etape, etab: etab ?? null, peutStatuer: !!hab && ["ouverte", "en_cours"].includes(demande.statut) };
+  // Deux choses distinctes, que la route doit pouvoir séparer : `peutStatuer` (l'étape courante m'est ouverte et
+  // la demande est vivante), et `habilitee` (je porte un rôle de CE circuit dans CE périmètre, clos ou non).
+  // Sans la seconde, la fermeture d'une demande se lirait dans un 409 réservé à ceux qui ont le rôle — un refus
+  // ne doit rien dire de plus qu'un autre refus à qui n'a pas à statuer.
+  const habilitee = etape ? !!hab : profil.habilitations.some((h) => etapes.some((x) => x.role === h.role) && couvreDemande(h, etab ?? null, demande.donnees));
+  return { demande, modele, etapes, etape, etab: etab ?? null, habilitee, peutStatuer: !!hab && ["ouverte", "en_cours"].includes(demande.statut) };
 }
 
 /**
@@ -790,6 +806,21 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
   }).strict().refine((s) => s.decision === "valide" || (s.motif ?? "").length >= 5, "Un motif d'au moins 5 caractères est requis pour refuser ou renvoyer"));
 
   const ctx = await contexteDemande(profil, demandeId);
+  // L'autorisation passe AVANT toute garde d'état ou de circuit. Dans l'autre ordre, un compte qui n'a rien à
+  // faire ici lirait dans le code de la réponse si la demande est close, si la pièce de frais d'un élève existe
+  // au registre, ou si un transfert est en cours. Le rôle et le périmètre se jugent clos ou non (`habilitee`) :
+  // la clôture d'une demande n'est pas une information pour quelqu'un qui n'a pas à la statuer.
+  if (!ctx.habilitee) {
+    await journaliser(profil, "Décision sur une demande", `${demandeId} · ${ctx.etape?.code ?? ctx.demande.etapeCourante}`, "gestion", false, "role");
+    refuser(ctx.etape ? `Cette étape relève du rôle « ${ctx.etape.role} » dans le périmètre concerné : décision refusée et journalisée` : "Aucune étape de ce circuit ne vous ouvre de décision dans le périmètre concerné : refusée et journalisée");
+  }
+  if (!ctx.etape) throw new HTTPException(409, { message: "Étape courante incohérente avec le modèle de circuit" });
+  if (!["ouverte", "en_cours"].includes(ctx.demande.statut)) throw new HTTPException(409, { message: "Cette demande est déjà close" });
+  // Le motif est cité tel quel dans la notification qui part sur le téléphone du demandeur. La règle des frais —
+  // aucune devise dans la prose composée par un agent — vaut donc pour TOUTE réponse rendue par cette route, pas
+  // seulement pour les deux circuits qui parlent de pièces : un « 15 000 francs CFA non réglés » dans un motif
+  // d'accompagnement voyagerait jusqu'à une famille comme y voyage un motif de quittance.
+  sansSomme("Motif de la réponse", saisie.motif);
   // Exercice des droits : la réponse à la personne est toujours motivée, et un renvoi n'a pas de sens
   // (la première étape est le dépôt par la personne elle-même, qu'aucune file ne présente).
   if (ctx.modele.code === "DROITS") {
@@ -798,11 +829,24 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
   }
   // Un transfert se décide avec le choix de la classe et le contrôle des places : jamais par la décision générique.
   if (ctx.modele.code === "TRANSFERT") throw new HTTPException(409, { message: "Un transfert se traite depuis l'écran « Transferts » de l'établissement (choix de la classe, places restantes)." });
-  if (!ctx.etape) throw new HTTPException(409, { message: "Étape courante incohérente avec le modèle de circuit" });
-  if (!["ouverte", "en_cours"].includes(ctx.demande.statut)) throw new HTTPException(409, { message: "Cette demande est déjà close" });
-  if (!ctx.peutStatuer) {
-    await journaliser(profil, "Décision sur une demande", `${demandeId} · ${ctx.etape.code}`, "gestion", false, "role");
-    refuser(`Cette étape relève du rôle « ${ctx.etape.role} » dans le périmètre concerné : décision refusée et journalisée`);
+  // Réclamation sur une pièce de frais : la réponse est ÉCRITE (une famille n'obtient pas un silence), un renvoi
+  // n'a pas de sens (la première étape est le dépôt par la famille elle-même, qu'aucune file ne présente), et la
+  // valider sans trace au registre détacherait la décision du fait qui seul l'éteint — la pièce doit être
+  // consignée AVANT. C'est ce verrou qui fait de la réclamation la boucle du rapprochement, et pas une boîte aux
+  // lettres : « j'ai payé, rien n'est enregistré » se clos par une quittance ou par une mesure, pas par un avis.
+  if (ctx.modele.code === "RECLAMATION_FRAIS") {
+    if (saisie.decision === "renvoye") throw new HTTPException(422, { message: "Une réclamation sur une pièce de frais ne se renvoie pas : la première étape est son dépôt par la famille. Répondez, ou refusez en motivant." });
+    if ((saisie.motif ?? "").length < 10) throw new HTTPException(422, { message: "La réponse adressée à la famille est obligatoire (10 caractères au moins)." });
+    if (saisie.decision === "valide") {
+      const v = ctx.demande.donnees as { apprenantId?: string; anneeScolaire?: string; terme?: string | null } | null;
+      if (!v?.apprenantId || !v.anneeScolaire) throw new HTTPException(409, { message: "Cette réclamation ne nomme ni élève ni année : à refaire depuis l'espace famille." });
+      const piece = await base().select({ id: schema.evenements.id }).from(schema.evenements)
+        .where(and(inArray(schema.evenements.type, [...TYPES_FAITS_FRAIS]), eq(schema.evenements.apprenantId, v.apprenantId),
+          sql`${schema.evenements.donnees}->>'anneeScolaire' = ${v.anneeScolaire}`,
+          ...(v.terme ? [sql`${schema.evenements.donnees}->>'terme' = ${v.terme}`] : [])))
+        .limit(1);
+      if (!piece.length) throw new HTTPException(422, { message: `Aucune pièce consignée pour ${v.apprenantId} en ${v.anneeScolaire}${v.terme ? ` (${v.terme})` : ""} : enregistrez d'abord la quittance, ou l'exonération / la prise en charge, puis validez la réclamation.` });
+    }
   }
 
   const idx = ctx.etapes.findIndex((e) => e.code === ctx.demande.etapeCourante);
@@ -814,8 +858,18 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
   else if (suivante) etape = suivante.code;
   else statut = "acceptee";
 
-  await base().insert(schema.decisions).values({ id: `DEC-${randomUUID()}`, demandeId, etape: ctx.etape.code, auteurId: profil.id, decision: saisie.decision, motif: saisie.motif ?? null });
-  await base().update(schema.demandes).set({ etapeCourante: etape, statut }).where(eq(schema.demandes.id, demandeId));
+  // Le passe est conditionné à l'étape et au statut lus ci-dessus, dans la même transaction que l'ajout de la
+  // décision : deux comptes d'une même école qui statuent en parallèle ne laissent pas deux décisions
+  // contradictoires sur la même étape (et deux notifications au même téléphone) — le second ne trouve plus la
+  // demande à cette étape, et rien ne s'écrit pour lui.
+  const etapeAttendue = ctx.etape.code;
+  await base().transaction(async (tx) => {
+    const maj = await tx.update(schema.demandes).set({ etapeCourante: etape, statut })
+      .where(and(eq(schema.demandes.id, demandeId), eq(schema.demandes.etapeCourante, etapeAttendue), inArray(schema.demandes.statut, ["ouverte", "en_cours"])))
+      .returning({ id: schema.demandes.id });
+    if (maj.length !== 1) throw new HTTPException(409, { message: "La demande a été décidée entre-temps : rechargez la page" });
+    await tx.insert(schema.decisions).values({ id: `DEC-${randomUUID()}`, demandeId, etape: etapeAttendue, auteurId: profil.id, decision: saisie.decision, motif: saisie.motif ?? null });
+  });
 
   // Effet métier : la direction de l'établissement atteste la remontée — la relance de transmission aboutit
   // et ne sera pas rejouée (l'établissement est désormais marqué comme ayant transmis).
@@ -836,6 +890,7 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
     await base().insert(schema.notifications).values({
       id: `NOT-${randomUUID()}`, destinataireNpi: demandeur.npi, evenementId: null,
       titre: ctx.modele.code === "DROITS" ? (saisie.decision === "refuse" ? "Votre demande sur vos données : refus motivé" : "Réponse à votre demande sur vos données")
+        : ctx.modele.code === "RECLAMATION_FRAIS" ? (saisie.decision === "refuse" ? "Votre réclamation sur une pièce de frais : refus motivé de l'école" : "Réponse à votre réclamation sur une pièce de frais")
         : `Demande ${verbe.startsWith("acceptée") || verbe.startsWith("validée") ? "validée" : saisie.decision === "refuse" ? "refusée" : "renvoyée"}`,
       texte: `« ${ctx.demande.objet} » : ${verbe}.${saisie.motif ? ` Motif : ${saisie.motif}.` : ""}`,
     }).catch((e) => console.error("Notification demande :", e));

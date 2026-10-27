@@ -101,6 +101,10 @@
 - « Exonération » : nature (exonération ou prise en charge par un tiers), portée (un terme ou toute l'année), motif, autorité qui décide, texte de référence. Un statut légitime, pas une anomalie — c'est ainsi que la gratuité des filles dans le secondaire public se consigne.
 - Chaque pièce consignée pour un élève part en notification au responsable légal dont le lien de filiation est vérifié — et à lui seul. Un enseignant, une classe, l'inspection ne reçoivent rien ; la déclaration d'appel de l'année, elle, ne notifie personne.
 - Un terme « attendu » ne bloque ni le bulletin, ni les examens, ni l'accès à l'école : l'absence d'une pièce au registre ne prouve pas un paiement absent.
+- « Réclamations des familles » : les parents qui déclarent avoir payé sans trace au registre. Chaque ligne nomme l'élève, le terme visé, le texte de la famille et l'échéance de réponse annoncée (7 jours).
+- Répondre se fait en deux temps : « Consigner la pièce » d'abord, puis « Pièce reconnue ». Reconnaître sans pièce au registre est refusé — une réclamation se clos par un fait, pas par un avis.
+- « Refuser » exige une réponse écrite (10 caractères au moins) qui part telle quelle en notification à la famille : ni somme ni devise n'y sont acceptées.
+- Une réclamation vivante est aussi signalée sur la ligne de l'élève dans « État par apprenant ». Un enseignant ne la lit ni ne la statue : elle reste entre la famille et votre administration.
 
 ### Examens nationaux
 
@@ -287,6 +291,18 @@
 4. Décrivez le motif (cinq caractères minimum) : par exemple la gratuité des frais de scolarité des filles dans le secondaire public, décidée en Conseil des ministres le 3 juin 2026.
 5. Nommez l'autorité qui décide et la date de la décision ; ajoutez le texte de référence si vous en avez un (note de service, arrêté).
 6. Touchez « Enregistrer la décision ». La ligne du terme passe à « Exonération enregistrée » chez l'école comme chez le parent, et rien n'est attendu pour cette période ; si tous les termes appelés sont couverts, l'élève passe à « Exonéré ou pris en charge ».
+
+### Répondre à « j'ai payé, rien n'est enregistré »
+
+> Une famille qui détient un papier que le registre n'a pas vu vous le dit ici. Répondre par écrit ferme l'inquiétude ; reconnaître sans pièce, en revanche, ferait du registre un avis et non une trace.
+
+1. Ouvrez « Frais scolaires » : le panneau « Réclamations des familles » vient sous l'appel de l'année, les réclamations à instruire en tête.
+2. Lisez le texte de la famille — le terme visé, la date, la référence du papier qu'elle détient — et retrouvez la pièce dans votre cahier d'intendance.
+3. Si la pièce existe, touchez « Consigner la pièce » (même formulaire que depuis la ligne de l'élève) : référence, date de délivrance, qualité de l'agent.
+4. Touchez ensuite « Pièce reconnue » et écrivez la réponse adressée à la famille — dix caractères au minimum, aucune somme ni devise. La réclamation passe en « Reconnue par l'école » et la famille en est notifiée.
+5. Si la pièce n'existe pas, touchez « Refuser » et motivez par écrit : c'est ce motif que la famille lira. Le refus ne suspend rien — ni bulletin, ni examen, ni appel en classe.
+6. Reconnaître une réclamation avant d'avoir consigné la pièce est refusé : c'est voulu, et c'est ce qui empêche une contestation d'être éteinte par un simple avis.
+7. Une réclamation ne se renvoie pas à son dépôt : la première étape est celle de la famille. Répondez, ou refusez en motivant.
 
 ### Imprimer un état (nominatif, appel, conseil)
 

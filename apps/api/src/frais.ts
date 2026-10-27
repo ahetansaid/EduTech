@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   FraisTerme, LIBELLE_TERME_FRAIS, QualiteAgentEncaisseur, TYPES_FAITS_FRAIS,
   type CouvertureTerme, type DeclarationCadence, type Evenement, type Finalite, type LigneFraisEcole, type Profil, type SituationFrais, type StatutFrais,
@@ -9,7 +10,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, refuser, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, refuser, sansSomme, type Variables } from "./commun";
 import { contexteApprenant, enEvenement } from "./donnees";
 import { dejaSaisi, inscrireAuRegistre } from "./ecriture";
 import { signaler } from "./vigie";
@@ -45,14 +46,15 @@ export const estFaitFrais = (type: string) => FAITS_FRAIS.has(type);
 /**
  * Le contrat refuse déjà une CLÉ `montant` (`.strict()` au paquet contrats). Reste le texte libre — le cadre de
  * l'appel, le motif d'une mesure, la référence d'une pièce — où « 15 000 francs CFA par terme » ferait entrer au
- * registre national ce qu'il ne doit contenir. Une devise est ancrée sur ses limites de mot : « effacer » ou
- * « euro-africain » dans un texte d'agent ne se refusent pas, « 30 € » oui. Un nombre nu n'est pas une somme
- * (un numéro de salle, une année) : c'est le nom de devise qui trahit l'intention.
+ * registre national ce qu'il ne doit pas contenir : c'est `sansSomme`, en `commun.ts` parce que la même règle
+ * garde désormais la réponse écrite d'une réclamation.
+ *
+ * Les RÉFÉRENCES (quittance, délibération, texte) ne sont pas scannées : ce sont des numéros opaques, et un
+ * rapprochement de lettres sur un numéro serait un faux positif. C'est pour la même raison — mais dans l'autre
+ * sens — que la marque aléatoire de la recette ne peut être que chiffrée : elle se glisse dans le texte d'une
+ * réclamation et dans le motif d'une réponse, qui sont scannés, et une suite de lettres en base 36 pourrait y
+ * composer « CFA » au hasard. Le garde ne doit rien à un tirage.
  */
-const DEVISE = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|francs? cfa|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]/i;
-function sansSomme(champ: string, texte: string | null | undefined) {
-  if (texte && DEVISE.test(texte)) throw new HTTPException(422, { message: `${champ} : ni somme ni devise ne se consignent dans BEILE — le montant reste sur la pièce papier et dans la comptabilité de l'établissement` });
-}
 
 /* ------------------------------------------------------------------ Faits */
 
@@ -339,6 +341,119 @@ frais.post("/apprenants/:id/frais/exoneration", authentifie, limiteDebit(30, 60_
   return c.json({ id: idEvenement, apprenantId, deja: false }, 201);
 });
 
+/* ------------------------------------------------------------------ Réclamation : « j'ai payé, rien n'est enregistré » */
+
+const DELAI_INSTRUCTION_JOURS = 7;
+
+/**
+ * Dépôt de la famille, réponse de l'école. Deux étapes, et c'est un choix assumé — pas un oublié.
+ *
+ * Le circuit générique `RECLAMATION` du socle (`packages/db/src/socle.ts:26`) en compte trois : dépôt,
+ * instruction, « CORRECTION » par la direction départementale. Appliqué aux frais, le troisième maillon serait
+ * une surface sans pouvoir : un fait de frais ne s'écrit QUE depuis le compte d'administration de l'école qui
+ * scolarise l'élève (`compteEcoleRequis`, `administration`), et la direction départementale n'a aucune route pour
+ * consigner une pièce. Lui ouvrir une étape reviendrait à faire croire à la famille qu'un échelon supérieur peut
+ * réparer ce que seul l'école peut écrire. Le recours qui manque quand l'école refuse est dit tel quel au
+ * cadrage (§7) ; il reste à construire, pas à maquiller.
+ */
+const CIRCUIT_RECLAMATION = {
+  code: "RECLAMATION_FRAIS",
+  libelle: "Pièce de frais payée et non consignée",
+  etapes: [
+    { ordre: 1, code: "DEPOT", role: "parent", delaiJours: 0 },
+    { ordre: 2, code: "INSTRUCTION", role: "chef_etablissement", delaiJours: DELAI_INSTRUCTION_JOURS },
+  ],
+  version: "1.0",
+};
+
+/**
+ * Une réclamation n'est pas un paiement et ne devient pas une boîte aux lettres :
+ * 1. parler de CET élève se décide par le moteur ABAC sur `suivi_familial` (le lien de filiation vérifié), pas
+ *    par un rôle deviné ici — le refus est journalisé comme tout accès ;
+ * 2. ni somme ni devise dans le texte, et le terme réclamé doit être un terme que l'école a appelé cette
+ *    année-là : on ne réclame pas une pièce pour un appel qui n'existe pas ;
+ * 3. une seule réclamation vivante par élève, année et terme : la rejouer (clic double, réponse réseau perdue)
+ *    renvoie la demande existante au lieu d'empiler deux dossiers sur la table de l'école.
+ *
+ * La visibilité ne change d'un octet nulle part : la réclamation se lit par la famille qui l'a déposée et par
+ * l'administration de l'école, jamais par l'enseignant, la classe, l'élève ou un agrégat de pilotage.
+ */
+frais.post("/apprenants/:id/frais/reclamation", authentifie, limiteDebit(10, 60 * 60_000, cleUtilisateur), async (c) => {
+  const profil = c.get("profil");
+  const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
+  const ctx = await contexteApprenant(base(), apprenantId, profil);
+  const decision = decider(profil, { ressource: { type: "dossier_apprenant", apprenantId }, finalite: "suivi_familial" }, { monde: ctx.monde, evenements: ctx.evenements });
+  await journaliser(profil, "Dépôt d'une réclamation sur une pièce de frais", apprenantId, "suivi_familial", decision.autorise, decision.criteres.find((x) => !x.satisfait)?.critere ?? null);
+  if (!decision.autorise) refuser("Une réclamation sur une pièce de frais se dépose pour son enfant, au sens du lien de filiation vérifié : dépôt refusé et journalisé");
+
+  const etablissementId = await ecoleDeLApprenant(apprenantId);
+  const m = await corps(c, z.object({
+    anneeScolaire: ANNEE,
+    terme: FraisTerme.nullish(),
+    texte: z.string().trim().min(15, "Décrivez la pièce : 15 caractères au moins").max(500),
+  }).strict());
+  sansSomme("Texte de la réclamation", m.texte);
+  const cadence = await chargerCadence(etablissementId, m.anneeScolaire);
+  if (m.terme && cadence?.termes.length && !cadence.termes.some((t) => t.terme === m.terme)) throw new HTTPException(422, { message: "Terme non appelé par l'école cette année" });
+
+  // Un dossier par élève, par année et par terme — pas par compte. Deux responsables légitimes du même enfant
+  // (père et mère au registre) ne présentent pas deux réclamations identiques sur la table de l'école ; et la
+  // clé se pose sur l'élève, donc la vérification et l'écriture partagent le même verrou, comme ailleurs quand
+  // une lecture précède une écriture (« deux clics, deux dossiers » n'est pas une hypothèse rare ici).
+  const dossier = await base().transaction(async (tx): Promise<{ id: string; deja: boolean; echeance: Date | null }> => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`reclamation:${apprenantId}:${m.anneeScolaire}:${m.terme ?? ""}`}))`);
+    const vivantes = await tx.select({ id: schema.demandes.id }).from(schema.demandes)
+      .where(and(eq(schema.demandes.modele, CIRCUIT_RECLAMATION.code), inArray(schema.demandes.statut, ["ouverte", "en_cours"]),
+        sql`${schema.demandes.donnees}->>'apprenantId' = ${apprenantId}`,
+        sql`${schema.demandes.donnees}->>'anneeScolaire' = ${m.anneeScolaire}`,
+        m.terme ? sql`${schema.demandes.donnees}->>'terme' = ${m.terme}` : sql`coalesce(${schema.demandes.donnees}->>'terme', '') = ''`));
+    if (vivantes.length) return { id: vivantes[0]!.id, deja: true, echeance: null };
+
+    const id = `DEM-${randomUUID()}`;
+    const echeance = new Date(Date.now() + DELAI_INSTRUCTION_JOURS * 86_400_000);
+    await tx.insert(schema.modelesCircuit).values(CIRCUIT_RECLAMATION)
+      .onConflictDoUpdate({ target: schema.modelesCircuit.code, set: { libelle: CIRCUIT_RECLAMATION.libelle, etapes: CIRCUIT_RECLAMATION.etapes, version: CIRCUIT_RECLAMATION.version } });
+    await tx.insert(schema.demandes).values({
+      id, modele: CIRCUIT_RECLAMATION.code,
+      objet: `Pièce non consignée — ${apprenantId} · ${m.anneeScolaire}${m.terme ? ` · ${m.terme}` : ""}`,
+      demandeurId: profil.id, ressource: etablissementId,
+      donnees: { apprenantId, etablissementId, anneeScolaire: m.anneeScolaire, terme: m.terme ?? null, texte: m.texte },
+      etapeCourante: "INSTRUCTION", statut: "en_cours", echeance,
+    });
+    await tx.insert(schema.decisions).values({ id: `DEC-${randomUUID()}`, demandeId: id, etape: "DEPOT", auteurId: profil.id, decision: "valide", motif: null });
+    return { id, deja: false, echeance };
+  });
+  await journaliser(profil, "Dépôt d'une réclamation sur une pièce de frais", `${dossier.id} · ${apprenantId} · ${m.anneeScolaire}${m.terme ? ` ${m.terme}` : ""}`, "suivi_familial", true, null);
+  if (dossier.deja) return c.json({ id: dossier.id, deja: true, statut: "en_cours" });
+  return c.json({ id: dossier.id, echeance: dossier.echeance!.toISOString(), deja: false }, 201);
+});
+
+/**
+ * Réclamations d'un élève ou d'une école, avec la dernière réponse rendue. `workflow.decisions` est en ajout
+ * seul : la plus récente prime à l'écran, l'historique complet reste lisible au détail de la demande
+ * (`GET /demandes/:id`), y compris par la famille qui l'a déposée.
+ */
+async function reclamationsLues(filtre: { apprenantId?: string; etablissementId?: string; anneeScolaire?: string }) {
+  const cond = [eq(schema.demandes.modele, CIRCUIT_RECLAMATION.code)];
+  if (filtre.apprenantId) cond.push(sql`${schema.demandes.donnees}->>'apprenantId' = ${filtre.apprenantId}`);
+  if (filtre.etablissementId) cond.push(sql`${schema.demandes.donnees}->>'etablissementId' = ${filtre.etablissementId}`);
+  if (filtre.anneeScolaire) cond.push(sql`${schema.demandes.donnees}->>'anneeScolaire' = ${filtre.anneeScolaire}`);
+  const demandes = await base().select().from(schema.demandes).where(and(...cond)).orderBy(desc(schema.demandes.creeeLe)).limit(60);
+  if (!demandes.length) return [];
+  const reponses = await base().select().from(schema.decisions).where(and(inArray(schema.decisions.demandeId, demandes.map((d) => d.id)), sql`${schema.decisions.etape} <> 'DEPOT'`));
+  const derniere = new Map<string, (typeof reponses)[number]>();
+  for (const r of reponses.sort((a, b) => a.horodatage.getTime() - b.horodatage.getTime())) derniere.set(r.demandeId, r);
+  return demandes.map((d) => {
+    const x = d.donnees as { apprenantId?: string; terme?: string | null; texte?: string } | null;
+    const r = derniere.get(d.id);
+    return {
+      id: d.id, apprenantId: x?.apprenantId ?? null, terme: x?.terme ?? null, texte: x?.texte ?? null,
+      statut: d.statut, etapeCourante: d.etapeCourante, deposeeLe: d.creeeLe.toISOString(), echeance: d.echeance?.toISOString() ?? null,
+      reponse: r ? { etape: r.etape, decision: r.decision, motif: r.motif, le: r.horodatage.toISOString() } : null,
+    };
+  });
+}
+
 /* ------------------------------------------------------------------ Lectures */
 
 /**
@@ -360,8 +475,14 @@ frais.get("/apprenants/:id/frais", authentifie, limiteDebit(60, 60_000, cleUtili
   if (!retenue.decision.autorise || !ctx.apprenant) throw new HTTPException(403, { message: "La situation des frais ne se consulte que pour son enfant ou pour son école" });
   const situation = situationApprenant(ctx.monde, ctx.evenements, apprenantId);
   const annee = situation.classe?.anneeScolaire;
-  if (!annee || !situation.etablissementId) return c.json({ decision: retenue.decision, apprenantId, anneeScolaire: null, situation: null });
-  return c.json({ decision: retenue.decision, apprenantId, anneeScolaire: annee, situation: await lireSituationFrais(ctx.evenements, situation.etablissementId, annee) });
+  if (!annee || !situation.etablissementId) return c.json({ decision: retenue.decision, apprenantId, anneeScolaire: null, situation: null, reclamations: [] });
+  return c.json({
+    decision: retenue.decision, apprenantId, anneeScolaire: annee,
+    situation: await lireSituationFrais(ctx.evenements, situation.etablissementId, annee),
+    // La famille lit ici ce qu'elle a déposé et la réponse de l'école ; l'administration de l'école lit la même
+    // ligne depuis son état de rapprochement. Un seul objet, deux lecteurs légitimes, décidés par l'ABAC.
+    reclamations: await reclamationsLues({ apprenantId, anneeScolaire: annee }),
+  });
 });
 
 /**
@@ -375,7 +496,7 @@ frais.get("/etablissements/:id/frais", authentifie, limiteDebit(30, 60_000, cleU
   const annees = await base().selectDistinct({ anneeScolaire: schema.classes.anneeScolaire }).from(schema.classes)
     .where(eq(schema.classes.etablissementId, id)).orderBy(desc(schema.classes.anneeScolaire));
   const anneeScolaire = c.req.query("anneeScolaire") ?? annees[0]?.anneeScolaire ?? null;
-  if (!anneeScolaire) return c.json({ etablissement: etab.nom, etablissementId: id, anneeScolaire: null, jour: jourLocal(), effectif: 0, annees: [], lignes: [], parTerme: [], totaux: {} });
+  if (!anneeScolaire) return c.json({ etablissement: etab.nom, etablissementId: id, anneeScolaire: null, jour: jourLocal(), effectif: 0, annees: [], lignes: [], parTerme: [], totaux: {}, reclamations: [] });
   const annee = ANNEE.parse(anneeScolaire);
   // Le registre ne connaît une année d'école que par les classes qu'elle a ouvertes : une année arbitraire
   // rendrait un rapprochement d'élèves qui n'ont jamais été les siens.
@@ -436,6 +557,11 @@ frais.get("/etablissements/:id/frais", authentifie, limiteDebit(30, 60_000, cleU
   // rester celui de l'école. Seule la liste nominative est filtrée puis tronquée.
   const matchantes = recherche ? lignes.filter((l) => l.nom.toLocaleLowerCase("fr").includes(recherche)) : lignes;
   const trie = matchantes.sort((a, b) => (a.statut === "attendu" ? 0 : 1) - (b.statut === "attendu" ? 0 : 1) || a.nom.localeCompare(b.nom, "fr"));
+  // Le nom de l'élève joint à sa réclamation : l'école nomme déjà tous ses élèves ci-dessus, et une liste de
+  // réclamations qui ne dirait que « APP-123456 » serait une liste à ne pas pouvoir traiter.
+  const nomDe = new Map(lignes.map((l) => [l.apprenantId, l.nom]));
+  const reclamations = (await reclamationsLues({ etablissementId: id, anneeScolaire: annee }))
+    .map((r) => ({ ...r, nomApprenant: (r.apprenantId && nomDe.get(r.apprenantId)) || null }));
   return c.json({
     etablissement: etab.nom, etablissementId: id, anneeScolaire: annee, jour, annees: annees.map((a) => a.anneeScolaire),
     recherche,
@@ -444,6 +570,9 @@ frais.get("/etablissements/:id/frais", authentifie, limiteDebit(30, 60_000, cleU
     // rapprochement complet (le registre ne conserve pas d'historique des listes par année).
     anneeCourante: annees[0]?.anneeScolaire ?? null,
     cadence: cadence ? enCadence(cadence) : null,
+    // Réclamations déposées pour les élèves de cette année : la réponse se rend depuis cet écran, et l'école
+    // n'a pas à attendre que la famille revienne au guichet pour savoir où en est son dossier.
+    reclamations,
     effectif: eleves.length,
     horsEffectif: sortants.length,
     totaux: { couvert: compte("couvert"), exonere: compte("exonere"), attendu: compte("attendu"), en_cours: compte("en_cours"), sans_declaration: compte("sans_declaration") },

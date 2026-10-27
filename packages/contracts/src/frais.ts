@@ -51,3 +51,28 @@ export interface LigneFraisEcole {
   termes: CouvertureTerme[];
   derniereQuittance: SituationFrais["derniereQuittance"];
 }
+
+/**
+ * Réclamation de la famille : « j'ai payé, rien n'est enregistré ». Ce n'est PAS un fait du registre — c'est une
+ * demande de circuit (`workflow.demandes`, modèle `RECLAMATION_FRAIS`), déposée par la famille et instruite par
+ * l'administration de l'école. Elle ne contient ni somme, ni moyen de paiement, et ne ferme rien par elle-même :
+ * ce qui éteint une réclamation, c'est la pièce consignée. La `reponse` est la dernière décision rendue
+ * (`workflow.decisions`, ajout seul — l'historique complet reste au détail de la demande).
+ */
+export interface ReclamationFrais {
+  id: string;
+  apprenantId: string | null;
+  /**
+   * Nom porté — ajouté seulement par la lecture de l'école, qui a le droit de nommer ses élèves. La famille,
+   * elle, regarde son enfant : sa réponse à elle reste muette sur ce champ.
+   */
+  nomApprenant?: string | null;
+  terme: FraisTerme | null;
+  texte: string;
+  statut: "ouverte" | "en_cours" | "acceptee" | "refusee" | "close";
+  etapeCourante: string;
+  deposeeLe: string;
+  /** Date limite de réponse de l'école ; `null` si le circuit n'en pose pas. */
+  echeance: string | null;
+  reponse: { etape: string; decision: "valide" | "refuse" | "renvoye"; motif: string | null; le: string } | null;
+}

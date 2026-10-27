@@ -1,6 +1,6 @@
 # Cadrage — Situation des frais scolaires
 
-> Octobre 2026. Statut : **validée le 26/10/2026** (recommandations retenues par le commanditaire), livrée en code le 26/10/2026. Aucune écriture en base de démonstration : la feature se branche sur `ledger.evenements`, dont la colonne `type` est un texte libre — aucun `ALTER TABLE`.
+> Octobre 2026. Statut : **validée le 26/10/2026** (recommandations retenues par le commanditaire), livrée en code le 26/10/2026 ; la réclamation « j'ai payé, rien n'est enregistré » est livrée le 27/10/2026 (§7). Aucune écriture en base de démonstration : la feature se branche sur `ledger.evenements`, dont la colonne `type` est un texte libre — aucun `ALTER TABLE`. La réclamation, elle, réutilise les tables de circuits du socle (`workflow.modeles`, `demandes`, `decisions`) : aucun schéma nouveau non plus.
 
 ## 1. Constat
 
@@ -25,9 +25,11 @@
 
 Le contrôle anti-détournement ne passe donc pas par les montants, qui ne circulent pas dans BEILE, mais par le
 **rapprochement** : l'école déclare ce qu'elle encaisse (termes, dates, quittances émises), le parent qui paie
-sans trace ouvre une réclamation, et l'écart entre les deux devient une alerte. Deux règles techniques le
+sans trace ouvre une réclamation, et l'écart entre les deux devient une alerte. Trois règles techniques le
 tiennent dès aujourd'hui : une référence de quittance dupliquée sur deux élèves différents est signalée à la
-vigie, et chaque écriture porte son auteur au registre, qui ne s'efface pas.
+vigie, chaque écriture porte son auteur au registre, qui ne s'efface pas, et une réclamation de la famille ne
+peut être close en « pièce reconnue » que si la pièce est effectivement consignée (§7) — l'école ne peut donc pas
+éteindre une contestation par un simple avis.
 
 ## 3. Vocabulaire et bases, sourcés
 
@@ -90,7 +92,8 @@ dans l'établissement, complétée des élèves qui en sont sortis mais ont donn
 - **Espace famille** (`/famille`, carte « Frais scolaires ») : le bloc arrive avec le dossier de l'enfant
   (`Dossier.frais`), sans appel supplémentaire. Statut de l'année, cadre déclaré par l'école, terme par terme
   l'état et la référence de la pièce ou de la mesure. Aucun montant, et un renvoi explicite à l'intendance pour
-  la somme.
+  la somme. La carte porte aussi le bouton **« J'ai payé, rien n'est enregistré »** et, sous les termes, la liste
+  des réclamations déjà déposées avec leur statut et la dernière réponse écrite de l'école (§7).
 - **Établissement › Frais scolaires** (`/etablissement/frais`) : déclarer ou modifier l'appel de l'année
   (termes + dates, cadre, référence de délibération), totaux par statut comparés à l'effectif scolarisé,
   rapprochement terme par terme (quittances, exonérations, sans pièce, avant échéance), puis état par apprenant
@@ -101,6 +104,11 @@ dans l'établissement, complétée des élèves qui en sont sortis mais ont donn
   Les cinq cases de statut s'affichent même à zéro — une case masquée empêcherait de faire la somme avec
   l'effectif. La date limite des formulaires est celle rendue par le serveur, en calendrier béninois (UTC+1) :
   une pièce délivrée le matin même ne doit pas être refusée parce qu'il est 00 h 30 à Cotonou et la veille en UTC.
+  Un panneau **« Réclamations des familles »** vient entre l'appel de l'année et l'état par apprenant : les
+  réclamations à instruire d'abord, avec le nom de l'élève, le texte de la famille, l'échéance des 7 jours et
+  deux actions — *Consigner la pièce* (qui ouvre le même formulaire que la ligne d'élève) puis *Pièce reconnue*
+  ou *Refuser*, les deux exigeant une réponse écrite. Une réclamation vivante est aussi signalée sur la ligne de
+  l'élève concerné, pour que le lien entre la pièce à consigner et la réclamation à clore reste visible.
 - **Entrée de navigation** réservée à `chef_etablissement` ; le masque n'est que cosmétique, la route est gardée
   côté serveur par l'habilitation d'établissement.
 
@@ -126,8 +134,13 @@ Enfin, la charge utile des trois faits est `.strict()` au contrat (`packages/con
 montant, un RIB ou un mode de paiement ne peut s'y loger par aucun point d'écriture — la règle 3 est tenue par le
 schéma, pas par la bonne volonté d'un futur développeur. Le schéma ferme les CLÉS ; il ne fermait pas les TEXTES,
 et « quinze mille francs CFA par terme » écrit dans le cadre de l'appel aurait tout aussi bien trahi la règle.
-`apps/api/src/frais.ts` refuse donc aussi une **devise** dans la prose que compose l'agent — cadre de l'appel,
-motif et autorité d'une mesure, fonction de l'agent encaisseur (422 avant toute écriture). Un nombre nu n'est pas
+`commun.ts` (`sansSomme`, portée par `frais.ts` et par la route des demandes) refuse donc aussi une **devise**
+dans la prose que compose l'agent — cadre de l'appel, motif et autorité d'une mesure, fonction de l'agent
+encaisseur, texte du dépôt d'une réclamation, et **tout motif rendu par `POST /demandes/:id/decision`** : ce motif
+est cité tel quel dans la notification qui part sur le téléphone du demandeur, quel que soit le circuit. Un refus de
+`valide` en frais était le premier cas traité ; la garde est désormais commune, parce que la faille ne venait pas
+du circuit mais du fait que la prose d'un agent voyage jusqu'à un téléphone. 422 avant toute écriture. Un nombre nu
+n'est pas
 une somme (un numéro de salle, une année) ; c'est le nom de devise qui fait intention. Les références de pièces et
 de délibérations ne se vérifient pas : ce sont des numéros, opaques par nature, et un rapprochement de lettres y
 serait un faux positif.
@@ -144,7 +157,12 @@ La feature est couverte par `apps/api/src/recette.ts` en deux temps, comme le re
   refus d'écrire est le **même statut** pour un élève existant et pour un élève inexistant, sur la quittance comme
   sur l'exonération — c'est la démonstration que le 409 de la scolarité ne sert plus d'oracle. La forme est testée
   à la porte : une quittance ou un terme portant un `montant` est rejeté, un cadre ou un motif qui **nomme une
-  devise** aussi. Et l'invariant « aucun montant » est vérifié **mécaniquement** sur la réponse entière
+  devise** aussi. La réclamation est gardée de la même façon : dépôt refusé sans session, à l'enseignant, à
+  l'inspection, à l'élève lui-même et au parent qui n'a pas le lien — le refus est **identique** pour un élève
+  inexistant, afin que la route ne serve pas d'oracle — et refusé à l'administration de l'école, qui n'écrit pas
+  la contestation à la place de la famille. Sa forme est contrôlée avant toute écriture : texte nommant une
+  devise, texte trop court pour décrire une pièce, clé `montant` inconnue du contrat. Et l'invariant « aucun
+  montant » est vérifié **mécaniquement** sur la réponse entière
   (`clefsMontant`, `deviseDansLeTexte`) dans l'espace famille, la lecture d'une famille et l'état de l'école —
   chaque contrôle exige une réponse peuplée, un scan sur un tableau vide étant vert sans rien regarder. Le
   cloisonnement du pilotage se prouve sur la base réelle, pas seulement après les pièces que la recette elle-même
@@ -156,10 +174,17 @@ La feature est couverte par `apps/api/src/recette.ts` en deux temps, comme le re
   déclaration d'appel et son rejou idempotent, pièce consignée hors appel puis rendue `sans_appel` après
   déclaration (la régression critique ; non rejouable ailleurs, le cas contrôle alors qu'aucune ligne orpheline
   ne subsiste), refus d'un terme non appelé, **règle 1 jouée pendant que l'élève est exactement `attendu`** — le
-  bulletin de sa classe s'imprime et son dossier se lit, rien n'est suspendu ; quittance et son rejou, référence
+  bulletin de sa classe s'imprime et son dossier se lit, rien n'est suspendu ; **réclamation déposée par la
+  famille au moment exact où l'élève est `attendu`**, son rejou rendu sans être empilé, son refus sur un terme
+  non appelé, puis les quatre gardes de la réponse de l'école jouées dans l'ordre — un enseignant ne statue pas
+  (403), une réponse nommant une devise est refusée, une réponse trop courte est refusée, un renvoi est refusé,
+  et **reconnaître sans pièce au registre est refusé** ; quittance et son rejou, référence
   dupliquée sur deux élèves puis recopiée dans un autre alphabet (la vigie la reconnaît), **alerte lisible par le
   seul DPO et ne nommant aucun apprenant**, notification au responsable au lien vérifié et à lui seul — le
-  passeport de l'élève ne porte aucun bloc de frais et son téléphone ne reçoit rien —, mesure annuelle couvrant
+  passeport de l'élève ne porte aucun bloc de frais et son téléphone ne reçoit rien —, **clôture de la
+  réclamation une fois la pièce consignée**, sa réponse écrite notifiée à la famille sans somme ni devise, sa
+  relecture par la famille (statut et motif) comme par l'école (avec le nom de l'élève joint) et l'impossibilité
+  pour l'enseignant d'en lire le détail, mesure annuelle couvrant
   les termes appelés, rapprochement de l'école (effectif égal aux lignes du jour), recherche nominative servie en
   base et retrouvant l'élève saisi, relecture par la famille après écritures (même statut des deux côtés, toujours
   aucun montant), et l'absence des trois faits du flux lu par la tutelle comme du parcours général d'un élève.
@@ -167,21 +192,85 @@ La feature est couverte par `apps/api/src/recette.ts` en deux temps, comme le re
 Le second temps ne s'exécute pas en local : la seule base joignable ici est la base de production, et une
 écriture de recette y serait définitive (le registre est en ajout seul).
 
-## 7. Hors périmètre pour l'instant
+## 7. Ce que la réclamation fait, et ce qui manque encore
+
+**Livré le 27/10/2026** : « j'ai payé, rien n'est enregistré ». La famille dépose, depuis l'espace famille, une
+réclamation sur un terme (ou sur l'année) : un texte de 15 à 500 caractères, sans montant ni devise, et rien
+d'autre — pas de scan, pas de numéro de pièce, pas de moyen de paiement. Le papier qu'elle détient se montre à
+l'école, il ne monte pas au registre national. L'administration de l'école la voit sur son écran de frais, avec
+le nom de l'élève, et répond par écrit sous 7 jours.
+
+C'est un circuit du socle (`workflow.demandes`, modèle `RECLAMATION_FRAIS`) et **non** un fait du registre : il
+ne modifie aucune situation de frais, n'apparaît ni au dossier général de l'élève, ni au flux du pilotage, ni au
+passeport. Sa visibilité est exactement celle du circuit — la famille qui l'a déposée et l'étape courante, tenue
+par le rôle `chef_etablissement` au périmètre de l'école ressource. L'enseignant ne la lit pas et ne la statue
+pas.
+
+Quatre verrous, parce qu'une réclamation sans verrou devient une boîte aux lettres :
+
+- **`valide` exige la pièce.** L'API refuse de reconnaître une réclamation tant qu'aucune quittance, exonération
+  ou prise en charge n'est consignée pour cet élève, cette année (et ce terme, s'il est nommé). La réclamation se
+  clos donc par un **fait**, pas par un avis : c'est ce qui la rend utile au rapprochement au lieu de le
+  contourner.
+- **`refuse` exige un motif écrit** (10 caractères au moins), refusé s'il nomme une devise, et ce motif part tel
+  quel en notification à la famille. Une famille n'obtient pas un silence.
+- **`renvoye` est refusé** : la première étape est le dépôt par la famille elle-même, qu'aucune file ne
+  présenterait. Le circuit a donc **deux** étapes et non les trois du `RECLAMATION` générique du socle — le
+  troisième maillon (correction par la direction départementale) serait une surface sans pouvoir, la DD n'ayant
+  aucune route pour consigner une pièce.
+- **Un seul dossier par élève, année et terme** — pas par compte. Deux responsables légitimes du même enfant
+  (père et mère au registre national) qui déposent le même signalement obtiennent le dossier déjà ouvert, et non
+  deux lignes sur la table de l'école. La vérification et l'écriture partagent le verrou d'advisoire posé sur
+  cette clé, comme les transferts posent le leur sur l'élève : deux clics, ou deux onglets ouverts, ne créent
+  pas deux demandes.
+
+Deux courses fermées du même coup, côté socle — la réclamation les traverse comme tout circuit :
+
+- **statuer deux fois** : la décision générique d'une demande écrivait sa ligne d'historique puis mettait à jour
+  la demande sans condition d'état. Deux comptes d'une même école, ou une double requête, produisaient deux
+  décisions contradictoires et deux notifications au même téléphone. Le passe est maintenant conditionné à
+  l'étape et au statut lus avant, dans la même transaction ; le second perd (409) et n'écrit rien.
+- **l'ordre des gardes** : l'autorisation (rôle de l'étape dans le périmètre) passe avant toute garde d'état ou
+  de circuit. Dans l'autre ordre, un compte qui n'a rien à faire ici lisait dans le seul code de la réponse si
+  une demande est close, si une pièce de frais existe au registre pour un élève, ou si un transfert est en cours.
+  La permission se juge donc clos ou non (`habilitee`), la clôture restant lisible par celui qui a le rôle.
+
+**Ce qui manque, dit tel quel : le recours au-dessus de l'école.** Quand l'école refuse, sa réponse est écrite,
+motivée, horodatée et lisible par la famille — mais la plateforme ne lui offre aucun échelon à saisir. Un
+recours suppose un acteur qui puisse **ordonner** une écriture de frais ou constater un manquement, et cet
+acteur n'existe pas dans le modèle actuel (`Role` n'a ni intendant ni autorité de recours ; la DD n'a pas la
+route). L'écran famille le dit à la famille au moment du dépôt plutôt que de le lui laisser découvrir. C'est un
+lot à arbitrer, pas une ligne à ajouter.
+
+## 8. Hors périmètre pour l'instant
 
 - **Le montant** : il ne viendra pas au registre national. Si une envie de totalisation se faisait jour, ce
   serait un nouvel espace de confidentialité à arbitrer, pas une colonne à ajouter.
-- **La réclamation « j'ai payé, rien n'est enregistré »** : le circuit `RECLAMATION` est défini au socle
-  (dépôt → instruction par l'école → correction par la direction départementale) mais **aucune route de l'API
-  ne le fait déposer** aujourd'hui. C'est le lot suivant, et c'est lui qui ferme la boucle du rapprochement.
 - Le paiement lui-même : BEILE n'encaisse rien, n'émet aucun moyen de paiement et ne remplace pas la régie.
 - Une nomenclature des frais, des taux, ou un barème national : inexistant à ce jour, donc inventé — refusé.
 
-## 8. Question qui reste à trancher (arbitrage)
+## 9. Qui encaisse (arbitrage rendu le 2026-10-26 : la nomenclature reste ouverte)
 
 La documentation officielle ne dit **nulle part** qui, dans un collège ou lycée public béninois, encaisse
 réellement les frais et sur quelle pièce : l'intendance, le CPE, un régisseur de recettes nommé (art. 27 du
-RGCP), l'association de parents d'élèves, ou le comptable assignataire. Les trois qualités proposées au registre
-dérivent du RGCP, pas du terrain. **À valider auprès de la DDESTF ou du cabinet du MESTFP avant de figer le
-formulaire** : si l'agent qui encaisse n'existe pas dans la nomenclature réelle, la trace serait juste et la
-pièce introuvable.
+RGCP), l'association de parents d'élèves, ou le comptable assignataire. Les trois premières qualités proposées
+au registre dérivent du RGCP, pas du terrain.
+
+**Décision : ne pas figer.** `QualiteAgentEncaisseur` garde sa quatrième valeur, `autre` — libellée « Autre
+agent désigné » (`packages/contracts/src/evenements.ts:79-84`). Un agent réel hors de la liste peut donc être
+consigné sans que le registre prétende connaître l'organigramme de l'école. La valeur n'est pas une poubelle :
+choisir `autre`, c'est dire « je consigne une responsabilité que BEILE ne sait pas nommer », et le champ
+`agent` (texte libre, refusé s'il contient une somme ou une devise) porte la désignation telle que la pièce
+papier l'écrit.
+
+Ce que cela implique pour la saisie, dit tel quel : le compte d'un intendant ou d'un régisseur **n'existe pas**.
+`Role` (`packages/contracts/src/acces.ts:9-20`) ne contient ni intendant, ni régisseur, ni comptable — seul un
+compte `chef_etablissement` au périmètre de l'école qui scolarise l'élève peut écrire un fait de frais
+(`apps/api/src/frais.ts`, `administration()`). La trace est donc signée par l'administration de l'école pour un
+agent dont elle consigne la qualité. C'est honnête tant que l'école est le lieu du rapprochement ; ce serait
+faux si la pièce était émise hors d'elle.
+
+Un rôle dédié (compte « agent financier » avec périmètre) est possible mais ce n'est pas une ligne à ajouter :
+c'est un contrat, une habilitation ABAC et une migration. **À redemander explicitement**, et à ne trancher
+qu'après validation du formulaire auprès de la DDESTF ou du cabinet du MESTFP — si l'agent qui encaisse n'existe
+dans aucune nomenclature, la trace serait juste et la pièce introuvable.

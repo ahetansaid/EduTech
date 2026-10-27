@@ -1,7 +1,7 @@
 "use client";
 
 import { LIBELLE_TERME_FRAIS, type FraisTerme, type QualiteAgentEncaisseur } from "@beile/contracts";
-import { CalendarPlus, CheckCircle2, FileText, Receipt, ShieldCheck, Wallet, XCircle } from "lucide-react";
+import { CalendarPlus, CheckCircle2, Clock, FileText, Inbox, Receipt, ShieldCheck, Wallet, XCircle } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { EntreePage } from "@/components/motion";
 import { notifier } from "@/components/ui/Notifications";
@@ -10,9 +10,9 @@ import {
   ChampRecherche, Dialogue, EtatErreur, HorsPerimetre, Jauge, classeChamp, classeSelect, dateCourte,
 } from "../_composants";
 import {
-  LIBELLE_AGENT_ENCAISSEUR, LIBELLE_ETAT_TERME, LIBELLE_STATUT_FRAIS, QUALITES_AGENT, TERMES_FRAIS, TON_STATUT_FRAIS,
-  useCadenceMutation, useExonerationMutation, useFraisEcole, useQuittanceMutation,
-  type EtatFraisEcole, type LigneFraisEcole,
+  LIBELLE_AGENT_ENCAISSEUR, LIBELLE_ETAT_TERME, LIBELLE_STATUT_FRAIS, LIBELLE_STATUT_RECLAMATION, QUALITES_AGENT,
+  TERMES_FRAIS, TON_RECLAMATION, TON_STATUT_FRAIS, useCadenceMutation, useExonerationMutation, useFraisEcole,
+  useQuittanceMutation, useStatuerReclamationMutation, type EtatFraisEcole, type LigneFraisEcole, type ReclamationFrais,
 } from "@/lib/api/frais";
 import { cn } from "@/lib/cn";
 import { entier } from "@/lib/format";
@@ -74,6 +74,7 @@ function FraisEtablissement({ id }: { id: string }) {
           )}
           <SituationGlobale etat={etat} />
           <AppelDeAnnee etat={etat} />
+          <Reclamations etat={etat} />
           <ParApprenant etat={etat} recherche={recherche} setRecherche={setRecherche} />
           {declarer && <DialogueCadence id={id} etat={etat} fermer={() => setDeclarer(false)} />}
         </>
@@ -168,10 +169,146 @@ function AppelDeAnnee({ etat }: { etat: EtatFraisEcole }) {
   );
 }
 
+/* ------------------------------------------------------------------ Réclamations des familles */
+
+/**
+ * « J'ai payé, rien n'est enregistré » : la seule voie par laquelle une famille peut contester une pièce absente
+ * du registre. La réponse se rend en deux temps — consigner la pièce, puis statuer — parce que l'API refuse une
+ * validation sans trace au registre. C'est ce verrou qui fait de la réclamation la boucle du rapprochement, et
+ * non une promesse de paiement ni une boîte aux lettres.
+ */
+/**
+ * Le jour béninois d'un horodatage ISO : la même dérive d'une heure que `jourLocal()` côté API. Le retard d'une
+ * réclamation se juge contre la date rendue par le serveur, jamais contre l'horloge du poste — un poste réglé à
+ * l'heure GMT accuserait l'école de retard le matin même, et l'écran contredirait la demande écrite.
+ */
+const jourBenin = (iso: string) => new Date(new Date(iso).getTime() + 3_600_000).toISOString().slice(0, 10);
+
+function Reclamations({ etat }: { etat: EtatFraisEcole }) {
+  const [piece, setPiece] = useState<ReclamationFrais | null>(null);
+  const [reponse, setReponse] = useState<{ r: ReclamationFrais; decision: "valide" | "refuse" } | null>(null);
+  const vivante = (r: ReclamationFrais) => r.statut === "ouverte" || r.statut === "en_cours";
+  const vivantes = etat.reclamations.filter(vivante);
+  const traitees = etat.reclamations.filter((r) => !vivante(r));
+  const enRetard = vivantes.filter((r) => r.echeance !== null && jourBenin(r.echeance) < etat.jour);
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader icon={Inbox} title="Réclamations des familles"
+        subtitle={vivantes.length
+          ? `${entier(vivantes.length)} à instruire${enRetard.length ? ` · ${entier(enRetard.length)} au-delà des 7 jours annoncés` : ""}`
+          : "Aucune réclamation en attente de réponse"}
+        action={traitees.length ? <Badge ton="neutre">{entier(traitees.length)} déjà traitée{traitees.length > 1 ? "s" : ""}</Badge> : undefined} />
+      {etat.reclamations.length === 0 ? (
+        <EtatVide icone={Inbox} titre="Aucune famille ne signale de pièce manquante"
+          texte="Une famille peut écrire depuis son espace qu'elle a payé alors que rien n'est consigné ici. Sa réclamation arrive sur cet écran, avec une réponse annoncée sous 7 jours." />
+      ) : (
+        <>
+          {enRetard.length > 0 && (
+            <p className="mb-4 flex items-start gap-2 rounded-md bg-warning-bg px-3 py-2.5 text-[13px] text-warning">
+              <Clock size={15} className="mt-0.5 shrink-0" aria-hidden />
+              {entier(enRetard.length)} réclamation{enRetard.length > 1 ? "s" : ""} a{enRetard.length > 1 ? "ont" : ""} dépassé le délai de réponse annoncé à la famille. Ce délai n&apos;a rien
+              suspendu — ni bulletin, ni examen, ni appel en classe : c&apos;est une promesse d&apos;écrit, pas de silence.
+            </p>
+          )}
+          <ul className="divide-y divide-line">
+            {[...vivantes, ...traitees].map((r) => (
+              <li key={r.id} className="py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold text-ink">{r.nomApprenant ?? r.apprenantId ?? "Élève non nommé"}</p>
+                    <p className="mt-0.5 text-[13px] text-ink-2">{r.terme ? LIBELLE_TERME_FRAIS[r.terme] : "Toute l&apos;année"} · déposée le {dateCourte(r.deposeeLe)}</p>
+                    <p className="mt-1.5 text-[13px] text-ink-2">« {r.texte} »</p>
+                    {r.reponse && (
+                      <p className="mt-1.5 text-[13px] text-ink-2">
+                        <span className="text-ink-muted">Réponse rendue le {dateCourte(r.reponse.le)} — {r.reponse.decision === "valide" ? "pièce reconnue" : "refus"} : </span>
+                        {r.reponse.motif || "sans motif écrit"}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Badge ton={TON_RECLAMATION[r.statut]}>{LIBELLE_STATUT_RECLAMATION[r.statut]}</Badge>
+                    {vivante(r) && (
+                      <>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {r.apprenantId && <Button taille="sm" variante="secondaire" icone={Receipt} onClick={() => setPiece(r)}>Consigner la pièce</Button>}
+                          <Button taille="sm" variante="valider" icone={CheckCircle2} onClick={() => setReponse({ r, decision: "valide" })}>Pièce reconnue</Button>
+                          <Button taille="sm" variante="fantome" icone={XCircle} onClick={() => setReponse({ r, decision: "refuse" })}>Refuser</Button>
+                        </div>
+                        {r.echeance && <p className="text-xs text-ink-muted">Réponse attendue avant le {dateCourte(r.echeance)}</p>}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {piece?.apprenantId && (
+        <DialogueQuittance apprenantId={piece.apprenantId} eleve={piece.nomApprenant ?? piece.apprenantId} annee={etat.anneeScolaire!} jour={etat.jour}
+          termes={etat.cadence?.termes ?? []} fermer={() => setPiece(null)} />
+      )}
+      {reponse && <DialogueReponse r={reponse.r} decision={reponse.decision} fermer={() => setReponse(null)} />}
+    </Card>
+  );
+}
+
+/**
+ * La réponse part telle quelle en notification à la famille : c'est pourquoi elle est obligatoire, écrite, et
+ * refusée si elle porte une somme. Reconnaître sans pièce au registre est impossible — l'API le vérifie.
+ */
+function DialogueReponse({ r, decision, fermer }: { r: ReclamationFrais; decision: "valide" | "refuse"; fermer: () => void }) {
+  const m = useStatuerReclamationMutation();
+  const [motif, setMotif] = useState("");
+  const pret = motif.trim().length >= 10;
+
+  const envoyer = () => m.mutate({ id: r.id, decision, motif: motif.trim() }, {
+    onSuccess: () => {
+      notifier(decision === "valide"
+        ? { ton: "succes", titre: "Réclamation close — pièce reconnue", texte: `${r.nomApprenant ?? "La famille"} en est notifié. La trace reste la quittance consignée : rien n'a été encaissé ici.` }
+        : { ton: "info", titre: "Réponse écrite envoyée à la famille", texte: "Le refus est motivé et notifié. Il ne suspend rien : ni bulletin, ni examen, ni appel en classe." });
+      fermer();
+    },
+  });
+
+  return (
+    <Dialogue ouvert onFermer={() => { if (!m.isPending) fermer(); }} icone={decision === "valide" ? CheckCircle2 : XCircle} ton={decision === "valide" ? "succes" : "danger"}
+      titre={decision === "valide" ? "Reconnaître la pièce consignée" : "Refuser, en motivant par écrit"}
+      description={`${r.nomApprenant ?? "Réclamation"} · ${r.terme ? LIBELLE_TERME_FRAIS[r.terme] : "toute l'année"} · déposée le ${dateCourte(r.deposeeLe)}`}
+      pied={<>
+        <Button variante="secondaire" onClick={fermer} disabled={m.isPending}>Annuler</Button>
+        <Button variante={decision === "valide" ? "valider" : "danger"} disabled={!pret} chargement={m.isPending} onClick={envoyer}>Envoyer la réponse</Button>
+      </>}>
+      <div className="space-y-4">
+        <p className="rounded-md bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">Ce que la famille a écrit : « {r.texte} »</p>
+        <p className={cn("rounded-md px-3 py-2.5 text-[13px]", decision === "valide" ? "bg-success-bg text-success" : "bg-critical-bg text-critical")}>
+          {decision === "valide"
+            ? "Reconnaître suppose la pièce déjà au registre : sans quittance ni exonération consignée pour cet élève et cette année, la réponse est refusée. Consignez-la d'abord."
+            : "Le refus est écrit, motivé et notifié à la famille telle quelle. Il ne suspend rien, et la plateforme ne prévoit pas encore de recours au-dessus de l'établissement : le motif écrit est ce qui reste à la famille."}
+        </p>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Réponse adressée à la famille</span>
+          <textarea value={motif} onChange={(e) => setMotif(e.target.value.slice(0, 500))} rows={3}
+            placeholder={decision === "valide" ? "Ex. : quittance retrouvée dans le cahier de l'intendance et consignée ce jour" : "Ex. : aucune pièce portant cette référence n'a été délivrée par l'établissement pour cette année"}
+            className={cn(classeChamp, "h-auto py-2.5")} />
+          <span className={cn("mt-1 block text-xs", motif.trim() && motif.trim().length < 10 ? "text-critical" : "text-ink-muted")}>
+            {motif.trim() && motif.trim().length < 10 ? "Au moins 10 caractères." : `${motif.length}/500 caractères · ni somme ni devise`}
+          </span>
+        </label>
+        {m.error instanceof ErreurApi && <p role="alert" className="text-xs text-critical">{m.error.message}</p>}
+      </div>
+    </Dialogue>
+  );
+}
+
 /* ------------------------------------------------------------------ État par apprenant */
 
 function ParApprenant({ etat, recherche, setRecherche }: { etat: EtatFraisEcole; recherche: string; setRecherche: (v: string) => void }) {
   const lignes = etat.lignes;
+  // Une réclamation vivante signalée sur la ligne de l'élève : c'est là que l'école consigne la pièce qui la
+  // clos, et le lien entre les deux doit rester visible sans repasser par le panneau ci-dessus.
+  const vivantes = new Map(etat.reclamations.filter((r) => r.statut === "ouverte" || r.statut === "en_cours").map((r) => [r.apprenantId, r]));
   return (
     <Card className="min-w-0">
       <CardHeader icon={Wallet} title="État par apprenant" subtitle="Les élèves sans pièce sur un terme exigible viennent en tête"
@@ -188,7 +325,7 @@ function ParApprenant({ etat, recherche, setRecherche }: { etat: EtatFraisEcole;
           texte={recherche ? `Aucun nom ne correspond à « ${recherche} » dans la liste de ${etat.etablissement}.` : "Aucun élève scolarisé aujourd'hui, et aucune pièce consignée pour cette année."} />
       ) : (
         <ul className="divide-y divide-line">
-          {lignes.map((l) => <LigneEleve key={l.apprenantId} l={l} annee={etat.anneeScolaire!} jour={etat.jour} termes={etat.cadence?.termes ?? []} />)}
+          {lignes.map((l) => <LigneEleve key={l.apprenantId} l={l} annee={etat.anneeScolaire!} jour={etat.jour} termes={etat.cadence?.termes ?? []} reclamation={vivantes.get(l.apprenantId) ?? null} />)}
         </ul>
       )}
       {etat.tronque && (
@@ -201,7 +338,7 @@ function ParApprenant({ etat, recherche, setRecherche }: { etat: EtatFraisEcole;
   );
 }
 
-function LigneEleve({ l, annee, jour, termes }: { l: LigneFraisEcole; annee: string; jour: string; termes: { terme: FraisTerme }[] }) {
+function LigneEleve({ l, annee, jour, termes, reclamation }: { l: LigneFraisEcole; annee: string; jour: string; termes: { terme: FraisTerme }[]; reclamation: ReclamationFrais | null }) {
   const [fenetre, setFenetre] = useState<"quittance" | "exoneration" | null>(null);
   return (
     <li className="py-3">
@@ -211,7 +348,10 @@ function LigneEleve({ l, annee, jour, termes }: { l: LigneFraisEcole; annee: str
           <p className="mt-0.5 text-[13px] text-ink-2">{l.classe ?? (l.horsEffectif ? "sorti de la liste du jour" : "classe non renseignée")} · {annee}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <Badge ton={TON_STATUT_FRAIS[l.statut]}>{LIBELLE_STATUT_FRAIS[l.statut]}</Badge>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Badge ton={TON_STATUT_FRAIS[l.statut]}>{LIBELLE_STATUT_FRAIS[l.statut]}</Badge>
+            {reclamation && <Badge ton="avertissement" icone={Inbox}>La famille signale une pièce payée</Badge>}
+          </div>
           <div className="flex gap-2">
             <Button taille="sm" variante="secondaire" icone={Receipt} onClick={() => setFenetre("quittance")}>Quittance</Button>
             <Button taille="sm" variante="fantome" icone={ShieldCheck} onClick={() => setFenetre("exoneration")}>Exonération</Button>
