@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Habilitation, Profil } from "@beile/contracts";
 import { schema } from "@beile/db";
-import { and, count, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -83,12 +83,16 @@ async function anneeOuverteOuRefus(profil: Profil, action: string, cible: string
  * de sa situation et des places restantes. Deux acceptations simultanées ne remplissent pas une classe au-delà de sa
  * capacité, et un élève sorti ou déjà déplacé entre-temps n'est pas déplacé une seconde fois.
  */
-async function verifierPlacement(tx: Tx, apprenantId: string, attendu: { etablissementId: string; classeId?: string }, cible: Classe) {
+async function verifierPlacement(tx: Tx, apprenantId: string, attendu: { etablissementId: string; classeId?: string; niveau?: string; anneeScolaire?: string }, cible: Classe) {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`placement:${apprenantId}`}))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`classe:${cible.id}`}))`);
-  const [sco] = await tx.select().from(schema.scolarites).where(eq(schema.scolarites.apprenantId, apprenantId));
-  if (sco?.statut !== "scolarise" || sco.etablissementId !== attendu.etablissementId || (attendu.classeId && sco.classeId !== attendu.classeId)) {
-    throw new HTTPException(409, { message: "La situation de l'élève a changé entre-temps (autre classe, transfert ou sortie) : rechargez la page" });
+  const [sco] = await tx.select({ statut: schema.scolarites.statut, etablissementId: schema.scolarites.etablissementId, classeId: schema.scolarites.classeId, niveau: schema.classes.niveau, anneeScolaire: schema.classes.anneeScolaire })
+    .from(schema.scolarites).leftJoin(schema.classes, eq(schema.classes.id, schema.scolarites.classeId)).where(eq(schema.scolarites.apprenantId, apprenantId));
+  // Une demande ancienne ne renvoie pas l'élève dans une classe d'une autre année ou d'un autre niveau que ceux où il
+  // se trouve : réinscrit entre-temps (conseil de passage), il ne repart pas en arrière.
+  if (sco?.statut !== "scolarise" || sco.etablissementId !== attendu.etablissementId || (attendu.classeId && sco.classeId !== attendu.classeId)
+    || (attendu.niveau && sco.niveau !== attendu.niveau) || (attendu.anneeScolaire && sco.anneeScolaire !== attendu.anneeScolaire)) {
+    throw new HTTPException(409, { message: "La situation de l'élève a changé entre-temps (autre classe, autre année, transfert ou sortie) : rechargez la page" });
   }
   const [r] = await tx.select({ n: count() }).from(schema.scolarites).where(and(eq(schema.scolarites.classeId, cible.id), eq(schema.scolarites.statut, "scolarise")));
   const effectif = Number(r?.n ?? 0);
@@ -183,13 +187,18 @@ transferts.post("/apprenants/:id/transfert", authentifie, plafond, async (c) => 
     await base().transaction(async (tx) => {
       // Une seule demande en attente par élève : sous le verrou de l'élève, deux clics ne créent pas deux demandes.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`placement:${apprenantId}`}))`);
+      // Relue sous le verrou : un élève transféré ou sorti entre-temps ne donne pas lieu à une demande (ni à un avis à la famille).
+      const [actuelle] = await tx.select({ statut: schema.scolarites.statut, classeId: schema.scolarites.classeId }).from(schema.scolarites).where(eq(schema.scolarites.apprenantId, apprenantId));
+      if (actuelle?.statut !== "scolarise" || actuelle.classeId !== origine.id) throw new HTTPException(409, { message: "La situation de l'élève a changé entre-temps (autre classe, transfert ou sortie) : rechargez la page" });
       const [ouverte] = await tx.select({ id: schema.demandes.id }).from(schema.demandes)
         .where(and(eq(schema.demandes.modele, "TRANSFERT"), eq(schema.demandes.statut, "en_cours"), gt(schema.demandes.echeance, new Date()), sql`${schema.demandes.donnees}->>'apprenantId' = ${apprenantId}`)).limit(1);
       if (ouverte) throw new HTTPException(409, { message: "Une demande de transfert est déjà en attente pour cet élève : retirez-la avant d'en adresser une autre" });
-      // Les demandes expirées de l'élève sont closes : une seule demande vivante, que l'inspection ne peut pas confondre.
-      const expirees = await tx.update(schema.demandes).set({ statut: "close" })
-        .where(and(eq(schema.demandes.modele, "TRANSFERT"), eq(schema.demandes.statut, "en_cours"), sql`${schema.demandes.donnees}->>'apprenantId' = ${apprenantId}`)).returning({ id: schema.demandes.id });
-      if (expirees.length) await tx.insert(schema.decisions).values(expirees.map((x) => ({ id: `DEC-${randomUUID()}`, demandeId: x.id, etape: "EXPIRATION", auteurId: profil.id, decision: "refuse" as const, motif: "Expirée sans réponse : remplacée par une nouvelle demande" })));
+      // Les demandes expirées OU refusées de l'élève sont closes : une seule demande vivante, et l'inspection ne peut plus
+      // imposer une ancienne demande que la nouvelle remplace.
+      const anciennes = await tx.update(schema.demandes).set({ statut: "close" })
+        .where(and(eq(schema.demandes.modele, "TRANSFERT"), inArray(schema.demandes.statut, ["en_cours", "refusee"]), sql`${schema.demandes.donnees}->>'apprenantId' = ${apprenantId}`)).returning({ id: schema.demandes.id });
+      // Étape REMPLACEMENT : ni un refus de l'accueil ni une expiration constatée — le motif d'un refus antérieur reste lisible.
+      if (anciennes.length) await tx.insert(schema.decisions).values(anciennes.map((x) => ({ id: `DEC-${randomUUID()}`, demandeId: x.id, etape: "REMPLACEMENT", auteurId: profil.id, decision: "refuse" as const, motif: "Remplacée par une nouvelle demande" })));
       // L'objet s'affiche dans les files : jamais nominatif.
       await tx.insert(schema.demandes).values({ id: demandeId, modele: "TRANSFERT", objet: `Transfert entrant (${classe.niveau}) depuis ${de}`, demandeurId: profil.id, ressource: classe.etablissementId, donnees: { ...donnees }, etapeCourante: "ACCORD_ACCUEIL", statut: "en_cours", echeance });
       await tx.insert(schema.decisions).values({ id: `DEC-${randomUUID()}`, demandeId, etape: "DEMANDE", auteurId: profil.id, decision: "valide", motif });
@@ -201,10 +210,29 @@ transferts.post("/apprenants/:id/transfert", authentifie, plafond, async (c) => 
   return c.json({ demandeId: r.demandeId, statut: "en_attente", echeance: r.echeance.toISOString(), versEtablissement: r.vers }, 201);
 });
 
-async function demandeTransfert(demandeId: string) {
+/** Demande du circuit TRANSFERT ; un identifiant inconnu (ou d'un autre circuit) est journalisé : un sondage laisse une trace. */
+async function demandeTransfert(profil: Profil, demandeId: string, action: string) {
   const [d] = await base().select().from(schema.demandes).where(and(eq(schema.demandes.id, demandeId), eq(schema.demandes.modele, "TRANSFERT")));
-  if (!d) throw new HTTPException(404, { message: "Demande de transfert introuvable" });
+  if (!d) {
+    await journaliser(profil, action, demandeId, "gestion", false, "perimetre");
+    throw new HTTPException(404, { message: "Demande de transfert introuvable" });
+  }
   return { d, don: d.donnees as unknown as DonneesTransfert };
+}
+
+/** L'inspection arbitre une demande refusée ou restée sans réponse, dans les 30 jours qui suivent le refus ou l'échéance. */
+const FENETRE_IMPOSITION_JOURS = 30;
+/** Règle pure : refusée ou échue (jamais « en attente »), depuis moins de 30 jours. `refusLe` : date du refus de l'accueil. */
+function dansFenetre(d: Demande, refusLe: Date | null): boolean {
+  const etat = etatTransfert(d);
+  const limite = Date.now() - FENETRE_IMPOSITION_JOURS * 86_400_000;
+  if (etat === "expiree") return !!d.echeance && d.echeance.getTime() >= limite;
+  return etat === "refusee" && !!refusLe && refusLe.getTime() >= limite;
+}
+async function imposable(d: Demande): Promise<boolean> {
+  const [refus] = await base().select({ le: schema.decisions.horodatage }).from(schema.decisions)
+    .where(and(eq(schema.decisions.demandeId, d.id), eq(schema.decisions.etape, "ACCORD_ACCUEIL"), eq(schema.decisions.decision, "refuse"))).orderBy(desc(schema.decisions.horodatage)).limit(1);
+  return dansFenetre(d, refus?.le ?? null);
 }
 
 /** Classe retenue à l'accueil : celle proposée par défaut, sinon une autre du même établissement, niveau et année. */
@@ -222,9 +250,16 @@ async function appliquerTransfert(profil: Profil, d: Demande, don: DonneesTransf
     type: "TRANSFERT", auteurId: profil.id, etablissementId: classe.etablissementId, apprenantId: don.apprenantId,
     donnees: { apprenantId: don.apprenantId, deEtablissementId: don.deEtablissementId, versEtablissementId: classe.etablissementId, versClasseId: classe.id, anneeScolaire: classe.anneeScolaire, demandeId: d.id, ...(o.impose ? { impose: true } : {}) },
   }], async (tx) => {
-    await verifierPlacement(tx, don.apprenantId, { etablissementId: don.deEtablissementId }, classe);
-    // L'école d'accueil répond à une demande en attente et non échue ; l'inspection peut aussi passer outre un refus ou un silence.
-    const admis = o.impose ? inArray(schema.demandes.statut, ["en_cours", "refusee"]) : and(eq(schema.demandes.statut, "en_cours"), gt(schema.demandes.echeance, new Date()));
+    await verifierPlacement(tx, don.apprenantId, { etablissementId: don.deEtablissementId, niveau: don.niveau, anneeScolaire: don.anneeScolaire }, classe);
+    // L'école d'accueil répond à une demande en attente et non échue ; l'inspection n'intervient qu'APRÈS un refus ou un
+    // silence (échéance passée) : jamais avant que l'école ait pu répondre.
+    // La fenêtre de 30 jours est aussi dans la condition : l'invariant ne repose pas sur la seule lecture préalable.
+    const borne = new Date(Date.now() - FENETRE_IMPOSITION_JOURS * 86_400_000);
+    const admis = o.impose
+      ? or(
+        and(eq(schema.demandes.statut, "refusee"), sql`exists (select 1 from ${schema.decisions} x where x.demande_id = ${d.id} and x.etape = 'ACCORD_ACCUEIL' and x.decision = 'refuse' and x.horodatage >= ${borne.toISOString()}::timestamptz)`),
+        and(eq(schema.demandes.statut, "en_cours"), lte(schema.demandes.echeance, new Date()), gte(schema.demandes.echeance, borne)))
+      : and(eq(schema.demandes.statut, "en_cours"), gt(schema.demandes.echeance, new Date()));
     const maj = await tx.update(schema.demandes).set({ statut: "acceptee" }).where(and(eq(schema.demandes.id, d.id), admis)).returning({ id: schema.demandes.id });
     if (maj.length !== 1) throw new HTTPException(409, { message: "Demande déjà traitée, retirée ou expirée entre-temps : rechargez la page" });
     // L'étape dit d'où vient la décision : l'accord de l'école d'accueil, ou l'imposition par l'inspection.
@@ -241,8 +276,8 @@ transferts.post("/transferts/:demandeId/decision", authentifie, plafond, async (
     versClasseId: ID_CLASSE.optional(),
     motif: z.string().trim().max(200).optional(),
   }).strict().refine((s) => s.decision === "accepte" || (s.motif ?? "").length >= 10, "Un refus se motive (10 caractères au moins)"));
-  const { d, don } = await demandeTransfert(demandeId);
   const action = saisie.decision === "accepte" ? "Accord d'un transfert" : "Refus d'un transfert";
+  const { d, don } = await demandeTransfert(profil, demandeId, action);
   if (!chefDe(profil, don.versEtablissementId)) {
     await journaliser(profil, action, demandeId, "gestion", false, "perimetre");
     refuser("Seule l'administration de l'établissement d'accueil répond à une demande de transfert : refus journalisé");
@@ -264,7 +299,8 @@ transferts.post("/transferts/:demandeId/decision", authentifie, plafond, async (
     return { statut: "acceptee" as const, classe: classe.libelle, enregistre: ids[0] };
   });
   await journaliser(profil, action, `${demandeId} · ${don.apprenantId}${r.classe ? ` → ${r.classe}` : ` · ${saisie.motif}`}`.slice(0, 200), "gestion", true, null);
-  if (r.statut === "refusee") await notifierFamille(don.apprenantId, (p) => [`Transfert de ${p} refusé`, `L'établissement d'accueil a refusé le transfert de ${p} — motif : ${saisie.motif}. ${p} reste inscrit·e dans son école actuelle.`]);
+  // Le motif n'est pas repris : rédigé par l'école d'accueil, il peut viser l'enfant, et un téléphone se partage.
+  if (r.statut === "refusee") await notifierFamille(don.apprenantId, (p) => [`Transfert de ${p} refusé`, `L'établissement d'accueil a refusé le transfert de ${p}. ${p} reste inscrit·e dans son école actuelle ; l'établissement vous en expliquera la raison.`]);
   return c.json(r);
 });
 
@@ -273,15 +309,16 @@ transferts.post("/transferts/:demandeId/retrait", authentifie, plafond, async (c
   const profil = c.get("profil");
   const demandeId = ID_DEMANDE.parse(c.req.param("demandeId"));
   const { motif } = await corps(c, z.object({ motif: MOTIF }).strict());
-  const { d, don } = await demandeTransfert(demandeId);
+  const { d, don } = await demandeTransfert(profil, demandeId, "Retrait d'une demande de transfert");
   if (!chefDe(profil, don.deEtablissementId)) {
     await journaliser(profil, "Retrait d'une demande de transfert", demandeId, "gestion", false, "perimetre");
     refuser("Seule l'administration de l'établissement de départ retire sa demande : refus journalisé");
   }
   await tracerRefus(profil, "Retrait d'une demande de transfert", demandeId, async () => {
-    if (!["en_attente", "expiree"].includes(etatTransfert(d))) throw new HTTPException(409, { message: "Cette demande a déjà été traitée" });
+    // Une demande refusée se retire aussi : la famille qui renonce éteint toute imposition ultérieure par l'inspection.
+    if (!["en_attente", "expiree", "refusee"].includes(etatTransfert(d))) throw new HTTPException(409, { message: "Cette demande a déjà abouti ou a été retirée" });
     await base().transaction(async (tx) => {
-      const maj = await tx.update(schema.demandes).set({ statut: "close" }).where(and(eq(schema.demandes.id, demandeId), eq(schema.demandes.statut, "en_cours"))).returning({ id: schema.demandes.id });
+      const maj = await tx.update(schema.demandes).set({ statut: "close" }).where(and(eq(schema.demandes.id, demandeId), inArray(schema.demandes.statut, ["en_cours", "refusee"]))).returning({ id: schema.demandes.id });
       if (maj.length !== 1) throw new HTTPException(409, { message: "Demande déjà traitée entre-temps : rechargez la page" });
       await tx.insert(schema.decisions).values({ id: `DEC-${randomUUID()}`, demandeId, etape: "DEMANDE", auteurId: profil.id, decision: "refuse", motif: `Retrait : ${motif}` });
     });
@@ -299,15 +336,21 @@ transferts.post("/transferts/:demandeId/imposer", authentifie, plafond, async (c
   const profil = c.get("profil");
   const demandeId = ID_DEMANDE.parse(c.req.param("demandeId"));
   const saisie = await corps(c, z.object({ versClasseId: ID_CLASSE.optional(), motif: MOTIF }).strict());
-  const { d, don } = await demandeTransfert(demandeId);
   const action = "Transfert imposé par l'inspection";
+  const { d, don } = await demandeTransfert(profil, demandeId, action);
   const [accueil] = await base().select().from(schema.etablissements).where(eq(schema.etablissements.id, don.versEtablissementId));
   if (!accueil || !inspecteurDe(profil, accueil)) {
     await journaliser(profil, action, demandeId, "controle", false, "role");
     refuser("Seule l'inspection de la circonscription d'accueil peut imposer un transfert : refus journalisé");
   }
   const r = await tracerRefus(profil, action, demandeId, async () => {
-    if (!["en_attente", "expiree", "refusee"].includes(etatTransfert(d))) throw new HTTPException(409, { message: "Cette demande a déjà abouti ou a été retirée" });
+    if (etatTransfert(d) === "en_attente") throw new HTTPException(409, { message: "L'école d'accueil n'a pas encore répondu : l'inspection arbitre après un refus ou l'échéance de 15 jours" });
+    if (!(await imposable(d))) {
+      const etat = etatTransfert(d);
+      throw new HTTPException(409, { message: etat === "acceptee" ? "Ce transfert a déjà abouti"
+        : etat === "retiree" ? "Demande retirée par l'école de départ, ou remplacée par une nouvelle demande"
+        : `Refus ou échéance datant de plus de ${FENETRE_IMPOSITION_JOURS} jours : l'école de départ doit adresser une nouvelle demande` });
+    }
     const classe = await classeRetenue(don, saisie.versClasseId);
     await anneeOuverteOuRefus(profil, action, demandeId, classe);
     const ids = await appliquerTransfert(profil, d, don, classe, { impose: true, motif: `Décision de l'inspection : ${saisie.motif}` });
@@ -337,10 +380,14 @@ async function decrire(profil: Profil, demandes: Demande[]) {
   const lignes = dons.map(({ d, don }) => {
     const etat = etatTransfert(d);
     const accueil = etab.get(don.versEtablissementId);
-    // Dernière réponse : tout sauf la demande initiale (accord, refus, décision de l'inspection ou retrait).
-    const reponse = decisions.filter((x) => x.demandeId === d.id && !(x.etape === "DEMANDE" && x.decision === "valide")).at(-1);
+    // Dernière réponse : tout sauf la demande initiale et le remplacement (accord, refus, décision de l'inspection,
+    // retrait) — une demande refusée puis remplacée garde le motif du refus à l'écran.
+    const propres = decisions.filter((x) => x.demandeId === d.id);
+    const reponse = propres.filter((x) => !(x.etape === "DEMANDE" && x.decision === "valide") && x.etape !== "REMPLACEMENT").at(-1);
+    const remplacee = propres.some((x) => x.etape === "REMPLACEMENT");
     const peutDecider = etat === "en_attente" && chefDe(profil, don.versEtablissementId);
-    const peutImposer = ["en_attente", "expiree", "refusee"].includes(etat) && !!accueil && inspecteurDe(profil, accueil);
+    const refusLe = decisions.filter((x) => x.demandeId === d.id && x.etape === "ACCORD_ACCUEIL" && x.decision === "refuse").at(-1)?.horodatage ?? null;
+    const peutImposer = dansFenetre(d, refusLe) && !!accueil && inspecteurDe(profil, accueil);
     return {
       id: d.id, etat, creeeLe: d.creeeLe.toISOString(), echeance: d.echeance?.toISOString() ?? null, motif: don.motif,
       eleve: eleves.find((e) => e.id === don.apprenantId) ?? { id: don.apprenantId, nom: "", prenoms: "" },
@@ -350,8 +397,8 @@ async function decrire(profil: Profil, demandes: Demande[]) {
       classeProposee: { id: don.versClasseId, libelle: classes.find((x) => x.id === don.versClasseId)?.libelle ?? don.versClasseId },
       reponse: reponse ? { decision: reponse.decision, motif: reponse.motif, le: reponse.horodatage.toISOString() } : null,
       // Une décision lue dans l'étape qui l'a rendue, jamais dans un libellé que le texte du motif pourrait falsifier.
-      impose: reponse?.etape === "IMPOSITION",
-      peutDecider, peutImposer, peutRetirer: ["en_attente", "expiree"].includes(etat) && chefDe(profil, don.deEtablissementId),
+      impose: reponse?.etape === "IMPOSITION", remplacee,
+      peutDecider, peutImposer, peutRetirer: ["en_attente", "expiree", "refusee"].includes(etat) && chefDe(profil, don.deEtablissementId),
       classesPossibles: [] as Awaited<ReturnType<typeof classesAvecPlaces>>,
     };
   });
