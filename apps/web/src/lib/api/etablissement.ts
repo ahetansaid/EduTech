@@ -117,7 +117,7 @@ export interface Transfert {
   id: string; etat: EtatTransfert; creeeLe: string; echeance: string | null; motif: string;
   eleve: { id: string; nom: string; prenoms: string }; niveau: string; anneeScolaire: string;
   de: { id: string; nom: string }; vers: { id: string; nom: string }; classeProposee: { id: string; libelle: string };
-  reponse: { decision: "valide" | "refuse" | "renvoye"; motif: string | null; le: string } | null; impose: boolean;
+  reponse: { decision: "valide" | "refuse" | "renvoye"; motif: string | null; le: string } | null; impose: boolean; remplacee: boolean;
   peutDecider: boolean; peutImposer: boolean; peutRetirer: boolean; classesPossibles: ClasseAvecPlaces[];
 }
 

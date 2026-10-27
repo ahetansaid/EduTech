@@ -25,9 +25,9 @@ const MODES: Record<Mode, { titre: string; bouton: string; action: "decision" | 
 /** Une demande de transfert : qui, d'où, vers où, pourquoi, où elle en est, et les actions que le serveur autorise. */
 export function CarteTransfert({ t, sens }: { t: Transfert; sens: "entrant" | "sortant" | "inspection" }) {
   const [mode, setMode] = useState<Mode | null>(null);
-  const [libelle, ton] = LIBELLE_ETAT[t.etat];
+  const [libelle, ton] = t.remplacee && t.etat === "retiree" ? (["Remplacée", "neutre"] as const) : LIBELLE_ETAT[t.etat];
   return (
-    <li className="rounded-lg border border-line/70 bg-surface px-4 py-3.5">
+    <li data-demande={t.id} className="rounded-lg border border-line/70 bg-surface px-4 py-3.5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[15px] font-semibold text-ink">{t.eleve.prenoms} <span className="uppercase">{t.eleve.nom}</span> <span className="font-normal text-ink-muted">· {t.niveau}</span></p>
