@@ -836,7 +836,7 @@ scolariteSuperieure.post("/moi/enseignements/notes-ue", authentifie, async (c) =
   const admis = new Set(contractes.map((x) => x.apprenantId));
   const horsContrat = saisie.notes.filter((n) => !admis.has(n.apprenantId)).map((n) => n.apprenantId);
   if (horsContrat.length) throw new HTTPException(422, { message: `Sans contrat signé sur cette offre : ${horsContrat.join(", ")}` });
-  const deja = await dejaSaisi(saisie.idSaisie, "EVALUATION_UE");
+  const deja = await dejaSaisi(saisie.idSaisie, "EVALUATION_UE", { auteurId: enseignantId });
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
   const enregistres = await inscrireAuRegistre(saisie.notes.map((n) => ({
     type: "EVALUATION_UE", auteurId: enseignantId, etablissementId: offre.etablissementId, apprenantId: n.apprenantId,
@@ -873,7 +873,7 @@ scolariteSuperieure.post("/etablissements/:id/validations", authentifie, async (
   // vérifiée AVANT tout calcul, comme pour la saisie de notes.
   // Le lot écrit un fait par (apprenant, UE), sous la clé `idSaisie:ue` : ce sont ces clés qu'on cherche.
   const deja = saisie.idSaisie
-    ? await dejaSaisi([...new Set(saisie.lignes.map((l) => `${saisie.idSaisie}:${offres.find((o) => o.id === l.offreUeId)!.ueId}`))], "VALIDATION_UE")
+    ? await dejaSaisi([...new Set(saisie.lignes.map((l) => `${saisie.idSaisie}:${offres.find((o) => o.id === l.offreUeId)!.ueId}`))], "VALIDATION_UE", { auteurId: profil.id })
     : null;
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
 
@@ -1202,7 +1202,7 @@ scolariteSuperieure.post("/etablissements/:id/deliberations", authentifie, async
   const titulaires = new Map(apprenants.map((a) => [a.id, `${a.prenoms} ${a.nom}`]));
   const regles = new Map<string, RegleLue>();
   // Un fait par apprenant, sous la clé `idSaisie:apprenant`.
-  const deja = saisie.idSaisie ? await dejaSaisi(apprenantIds.map((a) => `${saisie.idSaisie}:${a}`), "DELIBERATION_DIPLOME") : null;
+  const deja = saisie.idSaisie ? await dejaSaisi(apprenantIds.map((a) => `${saisie.idSaisie}:${a}`), "DELIBERATION_DIPLOME", { auteurId: profil.id }) : null;
   if (deja) return c.json({ enregistres: deja, deja: true }, 200);
 
   const faits: NouveauFait[] = [];

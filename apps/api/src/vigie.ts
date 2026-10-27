@@ -77,12 +77,22 @@ vigie.get("/securite/alertes", authentifie, async (c) => {
 
 vigie.post("/securite/alertes/:id/traiter", authentifie, async (c) => {
   exigerVigie(c);
+  const profil = c.get("profil");
   const id = z.string().regex(/^SEC-[0-9a-f-]{36}$/).parse(c.req.param("id"));
   const { suite } = await corps(c, z.object({ suite: z.string().trim().min(5).max(300) }).strict());
-  const [maj] = await base().update(schema.alertesSecurite).set({ traiteeLe: new Date(), traiteePar: c.get("profil").id, suite })
+  const [alerte] = await base().select({ profilId: schema.alertesSecurite.profilId, traiteeLe: schema.alertesSecurite.traiteeLe })
+    .from(schema.alertesSecurite).where(eq(schema.alertesSecurite.id, id));
+  if (!alerte || alerte.traiteeLe) throw new HTTPException(404, { message: "Alerte introuvable ou déjà traitée" });
+  // Un compte ne clôt pas une alerte qui le vise : la vigie perdrait sinon son objet. Le refus est tracé,
+  // sans critère manquant — ce n'est pas une habilitation qui fait défaut, c'est un second regard.
+  if (alerte.profilId === profil.id) {
+    await journaliser(profil, "Clôture refusée : alerte de sécurité visant le propre compte", id, "gestion", false, null);
+    refuser("Cette alerte vous concerne : un compte de la vigie ne peut pas clore une alerte sur lui-même. Elle reste ouverte et sort dans l'export de notification d'incident ; un second compte habilité, ou le bjCSIRT, la traitera.");
+  }
+  const [maj] = await base().update(schema.alertesSecurite).set({ traiteeLe: new Date(), traiteePar: profil.id, suite })
     .where(and(eq(schema.alertesSecurite.id, id), isNull(schema.alertesSecurite.traiteeLe))).returning({ id: schema.alertesSecurite.id });
   if (!maj) throw new HTTPException(404, { message: "Alerte introuvable ou déjà traitée" });
-  await journaliser(c.get("profil"), "Traitement d'une alerte de sécurité", `${id} · ${suite}`, "gestion", true, null);
+  await journaliser(profil, "Traitement d'une alerte de sécurité", `${id} · ${suite}`, "gestion", true, null);
   return c.json({ ok: true });
 });
 
