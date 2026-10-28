@@ -331,7 +331,7 @@ const L = "a-zà-ÿ";
 const DEVISE = new RegExp(
   `(^|[^${L}])(cfa|fcfa|f\\.?c\\.?f\\.?a|xof|xaf|francs? cfa|euros?|dollars?|nairas?)(?![${L}-])`
   + `|[€$£]`
-  + `|\\d[\\d .]*(f|fr|frs|francs?|cfa|fcfa|xof|xaf)(?![${L}])`
+  + `|\\d[\\d .]*(f|fr|frs|frcs|francs?|cfa|fcfa|xof|xaf|eur)(?![${L}])`
   + `|\\d\\s*(mille|millions?)(?![${L}])`
   + `|(^|[^${L}])(mille|millions?)\\s+(f|fr|frs|francs?|cfa|fcfa)(?![${L}])`,
   "i",
@@ -354,13 +354,18 @@ export function sansSomme(champ: string, texte: string | null | undefined) {
  * par `sansSomme`.
  */
 const REFERENCE = /^[\p{L}\p{N}][\p{L}\p{N} °./_-]{1,59}$/u;
-// Une devise accolée à un grand nombre (« 15000F », « 25000FCFA ») ; « Q12F » ou « 0458 AF » restent des numéros.
-const SOMME_COLLEE = new RegExp(`\\d{4,}\\s?(f|fr|frs|cfa|fcfa|xof|xaf)(?![${L}])`, "i");
+// Un nombre AUTONOME (en début de texte ou après un séparateur, séparateurs de milliers compris) suivi d'une devise est
+// une somme : « 15 000 F », « 150 000 F », « 15.000F », « 500F », « T1 15 000 F ». Collé à une lettre qui le précède,
+// c'est un numéro de carnet : « Q12F », « A0458F » (vérification du 28/10 : le masquage des petits nombres laissait
+// repasser les montants écrits avec un séparateur de milliers).
+const SOMME_AUTONOME = new RegExp(`(^|[^\\p{L}\\p{N}])\\d[\\d .]*\\s?(f|fr|frs|frcs|francs?|cfa|fcfa|xof|xaf|eur|euros?)(?![${L}])`, "iu");
 export function referenceOpaque(champ: string, texte: string | null | undefined) {
   if (texte == null || texte === "") return;
   // « N° 0458 », « Reçu 0458 », « Réf. Q-12 » : le libellé d'usage du carnet n'est pas une somme.
   const t = canonique(texte).replace(/^(n\s?°|no\.?|reçu|réf\.?|ref\.?)\s*/i, "");
-  if (!REFERENCE.test(t) || DEVISE.test(t.replace(/\d+/g, (n) => (n.length >= 4 ? n : "#"))) || SOMME_COLLEE.test(t)) {
+  // Le test des noms de devise isolés (cfa, xof, €…) se fait sur le texte dont les nombres collés à une lettre sont
+  // masqués, pour que « Q12F » ne soit pas lu comme « 12 F ».
+  if (!REFERENCE.test(t) || SOMME_AUTONOME.test(t) || DEVISE.test(t.replace(/(\p{L})\d+/gu, "$1#"))) {
     throw new HTTPException(422, { message: `${champ} : un numéro de pièce (lettres, chiffres, « ° . / _ - »), sans montant ni devise` });
   }
 }

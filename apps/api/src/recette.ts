@@ -397,6 +397,8 @@ if (vueEcole.statut === 200 && vueEcole.json?.anneeScolaire) {
   verifier("Identifiant d'élève mal formé → 422, rien n'est écrit", (await directrice!.appel("POST", "/apprenants/APP-1/frais/quittance", { ...essaiPiece, cle: randomUUID() })).statut, 422);
   // Audit du 28/10 (frais) : référence sans montant, année de l'école, acte exigé pour une exonération, annulation.
   verifier("Référence de quittance portant un montant (15000FCFA-T1) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), referenceQuittance: "15000FCFA-T1" })).statut, 422);
+  verifier("Référence de quittance au montant séparé (T1 15 000 F) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), referenceQuittance: "T1 15 000 F" })).statut, 422);
+  verifier("Référence de quittance au petit montant (500F) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), referenceQuittance: "500F" })).statut, 422);
   verifier("Devise contournée (15 000 XOF) dans un motif → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/exoneration", { ...essaiMesure, cle: randomUUID(), motif: "Remise de 15 000 XOF décidée" })).statut, 422);
   verifier("Année où l'école n'a aucune classe (2001-2002) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), anneeScolaire: "2001-2002" })).statut, 422);
   verifier("Année aux millésimes non consécutifs (2026-2026) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), anneeScolaire: "2026-2026" })).statut, 422);
