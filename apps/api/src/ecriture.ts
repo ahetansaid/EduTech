@@ -381,8 +381,12 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
   return lignes.map((l) => l.id);
 }
 
-/** Identifiant de saisie côté client (file hors connexion) : clé d'idempotence des écritures rejouées. */
-export const ID_SAISIE = z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional();
+/**
+ * Identifiant de saisie côté client (file hors connexion) : clé d'idempotence des écritures rejouées. Le préfixe
+ * `LOT-` est réservé aux lots des partenaires (interop.ts) : un compte interne qui devinait leur format pouvait
+ * occuper la clé d'un lot à venir et le faire rejeter en entier (audit du 28/10, M1).
+ */
+export const ID_SAISIE = z.string().regex(/^(?!LOT-)[A-Za-z0-9-]{8,64}$/i, "clé de saisie invalide (préfixe LOT- réservé aux partenaires)").optional();
 
 /** Événements déjà enregistrés pour cette saisie (rejeu après une réponse perdue) : on les renvoie sans rien réécrire. */
 /**

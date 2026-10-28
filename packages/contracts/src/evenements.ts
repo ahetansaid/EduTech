@@ -574,15 +574,29 @@ export const Evenement = z.discriminatedUnion("type", [
     referenceTexte: z.string().trim().max(160).nullable(),
     decideLe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   }).strict(),
+  /**
+   * Annulation d'une pièce de frais consignée par erreur (homonyme, mauvais terme, décision retirée). Le registre
+   * est en ajout seul : la pièce reste écrite, et c'est ce fait qui la retire du calcul de la situation. Réservée à
+   * l'école qui avait consigné la pièce, motif obligatoire, famille prévenue, vigie levée à chaque annulation.
+   */
+  Base.extend({
+    type: z.literal("ANNULATION_FRAIS"),
+    apprenantId: z.string(),
+    etablissementId: z.string(),
+    anneeScolaire: z.string(),
+    evenementAnnuleId: z.string(),
+    natureAnnulee: z.enum(["QUITTANCE_FRAIS", "EXONERATION_FRAIS"]),
+    motif: z.string().trim().min(10).max(300),
+  }).strict(),
 ]);
 export type Evenement = z.infer<typeof Evenement>;
 export type TypeEvenement = Evenement["type"];
 
 /**
- * Les trois faits de frais. Ils ne sortent jamais d'une lecture générale du dossier : seule une finalité
+ * Les quatre faits de frais. Ils ne sortent jamais d'une lecture générale du dossier : seule une finalité
  * `suivi_familial` (le responsable qui paie) ou `gestion` (l'administration de l'école) les fait redescendre.
  */
-export const TYPES_FAITS_FRAIS = ["CADENCE_FRAIS", "QUITTANCE_FRAIS", "EXONERATION_FRAIS"] as const;
+export const TYPES_FAITS_FRAIS = ["CADENCE_FRAIS", "QUITTANCE_FRAIS", "EXONERATION_FRAIS", "ANNULATION_FRAIS"] as const;
 export type TypeFaitFrais = (typeof TYPES_FAITS_FRAIS)[number];
 
 /** Distributive Omit : conserve le discriminant de chaque membre de l'union. */

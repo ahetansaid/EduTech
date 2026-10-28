@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, TYPES_FAITS_FRAIS, type Habilitation, type Niveau } from "@beile/contracts";
+import { AUTORITE_EXAMEN, NIVEAUX, QUALITES_CONSEIL, type Habilitation, type Niveau } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { aujourdhui } from "@beile/simulation/scolarite";
 import { communesDuPerimetre } from "@beile/simulation/semantique";
@@ -840,10 +840,16 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
     if (saisie.decision === "valide") {
       const v = ctx.demande.donnees as { apprenantId?: string; anneeScolaire?: string; terme?: string | null } | null;
       if (!v?.apprenantId || !v.anneeScolaire) throw new HTTPException(409, { message: "Cette réclamation ne nomme ni élève ni année : à refaire depuis l'espace famille." });
+      // La pièce qui éteint la réclamation (audit du 28/10, M5) : une quittance ou une mesure de CETTE école,
+      // consignée APRÈS le dépôt (sinon l'école « reconnaîtrait » sans rien consigner), non annulée, et qui COUVRE
+      // le terme réclamé — une pièce annuelle (« ANNEE ») ou une exonération de l'année entière couvrent un T1.
       const piece = await base().select({ id: schema.evenements.id }).from(schema.evenements)
-        .where(and(inArray(schema.evenements.type, [...TYPES_FAITS_FRAIS]), eq(schema.evenements.apprenantId, v.apprenantId),
+        .where(and(inArray(schema.evenements.type, ["QUITTANCE_FRAIS", "EXONERATION_FRAIS"]), eq(schema.evenements.apprenantId, v.apprenantId),
+          eq(schema.evenements.etablissementId, ctx.demande.ressource ?? ""),
           sql`${schema.evenements.donnees}->>'anneeScolaire' = ${v.anneeScolaire}`,
-          ...(v.terme ? [sql`${schema.evenements.donnees}->>'terme' = ${v.terme}`] : [])))
+          sql`${schema.evenements.enregistreLe} >= ${ctx.demande.creeeLe.toISOString()}::timestamptz`,
+          sql`not exists (select 1 from ledger.evenements x where x.type = 'ANNULATION_FRAIS' and x.donnees->>'evenementAnnuleId' = ${schema.evenements.id})`,
+          ...(v.terme ? [sql`(${schema.evenements.donnees}->>'terme' = ${v.terme} or ${schema.evenements.donnees}->>'terme' = 'ANNEE' or (${schema.evenements.type} = 'EXONERATION_FRAIS' and ${schema.evenements.donnees}->>'terme' is null))`] : [])))
         .limit(1);
       if (!piece.length) throw new HTTPException(422, { message: `Aucune pièce consignée pour ${v.apprenantId} en ${v.anneeScolaire}${v.terme ? ` (${v.terme})` : ""} : enregistrez d'abord la quittance, ou l'exonération / la prise en charge, puis validez la réclamation.` });
     }

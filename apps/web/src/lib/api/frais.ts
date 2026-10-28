@@ -2,6 +2,7 @@
 
 import { LIBELLE_AGENT_ENCAISSEUR, LIBELLE_TERME_FRAIS, type CouvertureTerme, type DeclarationCadence, type FraisTerme, type LigneFraisEcole, type QualiteAgentEncaisseur, type ReclamationFrais, type SituationFrais, type StatutFrais } from "@beile/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import { ecrire, lire } from "@/lib/http";
 import { date } from "@/lib/format";
 
@@ -125,8 +126,18 @@ export function useFraisApprenant(apprenantId: string | null) {
 
 /* ================================================================== Écritures */
 
-/** Une clé d'idempotence par envoi : rejouer une réponse perdue ne doit pas inscrire la pièce deux fois. */
-const cleSaisie = () => crypto.randomUUID();
+/**
+ * Une clé d'idempotence par FORMULAIRE, pas par clic : générée à l'ouverture (montage du hook), réutilisée pour
+ * chaque nouvel essai après une coupure réseau, renouvelée seulement après un succès. Tirée à chaque envoi, elle
+ * laissait un nouvel essai inscrire la pièce — et notifier la famille — une seconde fois (audit du 28/10).
+ */
+function useCleSaisie() {
+  const cle = useRef<string | null>(null);
+  return {
+    valeur: () => (cle.current ??= crypto.randomUUID()),
+    renouveler: () => { cle.current = null; },
+  };
+}
 
 function useInvaliderFrais() {
   const client = useQueryClient();
@@ -141,10 +152,11 @@ export interface CorpsCadence { anneeScolaire: string; termes: { terme: FraisTer
 /** Déclarer l'appel de l'année : des termes et des dates. Une nouvelle déclaration remplace la lecture courante. */
 export function useCadenceMutation(id: string) {
   const invalider = useInvaliderFrais();
+  const cle = useCleSaisie();
   return useMutation({
     mutationFn: (v: CorpsCadence) => ecrire<{ id: string; etablissement: string; anneeScolaire: string; deja: boolean; remplace?: boolean }>(
-      `/etablissements/${e(id)}/frais/cadence`, { ...v, ...(v.referenceDeliberation ? { referenceDeliberation: v.referenceDeliberation } : {}), cle: cleSaisie() }),
-    onSuccess: invalider,
+      `/etablissements/${e(id)}/frais/cadence`, { ...v, ...(v.referenceDeliberation ? { referenceDeliberation: v.referenceDeliberation } : {}), cle: cle.valeur() }),
+    onSuccess: () => { cle.renouveler(); invalider(); },
   });
 }
 
@@ -153,25 +165,38 @@ export interface CorpsQuittance { anneeScolaire: string; terme: FraisTerme; deli
 /** Consigner une quittance déjà délivrée. Rien n'est encaissé par BEILE. */
 export function useQuittanceMutation(apprenantId: string) {
   const invalider = useInvaliderFrais();
+  const cle = useCleSaisie();
   return useMutation({
     mutationFn: (v: CorpsQuittance) => ecrire<{ id: string; apprenantId: string; deja: boolean; alerte?: string | null }>(
-      `/apprenants/${e(apprenantId)}/frais/quittance`, { ...v, ...(v.agent ? { agent: v.agent } : {}), cle: cleSaisie() }),
-    onSuccess: invalider,
+      `/apprenants/${e(apprenantId)}/frais/quittance`, { ...v, ...(v.agent ? { agent: v.agent } : {}), cle: cle.valeur() }),
+    onSuccess: () => { cle.renouveler(); invalider(); },
   });
 }
 
-export interface CorpsExoneration { anneeScolaire: string; terme: FraisTerme | null; nature: "exoneration" | "prise_en_charge"; motif: string; autorite: string; referenceTexte: string | null; decideLe: string }
+export interface CorpsExoneration { anneeScolaire: string; terme: FraisTerme | null; nature: "exoneration" | "prise_en_charge"; motif: string; autorite: string; referenceTexte: string; decideLe: string }
 
-/** Enregistrer une exonération ou une prise en charge : un statut légitime, pas une anomalie. */
+/** Enregistrer une exonération ou une prise en charge : un statut légitime, pas une anomalie. La référence de l'acte est exigée. */
 export function useExonerationMutation(apprenantId: string) {
   const invalider = useInvaliderFrais();
+  const cle = useCleSaisie();
   return useMutation({
     mutationFn: (v: CorpsExoneration) => ecrire<{ id: string; apprenantId: string; deja: boolean }>(
       `/apprenants/${e(apprenantId)}/frais/exoneration`, {
         anneeScolaire: v.anneeScolaire, ...(v.terme ? { terme: v.terme } : {}), nature: v.nature, motif: v.motif,
-        autorite: v.autorite, ...(v.referenceTexte ? { referenceTexte: v.referenceTexte } : {}), decideLe: v.decideLe, cle: cleSaisie(),
+        autorite: v.autorite, referenceTexte: v.referenceTexte, decideLe: v.decideLe, cle: cle.valeur(),
       }),
-    onSuccess: invalider,
+    onSuccess: () => { cle.renouveler(); invalider(); },
+  });
+}
+
+/** Annuler une pièce consignée par erreur : la pièce reste au registre, elle ne compte plus. Motif obligatoire. */
+export function useAnnulationMutation(apprenantId: string) {
+  const invalider = useInvaliderFrais();
+  const cle = useCleSaisie();
+  return useMutation({
+    mutationFn: (v: { evenementId: string; motif: string }) => ecrire<{ id: string; evenementAnnuleId: string }>(
+      `/apprenants/${e(apprenantId)}/frais/annulation`, { ...v, cle: cle.valeur() }),
+    onSuccess: () => { cle.renouveler(); invalider(); },
   });
 }
 

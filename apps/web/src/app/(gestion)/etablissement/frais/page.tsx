@@ -11,7 +11,7 @@ import {
 } from "../_composants";
 import {
   LIBELLE_AGENT_ENCAISSEUR, LIBELLE_ETAT_TERME, LIBELLE_STATUT_FRAIS, LIBELLE_STATUT_RECLAMATION, QUALITES_AGENT,
-  TERMES_FRAIS, TON_RECLAMATION, TON_STATUT_FRAIS, useCadenceMutation, useExonerationMutation, useFraisEcole,
+  TERMES_FRAIS, TON_RECLAMATION, TON_STATUT_FRAIS, useAnnulationMutation, useCadenceMutation, useExonerationMutation, useFraisEcole,
   useQuittanceMutation, useStatuerReclamationMutation, type EtatFraisEcole, type LigneFraisEcole, type ReclamationFrais,
 } from "@/lib/api/frais";
 import { cn } from "@/lib/cn";
@@ -340,6 +340,7 @@ function ParApprenant({ etat, recherche, setRecherche }: { etat: EtatFraisEcole;
 
 function LigneEleve({ l, annee, jour, termes, reclamation }: { l: LigneFraisEcole; annee: string; jour: string; termes: { terme: FraisTerme }[]; reclamation: ReclamationFrais | null }) {
   const [fenetre, setFenetre] = useState<"quittance" | "exoneration" | null>(null);
+  const [aAnnuler, setAAnnuler] = useState<{ id: string; libelle: string } | null>(null);
   return (
     <li className="py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -366,13 +367,53 @@ function LigneEleve({ l, annee, jour, termes, reclamation }: { l: LigneFraisEcol
               <span className={cn("font-medium", t.etat === "attendu" ? "text-warning" : t.etat === "paye" ? "text-success" : "text-ink-2")}>{LIBELLE_ETAT_TERME[t.etat]}</span>
               {t.quittance && <span className="text-ink-muted"> · réf. {t.quittance.reference}</span>}
               {t.mesure && <span className="text-ink-muted"> · {t.mesure.nature === "prise_en_charge" ? "prise en charge" : "exonération"}</span>}
+              {(t.mesure ?? t.quittance) && (
+                <button type="button" className="ml-1.5 text-[11.5px] font-medium text-critical underline-offset-2 hover:underline"
+                  onClick={() => setAAnnuler(t.mesure
+                    ? { id: t.mesure.id, libelle: `${t.mesure.nature === "prise_en_charge" ? "Prise en charge" : "Exonération"} · ${LIBELLE_TERME_FRAIS[t.terme]}` }
+                    : { id: t.quittance!.id, libelle: `Quittance ${t.quittance!.reference} · ${LIBELLE_TERME_FRAIS[t.terme]}` })}>
+                  Annuler
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
+      {aAnnuler && <DialogueAnnulation apprenantId={l.apprenantId} eleve={l.nom} piece={aAnnuler} fermer={() => setAAnnuler(null)} />}
       {fenetre === "quittance" && <DialogueQuittance apprenantId={l.apprenantId} eleve={l.nom} annee={annee} jour={jour} termes={termes} fermer={() => setFenetre(null)} />}
       {fenetre === "exoneration" && <DialogueExoneration apprenantId={l.apprenantId} eleve={l.nom} annee={annee} jour={jour} termes={termes} fermer={() => setFenetre(null)} />}
     </li>
+  );
+}
+
+/* ------------------------------------------------------------------ Annulation d'une pièce consignée par erreur */
+
+function DialogueAnnulation({ apprenantId, eleve, piece, fermer }: { apprenantId: string; eleve: string; piece: { id: string; libelle: string }; fermer: () => void }) {
+  const m = useAnnulationMutation(apprenantId);
+  const [motif, setMotif] = useState("");
+  const pret = motif.trim().length >= 10;
+  const envoyer = () => m.mutate({ evenementId: piece.id, motif: motif.trim() }, {
+    onSuccess: () => {
+      notifier({ ton: "succes", titre: "Pièce annulée", texte: `${eleve} · ${piece.libelle} : la pièce reste au registre mais ne compte plus. La famille est prévenue ; l'annulation est signalée à la vigie.` });
+      fermer();
+    },
+  });
+  return (
+    <Dialogue ouvert onFermer={() => { if (!m.isPending) fermer(); }} icone={XCircle} ton="danger" titre="Annuler une pièce consignée par erreur" description={`${eleve} · ${piece.libelle}`}
+      pied={<>
+        <Button variante="secondaire" onClick={fermer} disabled={m.isPending}>Garder la pièce</Button>
+        <Button variante="danger" disabled={!pret} chargement={m.isPending} onClick={envoyer}>Annuler la pièce</Button>
+      </>}>
+      <div className="space-y-3">
+        <p className="rounded-md bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">Le registre ne s&apos;efface pas : l&apos;annulation est un fait de plus, daté et signé. Elle se justifie par une erreur (homonyme, mauvais terme, décision retirée), jamais pour masquer une pièce.</p>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Motif (obligatoire)</span>
+          <textarea value={motif} onChange={(e) => setMotif(e.target.value.slice(0, 300))} rows={2} placeholder="Ex. : quittance saisie sur un homonyme, ressaisie sur le bon élève" className={cn(classeChamp, "h-auto py-2.5")} />
+          <span className={cn("mt-1 block text-xs", motif.trim() && !pret ? "text-critical" : "text-ink-muted")}>{motif.trim() && !pret ? "Au moins 10 caractères." : `${motif.length}/300 caractères`}</span>
+        </label>
+        {m.error instanceof ErreurApi && <p role="alert" className="text-xs text-critical">{m.error.message}</p>}
+      </div>
+    </Dialogue>
   );
 }
 
@@ -532,10 +573,10 @@ function DialogueExoneration({ apprenantId, eleve, annee, jour, termes, fermer }
   const [autorite, setAutorite] = useState("");
   const [texte, setTexte] = useState("");
   const [decideLe, setDecideLe] = useState("");
-  const pret = motif.trim().length >= 5 && autorite.trim().length >= 3 && /^\d{4}-\d{2}-\d{2}$/.test(decideLe) && decideLe <= jour;
+  const pret = motif.trim().length >= 5 && autorite.trim().length >= 3 && texte.trim().length >= 3 && /^\d{4}-\d{2}-\d{2}$/.test(decideLe) && decideLe <= jour;
 
   const envoyer = () => m.mutate({
-    anneeScolaire: annee, terme: terme || null, nature, motif: motif.trim(), autorite: autorite.trim(), referenceTexte: texte.trim() || null, decideLe,
+    anneeScolaire: annee, terme: terme || null, nature, motif: motif.trim(), autorite: autorite.trim(), referenceTexte: texte.trim(), decideLe,
   }, {
     onSuccess: () => {
       notifier({
@@ -591,7 +632,7 @@ function DialogueExoneration({ apprenantId, eleve, annee, jour, termes, fermer }
           </label>
         </div>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Texte de référence <span className="font-normal text-ink-muted">(facultatif)</span></span>
+          <span className="mb-1.5 block text-sm font-medium text-ink">Texte de référence <span className="font-normal text-ink-muted">(obligatoire : l&apos;acte qui fonde la mesure)</span></span>
           <input value={texte} onChange={(e) => setTexte(e.target.value.slice(0, 160))} placeholder="Ex. : note de service n°012 du 10/09/2026" className={classeChamp} />
         </label>
         {m.error instanceof ErreurApi && <p role="alert" className="text-xs text-critical">{m.error.message}</p>}

@@ -24,7 +24,7 @@ const PERSONNEL = new Set(["ACTE_DISPONIBLE", "ACTE_REMIS", "ACTE_REFUSE", "ALLO
  * l'école, elle, ne notifie personne : elle n'est pas un fait d'élève, et une alerte collective à toute
  * l'école par trimestre serait du bruit.
  */
-const AU_RESPONSABLE_SEUL = new Set(["QUITTANCE_FRAIS", "EXONERATION_FRAIS"]);
+const AU_RESPONSABLE_SEUL = new Set(["QUITTANCE_FRAIS", "EXONERATION_FRAIS", "ANNULATION_FRAIS"]);
 
 const dateFr = (v: unknown) => String(v ?? "").split("-").reverse().join("/");
 
@@ -70,6 +70,8 @@ export async function notifierFaits(faits: FaitNotifiable[]) {
       : f.type === "CHANGEMENT_CLASSE" ? [`Changement de classe de ${a.prenoms}`, `${a.prenoms} rejoint la classe ${classe ?? ""} dans le même établissement. Ses notes déjà obtenues sont conservées.`]
       : f.type === "QUITTANCE_FRAIS" ? [`Quittance enregistrée pour ${a.prenoms}`, `L'établissement a consigné la quittance ${String(f.donnees.referenceQuittance ?? "")} pour ${LIBELLE_TERME_FRAIS[f.donnees.terme as FraisTerme] ?? "la période"} (${dateFr(f.donnees.delivreeLe)}). Aucune somme n'est indiquée ici : le montant reste sur la pièce papier et dans la comptabilité de l'école.`]
       : f.type === "EXONERATION_FRAIS" ? [`${f.donnees.nature === "prise_en_charge" ? "Prise en charge" : "Exonération"} enregistrée pour ${a.prenoms}`, `L'établissement a consigné cette mesure${f.donnees.terme ? ` pour ${LIBELLE_TERME_FRAIS[f.donnees.terme as FraisTerme]}` : " pour l'année entière"} le ${dateFr(f.donnees.decideLe)}. Rien n'est attendu de votre côté pour cette période.`]
+      // Le motif de l'annulation n'est pas repris : rédigé par l'école, il peut nommer un autre élève (homonyme).
+      : f.type === "ANNULATION_FRAIS" ? [`Pièce de frais annulée pour ${a.prenoms}`, `L'établissement a annulé une ${f.donnees.natureAnnulee === "EXONERATION_FRAIS" ? "mesure d'exonération" : "quittance"} consignée par erreur pour l'année ${String(f.donnees.anneeScolaire ?? "")}. Si vous détenez la pièce papier, présentez-la à l'établissement : vous pouvez aussi déposer une réclamation depuis votre espace.`]
       : f.type === "ALLOCATION_DECIDEE" ? [`Décision sur votre allocation ${String(f.donnees.anneeUniversitaire ?? "")}`.trim(), `L'autorité compétente a statué le ${dateFr(f.donnees.decideLe)} sur votre dossier d'allocation. Consultez le statut et la référence du texte dans votre espace. Aucune somme n'est précisée ici : la liquidation reste à l'administration payeuse.`]
       : [`Transfert de ${a.prenoms}`, `Le dossier de ${a.prenoms} a été transféré vers son nouvel établissement, sans ressaisie.`];
     const destinataires = new Set(PERSONNEL.has(f.type)
