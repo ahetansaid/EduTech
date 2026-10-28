@@ -60,7 +60,10 @@ function clefsMontant(j: unknown, chemin = ""): string[] {
  * mêmes bornes de mot, mêmes symboles — une réponse que `sansSomme` refuserait à l'écriture doit lever ici.
  */
 const DEVISE_SCAN = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|francs? cfa|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]/gi;
-const deviseDansLeTexte = (j: unknown): number => (JSON.stringify(j ?? null).match(DEVISE_SCAN) ?? []).length;
+// Les identifiants (UUID, empreintes hexadécimales) sont retirés avant le scan : leur alphabet 0-9a-f compose au hasard
+// « 9cfa1 », lu comme la devise CFA — la recette échouait alors une exécution sur quelques-unes (CI n°143, 28/10).
+const SANS_IDENTIFIANTS = (s: string) => s.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "").replace(/\b[0-9a-f]{16,}\b/gi, "");
+const deviseDansLeTexte = (j: unknown): number => (SANS_IDENTIFIANTS(JSON.stringify(j ?? null)).match(DEVISE_SCAN) ?? []).length;
 
 titre("Authentification");
 const anonyme = new Session();
