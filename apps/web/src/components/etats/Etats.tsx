@@ -3,9 +3,11 @@
 import { Printer, X } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { notifier } from "@/components/ui/Notifications";
 import { Button, Segmente } from "@/components/ui/primitives";
 import type { EleveLigne } from "@/lib/api/etablissement";
 import { date, nombre } from "@/lib/format";
+import { ecrire } from "@/lib/http";
 
 /**
  * États imprimables de l'établissement : état nominatif, feuille d'appel, procès-verbal de conseil.
@@ -28,9 +30,32 @@ const GENRES: { valeur: GenreEtat; libelle: string }[] = [
 /** `criteres` : les filtres de l'écran (niveau, classe, sexe), repris en tête de chaque état. */
 export interface MetaEtat { etablissement: string; classe: string; criteres?: string; trimestre: number; dateJour: string }
 
-export function FeuilleImprimable({ eleves, meta, onFermer }: { eleves: EleveLigne[]; meta: MetaEtat; onFermer: () => void }) {
+/** États qui se calculent sur des classes ENTIÈRES (`ensemble`), jamais sur une sélection (recherche, filtre de signal, sexe). */
+const SUR_CLASSES_ENTIERES: GenreEtat[] = ["effectifs", "honneur"];
+
+export function FeuilleImprimable({ eleves, ensemble, criteresEnsemble, meta, onFermer }: {
+  eleves: EleveLigne[]; ensemble?: EleveLigne[]; criteresEnsemble?: string; meta: MetaEtat; onFermer: () => void;
+}) {
   const monte = useSyncExternalStore(() => () => {}, () => true, () => false);
   const [genre, setGenre] = useState<GenreEtat>("nominatif");
+  const [impression, setImpression] = useState(false);
+  const entier = SUR_CLASSES_ENTIERES.includes(genre) && ensemble;
+  const lignes = entier ? ensemble : eleves;
+  const metaDoc = entier ? { ...meta, criteres: criteresEnsemble } : meta;
+
+  // Un document nominatif qui sort de la plateforme est un accès aux données : déclaré au journal AVANT l'impression,
+  // comme un export CSV ; sans trace, pas d'impression. (Limite assumée : Ctrl+P contourne le bouton, côté navigateur.)
+  const imprimer = async () => {
+    setImpression(true);
+    try {
+      await ecrire("/audit/exports", { fichier: `etat_${genre}`, lignes: lignes.length, colonnes: [GENRES.find((g) => g.valeur === genre)!.libelle], nominatif: genre !== "effectifs" });
+      window.print();
+    } catch {
+      notifier({ ton: "critique", titre: "Impression impossible", texte: "La trace de l'impression n'a pas pu être enregistrée : le document n'a pas été imprimé. Réessayez." });
+    } finally {
+      setImpression(false);
+    }
+  };
 
   useEffect(() => {
     const echap = (e: KeyboardEvent) => { if (e.key === "Escape") onFermer(); };
@@ -50,16 +75,21 @@ export function FeuilleImprimable({ eleves, meta, onFermer }: { eleves: EleveLig
             <Segmente label="Type d'état" valeur={genre} onChange={(v) => setGenre(v as GenreEtat)} options={GENRES} />
           </div>
           <div className="flex items-center gap-2">
-            <Button variante="secondaire" taille="sm" icone={Printer} onClick={() => window.print()}>Imprimer / PDF</Button>
+            <Button variante="secondaire" taille="sm" icone={Printer} chargement={impression} onClick={imprimer}>Imprimer / PDF</Button>
             <Button variante="fantome" taille="sm" icone={X} onClick={onFermer} aria-label="Fermer l'état" />
           </div>
         </div>
 
+        {entier && lignes.length !== eleves.length && (
+          <p role="status" className="bg-info-bg px-4 py-2 text-[13px] text-ink-2 print:hidden">
+            Ce document porte sur les classes entières ({criteresEnsemble}) : la recherche, le filtre de signal et le filtre par sexe de l&apos;écran ne s&apos;y appliquent pas.
+          </p>
+        )}
         {genre === "nominatif" && <EtatNominatif eleves={eleves} meta={meta} />}
-        {genre === "effectifs" && <Effectifs eleves={eleves} meta={meta} />}
+        {genre === "effectifs" && <Effectifs eleves={lignes} meta={metaDoc} />}
         {genre === "appel" && <FeuilleAppel eleves={eleves} meta={meta} />}
         {genre === "emargement" && <Emargement eleves={eleves} meta={meta} />}
-        {genre === "honneur" && <TableauHonneur eleves={eleves} meta={meta} />}
+        {genre === "honneur" && <TableauHonneur eleves={lignes} meta={metaDoc} />}
         {genre === "pv" && <PvConseil eleves={eleves} meta={meta} />}
       </div>
     </div>,
@@ -261,9 +291,11 @@ function Emargement({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat }) 
  */
 export function classerParClasse(eleves: EleveLigne[], n: number): [string, { e: EleveLigne; rang: number }[]][] {
   return parClasse(eleves).map(([classe, ls]) => {
-    const notes = ls.filter((e) => e.moyenne != null).sort((a, b) => b.moyenne! - a.moyenne! || a.nom.localeCompare(b.nom, "fr"));
+    // Égalité au centième, comme sur le papier : deux « 12,33 » sont ex æquo (la moyenne est un flottant agrégé).
+    const c = (e: EleveLigne) => Math.round(e.moyenne! * 100);
+    const notes = ls.filter((e) => e.moyenne != null).sort((a, b) => c(b) - c(a) || a.nom.localeCompare(b.nom, "fr"));
     // Rang « olympique » : même moyenne, même rang ; le suivant saute les ex æquo (1, 1, 3).
-    const rangs = notes.map((e) => ({ e, rang: notes.findIndex((x) => x.moyenne === e.moyenne) + 1 }));
+    const rangs = notes.map((e) => ({ e, rang: notes.findIndex((x) => c(x) === c(e)) + 1 }));
     // On garde les n premiers rangs, ex æquo du dernier rang compris.
     const seuil = rangs[n - 1]?.rang ?? Infinity;
     return [classe, rangs.filter((x) => x.rang <= seuil)];
@@ -272,14 +304,20 @@ export function classerParClasse(eleves: EleveLigne[], n: number): [string, { e:
 
 function TableauHonneur({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat }) {
   const [n, setN] = useState(5);
+  // Par défaut, rang et nom suffisent à un affichage : la moyenne exacte d'un mineur n'est imprimée que sur demande.
+  const [avecMoyenne, setAvecMoyenne] = useState(false);
   const groupes = classerParClasse(eleves, n);
   return (
     <Cadre>
-      <div className="mb-3 flex items-center gap-2 print:hidden">
-        <label className="text-[12.5px] text-slate-600" htmlFor="rangs-honneur">Nombre de rangs par classe</label>
-        <select id="rangs-honneur" value={n} onChange={(e) => setN(Number(e.target.value))} className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12.5px]">
-          {[3, 5, 10].map((x) => <option key={x} value={x}>{x}</option>)}
-        </select>
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 print:hidden">
+        <label className="flex items-center gap-2 text-[12.5px] text-slate-600">Nombre de rangs par classe
+          <select value={n} onChange={(e) => setN(Number(e.target.value))} className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12.5px]">
+            {[3, 5, 10].map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-[12.5px] text-slate-600">
+          <input type="checkbox" checked={avecMoyenne} onChange={(e) => setAvecMoyenne(e.target.checked)} className="h-4 w-4" /> Afficher les moyennes
+        </label>
       </div>
       <Tete titre="Tableau d'honneur" meta={meta} sousTitre={`Les ${n} meilleures moyennes de chaque classe au trimestre ${meta.trimestre} (ex æquo compris).`} />
       {groupes.map(([classe, ls]) => (
@@ -291,17 +329,21 @@ function TableauHonneur({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat
                 <tr className="border-b border-slate-300 text-left text-[10.5px] uppercase tracking-wide text-slate-500">
                   <th className="w-12 py-1.5 pr-2 font-semibold">Rang</th>
                   <th className="py-1.5 pr-2 font-semibold">Apprenant</th>
-                  <th className="py-1.5 text-right font-semibold">Moyenne</th>
+                  {avecMoyenne && <th className="py-1.5 text-right font-semibold">Moyenne</th>}
                 </tr>
               </thead>
               <tbody>
-                {ls.map(({ e, rang }, i) => (
-                  <tr key={e.id} className="border-b border-slate-100">
-                    <td className="py-1.5 pr-2 text-slate-700">{rang}{i > 0 && ls[i - 1]!.rang === rang ? " ex æquo" : rang === 1 ? "er" : "e"}</td>
-                    <td className="py-1.5 pr-2 text-slate-800"><span className="uppercase">{e.nom}</span> {e.prenoms}</td>
-                    <td className="py-1.5 text-right font-semibold text-slate-900">{nombre(e.moyenne!, 2)}</td>
-                  </tr>
-                ))}
+                {ls.map(({ e, rang }, i) => {
+                  // Ex æquo marqué sur TOUS les membres du groupe, le premier compris (l'ordre alphabétique n'est pas un rang).
+                  const exAequo = ls[i - 1]?.rang === rang || ls[i + 1]?.rang === rang;
+                  return (
+                    <tr key={e.id} className="border-b border-slate-100">
+                      <td className="py-1.5 pr-2 text-slate-700">{rang}{rang === 1 ? "er" : "e"}{exAequo ? " ex æquo" : ""}</td>
+                      <td className="py-1.5 pr-2 text-slate-800"><span className="uppercase">{e.nom}</span> {e.prenoms}</td>
+                      {avecMoyenne && <td className="py-1.5 text-right font-semibold text-slate-900">{nombre(e.moyenne!, 2)}</td>}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

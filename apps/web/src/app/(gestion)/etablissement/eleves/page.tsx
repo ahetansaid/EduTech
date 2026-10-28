@@ -142,8 +142,14 @@ function Liste() {
       }
     });
   }, [donnees, filtre, niveau, classe, sexe, q, tri, evals]);
-  // Libellé des critères, repris dans le pied du fichier exporté et l'en-tête des états imprimés.
-  const criteres = [niveau !== "tous" && `niveau ${niveau}`, classe !== "toutes" && `classe ${classe}`, sexe !== "tous" && (sexe === "F" ? "filles" : "garçons")].filter(Boolean).join(", ") || "tous les apprenants";
+  // Libellé de TOUS les critères appliqués à la liste (recherche et filtre de signal compris), repris dans le pied
+  // du fichier exporté et l'en-tête des états : un document ne dit jamais « tous » sur une sélection partielle.
+  const perimetre = [niveau !== "tous" && `niveau ${niveau}`, classe !== "toutes" && `classe ${classe}`].filter(Boolean).join(", ");
+  const SIGNAL: Record<Filtre, string | null> = { tous: null, baisse: "en baisse en maths", identite: "identité à régulariser", risque: "à risque" };
+  const criteres = [perimetre, sexe !== "tous" && (sexe === "F" ? "filles" : "garçons"), SIGNAL[filtre], q.trim() && `recherche « ${q.trim()} »`].filter(Boolean).join(", ") || "tous les apprenants";
+  // Classement et effectifs se calculent sur des classes ENTIÈRES (niveau, classe) : un « 1er » parmi les résultats
+  // d'une recherche ou parmi les seules filles ne serait pas le rang dans la classe.
+  const ensemble = useMemo(() => (donnees ?? []).filter((e) => (niveau === "tous" || e.niveau === niveau) && (classe === "toutes" || e.classe === classe)), [donnees, niveau, classe]);
 
   if (!id) return <HorsPerimetre />;
   const visibles = liste.slice(0, limite);
@@ -311,6 +317,8 @@ function Liste() {
       {impression && (
         <FeuilleImprimable
           eleves={liste}
+          ensemble={ensemble}
+          criteresEnsemble={perimetre || "toutes les classes"}
           meta={{ etablissement: tableau.data?.etablissement.nom ?? "", classe: classe === "toutes" ? "Toutes les classes" : classe, criteres, trimestre: tableau.data?.trimestre ?? 2, dateJour: new Date().toISOString() }}
           onFermer={() => setImpression(false)}
         />
