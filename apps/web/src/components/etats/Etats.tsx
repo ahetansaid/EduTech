@@ -14,15 +14,19 @@ import { date, nombre } from "@/lib/format";
  * Tout est dérivé de la liste des apprenants déjà chargée à l'écran — aucune nouvelle source de données.
  */
 
-export type GenreEtat = "nominatif" | "appel" | "pv";
+export type GenreEtat = "nominatif" | "effectifs" | "appel" | "emargement" | "honneur" | "pv";
 
 const GENRES: { valeur: GenreEtat; libelle: string }[] = [
   { valeur: "nominatif", libelle: "État nominatif" },
+  { valeur: "effectifs", libelle: "Effectifs filles / garçons" },
   { valeur: "appel", libelle: "Feuille d'appel" },
+  { valeur: "emargement", libelle: "Feuille d'émargement" },
+  { valeur: "honneur", libelle: "Tableau d'honneur" },
   { valeur: "pv", libelle: "PV de conseil" },
 ];
 
-export interface MetaEtat { etablissement: string; classe: string; trimestre: number; dateJour: string }
+/** `criteres` : les filtres de l'écran (niveau, classe, sexe), repris en tête de chaque état. */
+export interface MetaEtat { etablissement: string; classe: string; criteres?: string; trimestre: number; dateJour: string }
 
 export function FeuilleImprimable({ eleves, meta, onFermer }: { eleves: EleveLigne[]; meta: MetaEtat; onFermer: () => void }) {
   const monte = useSyncExternalStore(() => () => {}, () => true, () => false);
@@ -52,7 +56,10 @@ export function FeuilleImprimable({ eleves, meta, onFermer }: { eleves: EleveLig
         </div>
 
         {genre === "nominatif" && <EtatNominatif eleves={eleves} meta={meta} />}
+        {genre === "effectifs" && <Effectifs eleves={eleves} meta={meta} />}
         {genre === "appel" && <FeuilleAppel eleves={eleves} meta={meta} />}
+        {genre === "emargement" && <Emargement eleves={eleves} meta={meta} />}
+        {genre === "honneur" && <TableauHonneur eleves={eleves} meta={meta} />}
         {genre === "pv" && <PvConseil eleves={eleves} meta={meta} />}
       </div>
     </div>,
@@ -68,7 +75,7 @@ function Tete({ titre, meta, sousTitre }: { titre: string; meta: MetaEtat; sousT
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Plateforme éducative BEILE · {meta.etablissement || "Établissement"}</p>
       <h1 className="mt-1 font-display text-[21px] font-bold leading-tight text-slate-900">{titre}</h1>
       <p className="mt-0.5 text-[13px] text-slate-600">{sousTitre}</p>
-      <p className="mt-0.5 text-[12px] text-slate-500">Classe : {meta.classe} · T{meta.trimestre} · édité le {date(meta.dateJour)}</p>
+      <p className="mt-0.5 text-[12px] text-slate-500">{meta.criteres ? `Sélection : ${meta.criteres}` : `Classe : ${meta.classe}`} · T{meta.trimestre} · édité le {date(meta.dateJour)}</p>
     </header>
   );
 }
@@ -156,6 +163,152 @@ function FeuilleAppel({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat }
       ))}
       <Signature lignes={["Le Professeur principal", "Le Chef d'établissement"]} />
       <Pied note="Feuille vierge destinée à l'appel papier ou à l'archivage. La saisie officielle de l'appel se fait dans l'espace enseignant ; ce document ne s'y substitue pas." />
+    </Cadre>
+  );
+}
+
+/* ------------------------------------------------------------------ Effectifs filles / garçons (par classe) */
+
+const pourcent = (n: number, total: number) => (total ? `${nombre((n / total) * 100, 0)} %` : "—");
+
+function Effectifs({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat }) {
+  const groupes = parClasse(eleves);
+  const f = eleves.filter((e) => e.sexe === "F").length;
+  return (
+    <Cadre>
+      <Tete titre="Effectifs par classe, filles et garçons" meta={meta} sousTitre="Apprenants scolarisés à la date d'édition (sans nom : document diffusable en interne)." />
+      <table className="mt-4 w-full border-collapse text-[12.5px] tabular-nums">
+        <thead>
+          <tr className="border-b border-slate-300 text-left text-[10.5px] uppercase tracking-wide text-slate-500">
+            <th className="py-1.5 pr-2 font-semibold">Classe</th>
+            <th className="py-1.5 pr-2 text-right font-semibold">Filles</th>
+            <th className="py-1.5 pr-2 text-right font-semibold">Garçons</th>
+            <th className="py-1.5 pr-2 text-right font-semibold">Total</th>
+            <th className="py-1.5 text-right font-semibold">Part des filles</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupes.map(([classe, ls]) => {
+            const nf = ls.filter((e) => e.sexe === "F").length;
+            return (
+              <tr key={classe} className="border-b border-slate-100">
+                <td className="py-1.5 pr-2 text-slate-800">{classe}</td>
+                <td className="py-1.5 pr-2 text-right text-slate-700">{nf}</td>
+                <td className="py-1.5 pr-2 text-right text-slate-700">{ls.length - nf}</td>
+                <td className="py-1.5 pr-2 text-right font-semibold text-slate-900">{ls.length}</td>
+                <td className="py-1.5 text-right text-slate-700">{pourcent(nf, ls.length)}</td>
+              </tr>
+            );
+          })}
+          <tr className="border-t-2 border-slate-900 font-semibold">
+            <td className="py-1.5 pr-2">Ensemble</td>
+            <td className="py-1.5 pr-2 text-right">{f}</td>
+            <td className="py-1.5 pr-2 text-right">{eleves.length - f}</td>
+            <td className="py-1.5 pr-2 text-right">{eleves.length}</td>
+            <td className="py-1.5 text-right">{pourcent(f, eleves.length)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <Signature lignes={["Le Chef d'établissement"]} />
+      <Pied note="Comptage des apprenants scolarisés affichés à l'écran (filtres compris). Sexe tel qu'enregistré au registre." />
+    </Cadre>
+  );
+}
+
+/* ------------------------------------------------------------------ Feuille d'émargement (signature de présence) */
+
+function Emargement({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat }) {
+  const groupes = parClasse(eleves);
+  return (
+    <Cadre>
+      <Tete titre="Feuille d'émargement" meta={meta} sousTitre="Chaque apprenant signe en face de son nom (composition, remise de documents, réunion)." />
+      <p className="mt-3 text-[12px] text-slate-600">Objet : ________________________________ &nbsp;·&nbsp; Date : ____ / ____ / ________</p>
+      {groupes.map(([classe, ls]) => (
+        <section key={classe} className="mt-5 break-inside-avoid">
+          <h2 className="text-[13px] font-bold uppercase tracking-wide text-slate-700">{classe} <span className="font-normal normal-case text-slate-400">· effectif {ls.length}</span></h2>
+          <table className="mt-1.5 w-full border-collapse text-[12.5px]">
+            <thead>
+              <tr className="border-b border-slate-300 text-left text-[10.5px] uppercase tracking-wide text-slate-500">
+                <th className="w-8 py-1.5 pr-2 font-semibold">N°</th>
+                <th className="py-1.5 pr-2 font-semibold">Apprenant</th>
+                <th className="w-[45%] py-1.5 font-semibold">Signature</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ls.map((e, i) => (
+                <tr key={e.id} className="border-b border-slate-200">
+                  <td className="h-9 py-1.5 pr-2 align-middle tabular-nums text-slate-400">{i + 1}</td>
+                  <td className="py-1.5 pr-2 align-middle text-slate-800"><span className="uppercase">{e.nom}</span> {e.prenoms}</td>
+                  <td className="py-1.5 align-middle" />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ))}
+      <Signature lignes={["Le Surveillant", "Le Chef d'établissement"]} />
+      <Pied note="Document de travail imprimé depuis la liste affichée à l'écran." />
+    </Cadre>
+  );
+}
+
+/* ------------------------------------------------------------------ Tableau d'honneur (par classe) */
+
+/**
+ * Les meilleures moyennes de chaque classe, au trimestre affiché. Classement ex æquo (même moyenne, même rang) ;
+ * un apprenant sans moyenne n'est pas classé. La moyenne est NON PONDÉRÉE (aucun coefficient transmis à la
+ * plateforme) : le document le dit, et il ne compare jamais deux classes ni deux écoles.
+ */
+export function classerParClasse(eleves: EleveLigne[], n: number): [string, { e: EleveLigne; rang: number }[]][] {
+  return parClasse(eleves).map(([classe, ls]) => {
+    const notes = ls.filter((e) => e.moyenne != null).sort((a, b) => b.moyenne! - a.moyenne! || a.nom.localeCompare(b.nom, "fr"));
+    // Rang « olympique » : même moyenne, même rang ; le suivant saute les ex æquo (1, 1, 3).
+    const rangs = notes.map((e) => ({ e, rang: notes.findIndex((x) => x.moyenne === e.moyenne) + 1 }));
+    // On garde les n premiers rangs, ex æquo du dernier rang compris.
+    const seuil = rangs[n - 1]?.rang ?? Infinity;
+    return [classe, rangs.filter((x) => x.rang <= seuil)];
+  });
+}
+
+function TableauHonneur({ eleves, meta }: { eleves: EleveLigne[]; meta: MetaEtat }) {
+  const [n, setN] = useState(5);
+  const groupes = classerParClasse(eleves, n);
+  return (
+    <Cadre>
+      <div className="mb-3 flex items-center gap-2 print:hidden">
+        <label className="text-[12.5px] text-slate-600" htmlFor="rangs-honneur">Nombre de rangs par classe</label>
+        <select id="rangs-honneur" value={n} onChange={(e) => setN(Number(e.target.value))} className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12.5px]">
+          {[3, 5, 10].map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+      </div>
+      <Tete titre="Tableau d'honneur" meta={meta} sousTitre={`Les ${n} meilleures moyennes de chaque classe au trimestre ${meta.trimestre} (ex æquo compris).`} />
+      {groupes.map(([classe, ls]) => (
+        <section key={classe} className="mt-5 break-inside-avoid">
+          <h2 className="text-[13px] font-bold uppercase tracking-wide text-slate-700">{classe}</h2>
+          {ls.length === 0 ? <p className="mt-1 text-[12.5px] text-slate-500">Aucune moyenne disponible ce trimestre.</p> : (
+            <table className="mt-1.5 w-full border-collapse text-[12.5px] tabular-nums">
+              <thead>
+                <tr className="border-b border-slate-300 text-left text-[10.5px] uppercase tracking-wide text-slate-500">
+                  <th className="w-12 py-1.5 pr-2 font-semibold">Rang</th>
+                  <th className="py-1.5 pr-2 font-semibold">Apprenant</th>
+                  <th className="py-1.5 text-right font-semibold">Moyenne</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ls.map(({ e, rang }, i) => (
+                  <tr key={e.id} className="border-b border-slate-100">
+                    <td className="py-1.5 pr-2 text-slate-700">{rang}{i > 0 && ls[i - 1]!.rang === rang ? " ex æquo" : rang === 1 ? "er" : "e"}</td>
+                    <td className="py-1.5 pr-2 text-slate-800"><span className="uppercase">{e.nom}</span> {e.prenoms}</td>
+                    <td className="py-1.5 text-right font-semibold text-slate-900">{nombre(e.moyenne!, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ))}
+      <Signature lignes={["Le Chef d'établissement"]} />
+      <Pied note="Classement indicatif : moyennes NON PONDÉRÉES (la plateforme ne reçoit pas les coefficients), calculées sur les notes saisies au trimestre. Il classe les apprenants d'une même classe, jamais des classes ou des écoles entre elles. Document nominatif concernant des mineurs : affichage selon la politique de l'établissement." />
     </Cadre>
   );
 }

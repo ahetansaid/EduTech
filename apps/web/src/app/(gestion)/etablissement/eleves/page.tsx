@@ -51,6 +51,7 @@ const COLONNES: Colonne<EleveLigne>[] = [
   { entete: "Prénoms", valeur: (e) => e.prenoms },
   { entete: "Sexe", valeur: (e) => e.sexe },
   { entete: "Classe d'âge", valeur: (e) => bandeAge(e.dateNaissance) },
+  { entete: "Niveau", valeur: (e) => e.niveau },
   { entete: "Classe", valeur: (e) => e.classe },
   { entete: "Moyenne", valeur: (e) => note(e.moyenne) },
   { entete: "Absences", valeur: (e) => e.absences },
@@ -78,6 +79,8 @@ function Liste() {
   const brut = params.get("filtre");
   const filtre: Filtre = FILTRES.includes(brut as Filtre) ? (brut as Filtre) : "tous";
   const [classe, setClasse] = useState("toutes");
+  const [niveau, setNiveau] = useState("tous");
+  const [sexe, setSexe] = useState<"tous" | "F" | "M">("tous");
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<Tri>("classe");
   const [limite, setLimite] = useState(PAS);
@@ -112,7 +115,9 @@ function Liste() {
     for (const ev of evals.values()) n[ev.niveau]++;
     return n;
   }, [evals]);
-  const classes = useMemo(() => [...new Set((donnees ?? []).map((e) => e.classe))].sort(fr.compare), [donnees]);
+  const niveaux_ = useMemo(() => [...new Set((donnees ?? []).map((e) => e.niveau))].sort(fr.compare), [donnees]);
+  // Les classes proposées suivent le niveau choisi : « 6e A » n'a pas de sens sous le filtre « 3e ».
+  const classes = useMemo(() => [...new Set((donnees ?? []).filter((e) => niveau === "tous" || e.niveau === niveau).map((e) => e.classe))].sort(fr.compare), [donnees, niveau]);
   // Le filtre porte le libellé ; les bulletins se demandent par identifiant de classe.
   const classeId = classe === "toutes" ? null : (donnees ?? []).find((e) => e.classe === classe)?.classeId ?? null;
   const bulletinsClasse = useBulletinsClasse(bulletins ? id : null, bulletins ? classeId : null);
@@ -121,7 +126,9 @@ function Liste() {
     const n = normaliser(q);
     const l = (donnees ?? [])
       .filter((e) => filtre === "tous" || (filtre === "baisse" ? !!e.baisseMaths : filtre === "identite" ? e.statutIdentite === "regularisation_en_cours" : evals.get(e.id)!.niveau !== "nominal"))
+      .filter((e) => niveau === "tous" || e.niveau === niveau)
       .filter((e) => classe === "toutes" || e.classe === classe)
+      .filter((e) => sexe === "tous" || e.sexe === sexe)
       .filter((e) => !n || normaliser(`${e.nom} ${e.prenoms} ${e.prenoms} ${e.nom} ${e.id}`).includes(n));
     const moy = (e: EleveLigne) => e.moyenne ?? -1;
     return [...l].sort((a, b) => {
@@ -134,7 +141,9 @@ function Liste() {
         default: return fr.compare(a.classe, b.classe) || fr.compare(a.nom, b.nom) || fr.compare(a.prenoms, b.prenoms);
       }
     });
-  }, [donnees, filtre, classe, q, tri, evals]);
+  }, [donnees, filtre, niveau, classe, sexe, q, tri, evals]);
+  // Libellé des critères, repris dans le pied du fichier exporté et l'en-tête des états imprimés.
+  const criteres = [niveau !== "tous" && `niveau ${niveau}`, classe !== "toutes" && `classe ${classe}`, sexe !== "tous" && (sexe === "F" ? "filles" : "garçons")].filter(Boolean).join(", ") || "tous les apprenants";
 
   if (!id) return <HorsPerimetre />;
   const visibles = liste.slice(0, limite);
@@ -147,7 +156,7 @@ function Liste() {
         sousTitre={donnees ? `${entier(donnees.length)} apprenants scolarisés. Chaque dossier s'ouvre au titre de la gestion de l'établissement ; chaque ouverture est journalisée.` : "Apprenants scolarisés dans votre établissement."}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, COLONNES, `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — ${tableau.data?.etablissement.nom ?? "établissement"}. Données à caractère personnel : usage limité à la gestion de l'établissement.`)} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque, classe d'âge)`}>Exporter</Button>
+            <Button variante="secondaire" icone={Download} disabled={!liste.length} onClick={() => exporterCsv(`apprenants_${id}`, liste, COLONNES, `Export BEILE du ${new Date().toLocaleDateString("fr-FR")} — ${tableau.data?.etablissement.nom ?? "établissement"} — ${criteres}. Données à caractère personnel : usage limité à la gestion de l'établissement.`)} title={`Exporter les ${liste.length} lignes affichées au format CSV (avec le risque, classe d'âge)`}>Exporter</Button>
             <Button variante="secondaire" icone={Printer} disabled={!liste.length} onClick={() => setImpression(true)} title="Imprimer un état nominatif, une feuille d'appel ou un PV de conseil">Imprimer</Button>
             {classeId && <Button variante="secondaire" icone={FileText} chargement={bulletins && bulletinsClasse.isFetching} onClick={() => setBulletins(true)} title={`Tous les bulletins de ${classe}, un par page`}>Bulletins de la classe</Button>}
             {bulletins && bulletinsClasse.isError && <span role="alert" className="text-[13px] text-critical">{bulletinsClasse.error.message}</span>}
@@ -181,8 +190,17 @@ function Liste() {
       {donnees && donnees.length > 0 && <StatsLiaison eleves={donnees} />}
 
       <Card data-guide="eleves-recherche" className="p-3">
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto_auto]">
           <ChampRecherche valeur={q} onChange={(v) => { setQ(v); setLimite(PAS); }} placeholder="Nom, prénom ou identifiant" label="Rechercher un apprenant" />
+          <select value={niveau} onChange={(e) => { setNiveau(e.target.value); setClasse("toutes"); setLimite(PAS); }} aria-label="Niveau" className={classeSelect}>
+            <option value="tous">Tous les niveaux</option>
+            {niveaux_.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <select value={sexe} onChange={(e) => { setSexe(e.target.value as "tous" | "F" | "M"); setLimite(PAS); }} aria-label="Sexe" className={classeSelect}>
+            <option value="tous">Filles et garçons</option>
+            <option value="F">Filles</option>
+            <option value="M">Garçons</option>
+          </select>
           <select value={classe} onChange={(e) => { setClasse(e.target.value); setLimite(PAS); }} aria-label="Classe" className={classeSelect}>
             <option value="toutes">Toutes les classes</option>
             {classes.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -206,7 +224,7 @@ function Liste() {
       ) : liste.length === 0 ? (
         <Card>
           <EtatVide icone={Users} titre="Aucun apprenant" texte={donnees?.length ? "Aucun apprenant ne correspond à ces critères." : "Aucun apprenant n'est encore inscrit dans l'établissement."}
-            action={donnees?.length ? <Button variante="secondaire" taille="sm" onClick={() => { setQ(""); setClasse("toutes"); choisirFiltre("tous"); }}>Effacer les filtres</Button> : <LienBouton href="/etablissement/inscription" taille="sm" icone={UserPlus}>Inscrire un apprenant</LienBouton>} />
+            action={donnees?.length ? <Button variante="secondaire" taille="sm" onClick={() => { setQ(""); setNiveau("tous"); setSexe("tous"); setClasse("toutes"); choisirFiltre("tous"); }}>Effacer les filtres</Button> : <LienBouton href="/etablissement/inscription" taille="sm" icone={UserPlus}>Inscrire un apprenant</LienBouton>} />
         </Card>
       ) : (
         <>
@@ -293,7 +311,7 @@ function Liste() {
       {impression && (
         <FeuilleImprimable
           eleves={liste}
-          meta={{ etablissement: tableau.data?.etablissement.nom ?? "", classe: classe === "toutes" ? "Toutes les classes" : classe, trimestre: tableau.data?.trimestre ?? 2, dateJour: new Date().toISOString() }}
+          meta={{ etablissement: tableau.data?.etablissement.nom ?? "", classe: classe === "toutes" ? "Toutes les classes" : classe, criteres, trimestre: tableau.data?.trimestre ?? 2, dateJour: new Date().toISOString() }}
           onFermer={() => setImpression(false)}
         />
       )}
