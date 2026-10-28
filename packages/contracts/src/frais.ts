@@ -16,8 +16,9 @@ export interface CouvertureTerme {
   /** Date d'exigibilité déclarée par l'école ; null pour une pièce consignée sans appel déclaré. */
   exigibleLe: string | null;
   etat: "paye" | "exonere" | "attendu" | "a_venir" | "sans_appel";
-  quittance: { reference: string; delivreeLe: string; qualiteAgent: QualiteAgentEncaisseur; agent: string | null } | null;
-  mesure: { nature: "exoneration" | "prise_en_charge"; motif: string; autorite: string; decideLe: string } | null;
+  /** `id` : le fait au registre, que l'école peut annuler s'il a été consigné par erreur (fait `ANNULATION_FRAIS`). */
+  quittance: { id: string; reference: string; delivreeLe: string; qualiteAgent: QualiteAgentEncaisseur; agent: string | null } | null;
+  mesure: { id: string; nature: "exoneration" | "prise_en_charge"; motif: string; autorite: string; decideLe: string } | null;
 }
 
 export type StatutFrais = "couvert" | "exonere" | "attendu" | "en_cours" | "sans_declaration";

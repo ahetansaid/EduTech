@@ -86,6 +86,8 @@ verifier("Administrateur : élévation par second facteur", (await admin!.elever
 const absence = { classeId: "CLS-PAR-5eA-S", date: AUJOURDHUI, apprenantIds: ["APP-000001"] };
 verifier("Écriture sans jeton CSRF", (await enseignant!.appel("POST", "/evenements/absences", absence, { "x-csrf-token": "" })).statut, 403);
 verifier("Écriture depuis une origine étrangère", (await enseignant!.appel("POST", "/evenements/absences", absence, { origin: "https://pirate.example" })).statut, 403);
+// Audit du 28/10 : le préfixe LOT- des lots partenaires ne s'occupe pas depuis un compte interne (refus avant toute écriture).
+verifier("Clé de saisie au préfixe réservé LOT- → 422", (await enseignant!.appel("POST", "/evenements/absences", { ...absence, idSaisie: "LOT-99999999" })).statut, 422);
 
 titre("Pilotage sous périmètre (couche sémantique)");
 const ind = await central!.appel("POST", "/indicateurs", { indicateur: "taux_seuil_moyenne", filtres: { matiere: "Mathématiques", seuil: 15, ageMin: 11, ageMax: 13 }, ventilation: ["sexe"] });
@@ -326,7 +328,7 @@ verifier("L'élève lui-même → ses propres traces de frais", (await apprenant
 // Règle 2 du cadrage, côté écriture : personne d'autre que le compte d'administration de l'école qui scolarise
 // l'élève ne consigne un fait. Le parent, même au lien vérifié, déclare une pièce — il ne l'émet pas.
 verifier("Parent → consigner une quittance pour son enfant", (await parent!.appel("POST", `/apprenants/${eleveDeLaFamille}/frais/quittance`, { anneeScolaire: "2026-2027", terme: "T1", delivreeLe: AUJOURDHUI, referenceQuittance: "REC-ESSAI-PARENT", qualiteAgent: "intendance", agent: null, cle: randomUUID() })).statut, 403);
-verifier("Élève → consigner sa propre exonération", (await apprenante!.appel("POST", `/apprenants/${monIdEleve}/frais/exoneration`, { anneeScolaire: "2026-2027", terme: "T1", nature: "exoneration", motif: "Essai de l'élève", autorite: "Élève", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() })).statut, 403);
+verifier("Élève → consigner sa propre exonération", (await apprenante!.appel("POST", `/apprenants/${monIdEleve}/frais/exoneration`, { anneeScolaire: "2026-2027", terme: "T1", nature: "exoneration", motif: "Essai de l'élève", autorite: "Élève", referenceTexte: "Décision n°001/2026 du conseil d'administration", decideLe: AUJOURDHUI, cle: randomUUID() })).statut, 403);
 const vueFamille = await parent!.appel("GET", `/apprenants/${eleveDeLaFamille}/frais`);
 const statutFamille = (vueFamille.json?.situation as { statut?: string } | undefined)?.statut ?? "";
 verifier("Parent au lien vérifié → situation complète de son enfant", vueFamille.statut === 200 && vueFamille.json?.situation != null && STATUTS_FRAIS.includes(statutFamille), true, `statut ${statutFamille || "aucun"}`);
@@ -359,7 +361,7 @@ verifier("Flux d'une direction départementale : même cloisonnement", fluxDepar
 // Un compte sans école administrée est écarté AVANT toute lecture en base : sans ce garde, un enseignant
 // parcourrait APP-000001, APP-000002… en distinguant « non scolarisé » (409) de « hors périmètre » (403).
 const essaiPiece = { anneeScolaire: String(vueEcole.json?.anneeScolaire ?? "2026-2027"), terme: "T1", delivreeLe: AUJOURDHUI, referenceQuittance: "REC-TEST-FORME", qualiteAgent: "intendance", agent: null, cle: randomUUID() };
-const essaiMesure = { anneeScolaire: String(vueEcole.json?.anneeScolaire ?? "2026-2027"), terme: "T1", nature: "exoneration", motif: "Essai de forme pour la recette", autorite: "Conseil d'administration", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() };
+const essaiMesure = { anneeScolaire: String(vueEcole.json?.anneeScolaire ?? "2026-2027"), terme: "T1", nature: "exoneration", motif: "Essai de forme pour la recette", autorite: "Conseil d'administration", referenceTexte: "Décision n°001/2026 du conseil d'administration", decideLe: AUJOURDHUI, cle: randomUUID() };
 verifier("Enseignant → consigner une quittance", (await enseignant!.appel("POST", "/apprenants/APP-000001/frais/quittance", essaiPiece)).statut, 403);
 verifier("Enseignant → quittance sur un élève inexistant : même refus, rien n'est dénombrable", (await enseignant!.appel("POST", "/apprenants/APP-999999/frais/quittance", essaiPiece)).statut, 403);
 verifier("Enseignant → consigner une exonération", (await enseignant!.appel("POST", "/apprenants/APP-000001/frais/exoneration", essaiMesure)).statut, 403);
@@ -393,6 +395,29 @@ if (vueEcole.statut === 200 && vueEcole.json?.anneeScolaire) {
   verifier("Quittance « autre agent » sans fonction précise → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), qualiteAgent: "autre" })).statut, 422);
   verifier("Terme hors nomenclature (T4) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), terme: "T4" })).statut, 422);
   verifier("Identifiant d'élève mal formé → 422, rien n'est écrit", (await directrice!.appel("POST", "/apprenants/APP-1/frais/quittance", { ...essaiPiece, cle: randomUUID() })).statut, 422);
+  // Audit du 28/10 (frais) : référence sans montant, année de l'école, acte exigé pour une exonération, annulation.
+  verifier("Référence de quittance portant un montant (15000FCFA-T1) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), referenceQuittance: "15000FCFA-T1" })).statut, 422);
+  verifier("Devise contournée (15 000 XOF) dans un motif → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/exoneration", { ...essaiMesure, cle: randomUUID(), motif: "Remise de 15 000 XOF décidée" })).statut, 422);
+  verifier("Année où l'école n'a aucune classe (2001-2002) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), anneeScolaire: "2001-2002" })).statut, 422);
+  verifier("Année aux millésimes non consécutifs (2026-2026) → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, cle: randomUUID(), anneeScolaire: "2026-2026" })).statut, 422);
+  verifier("Exonération sans la référence de l'acte qui la fonde → 422", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/exoneration", { ...essaiMesure, cle: randomUUID(), referenceTexte: undefined })).statut, 422);
+  verifier("Enseignant → annuler une pièce de frais", (await enseignant!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: `EVT-${randomUUID()}`, motif: "Essai de refus pour la recette", cle: randomUUID() })).statut, 403);
+  verifier("Administration → annuler une pièce inexistante : même refus qu'une pièce d'une autre école", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: `EVT-${randomUUID()}`, motif: "Essai de refus pour la recette", cle: randomUUID() })).statut, 403);
+  if (ECRITURES) {
+    // Une pièce consignée par erreur s'annule : elle reste au registre, ne compte plus, et ne s'annule qu'une fois.
+    const ref = `REC-ANNUL-${Date.now()}`;
+    // Un terme que l'école appelle vraiment : sinon la pièce serait refusée (422) et l'annulation jamais jouée.
+    const termeAppele = String((vueEcole.json?.cadence as { termes?: { terme: string }[] } | null)?.termes?.[0]?.terme ?? "T1");
+    const p = await directrice!.appel("POST", "/apprenants/APP-000001/frais/quittance", { ...essaiPiece, terme: termeAppele, cle: randomUUID(), referenceQuittance: ref });
+    verifier("Annulation : quittance d'essai consignée", p.statut, 201, `${p.statut} ${JSON.stringify(p.json).slice(0, 120)}`);
+    if (p.statut === 201) {
+      const idPiece = String(p.json.id);
+      verifier("Annulation d'une pièce consignée par erreur → 201", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: randomUUID() })).statut, 201);
+      verifier("Seconde annulation de la même pièce → 409", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: randomUUID() })).statut, 409);
+      const apres = await directrice!.appel("GET", "/apprenants/APP-000001/frais");
+      verifier("La pièce annulée ne compte plus dans la situation", !JSON.stringify(apres.json ?? {}).includes(ref), true);
+    }
+  }
 } else {
   // Le chemin « non joué » n'est jamais vert tout seul : s'il y est arrivé, c'est que la lecture de l'école a
   // échoué, et il faut que la recette le dise comme une anomalie plutôt que comme une convenance.
@@ -673,7 +698,7 @@ if (ECRITURES) {
         const dupliees = liste(alertes.json).filter((a) => String(a.type) === "quittance_reference_dupliquee");
         verifier("Vigie : l'alerte de référence dupliquée est ouverte et lisible par le DPO", alertes.statut === 200 && dupliees.length >= 1 && dupliees.every((a) => String(a.gravite) === "haute"), true, `${dupliees.length} alerte(s)`);
         verifier("Et sa teneur ne nomme aucun apprenant", dupliees.length > 0 && dupliees.every((a) => !/APP-\d{6}/.test(String(a.detail ?? ""))), true, `${String((alertes.json as unknown[] | undefined)?.length ?? 0)} alerte(s) ouverte(s) au total`);
-        const mesure = await directrice!.appel("POST", `/apprenants/${vers}/frais/exoneration`, { anneeScolaire: annee, terme: null, nature: "exoneration", motif: "Exonération accordée par le conseil d'administration", autorite: "Conseil d'administration de l'établissement", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() });
+        const mesure = await directrice!.appel("POST", `/apprenants/${vers}/frais/exoneration`, { anneeScolaire: annee, terme: null, nature: "exoneration", motif: "Exonération accordée par le conseil d'administration", autorite: "Conseil d'administration de l'établissement", referenceTexte: "Décision n°001/2026 du conseil d'administration", decideLe: AUJOURDHUI, cle: randomUUID() });
         verifier("Exonération de l'année entière (mesure sans terme)", mesure.statut, 201);
         const couverte = await directrice!.appel("GET", `/apprenants/${vers}/frais`);
         verifier("Une mesure annuelle couvre les termes appelés, pièces déjà consignées comprises", situation(couverte.json)?.statut === "exonere", true, String(situation(couverte.json)?.statut));
@@ -683,7 +708,7 @@ if (ECRITURES) {
 
       // 6) La prise en charge ferme l'année de l'élève : la mesure remplace la pièce attendue, à l'écran de
       //    l'école comme à celui de la famille, sans que rien n'ait jamais été encaissé ici.
-      verifier("Prise en charge du 2e terme consignée", (await directrice!.appel("POST", `/apprenants/${id}/frais/exoneration`, { anneeScolaire: annee, terme: "T2", nature: "prise_en_charge", motif: "Prise en charge déclarée par l'école", autorite: "Chef d'établissement", referenceTexte: null, decideLe: AUJOURDHUI, cle: randomUUID() })).statut, 201);
+      verifier("Prise en charge du 2e terme consignée", (await directrice!.appel("POST", `/apprenants/${id}/frais/exoneration`, { anneeScolaire: annee, terme: "T2", nature: "prise_en_charge", motif: "Prise en charge déclarée par l'école", autorite: "Chef d'établissement", referenceTexte: "Décision n°001/2026 du conseil d'administration", decideLe: AUJOURDHUI, cle: randomUUID() })).statut, 201);
       const finale = await directrice!.appel("GET", `/apprenants/${id}/frais`);
       verifier("Termes appelés tous couverts (pièce + mesure)", situation(finale.json)?.statut === "couvert", true, String(situation(finale.json)?.statut));
       verifier("Aucun montant dans la situation après écritures", finale.statut === 200 && clefsMontant(finale.json).length + deviseDansLeTexte(finale.json) === 0, true, `${liste(situation(finale.json)?.termes).length} terme(s) rendu(s)`);

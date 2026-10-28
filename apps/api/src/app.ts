@@ -36,7 +36,7 @@ import { familles } from "./familles";
 import { delegation } from "./delegation";
 import { filtrePortail } from "./portails";
 import { securiteComptes } from "./securite-comptes";
-import { vigie } from "./vigie";
+import { signaler, vigie } from "./vigie";
 import { empreintePresentee, sceauCorrespond, sceauxAdmis } from "./certification";
 import type { Perimetre, Profil, ResultatVerification } from "@beile/contracts";
 import { QuestionAnalyse, RequeteSemantique } from "@beile/contracts";
@@ -48,7 +48,7 @@ import { indexer, notesApprenant, situationApprenant } from "@beile/simulation/p
 import { calculer, DICTIONNAIRE, estCalculeParLeRegistre, priorites } from "@beile/simulation/semantique";
 import { COMMUNES, DEPARTEMENTS } from "@beile/simulation/territoire";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -85,15 +85,37 @@ app.use("*", filtrePortail);
 app.use("*", limiteDebit(1500, 60_000));
 app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
 
-app.onError((err, c) => {
+/**
+ * Collision sur l'index d'idempotence : « déjà enregistrée » seulement si la ligne existante est de CE même émetteur
+ * (rejeu d'un réseau coupé, double clic). Une clé heurtée chez un autre émetteur n'est pas un rejeu : la file hors
+ * connexion et les connecteurs partenaires lisaient `deja: true` comme une acceptation et perdaient la saisie en
+ * silence — un lot EducMaster entier pouvait ainsi disparaître (audit du 28/10, M1). L'index ne connaît pas l'auteur :
+ * la ligne en conflit se retrouve par le détail de l'erreur PostgreSQL (clé, type, apprenant).
+ */
+async function collisionDuMemeEmetteur(c: Context<{ Variables: Variables }>, detail: string | undefined) {
+  const m = /\)=\((.*)\) already exists/.exec(detail ?? "");
+  const [cle, type, apprenant] = (m?.[1] ?? "").split(", ");
+  const emetteur = c.get("profil")?.id ?? (c.req.header("x-beile-partenaire") ? `partenaire:${c.req.header("x-beile-partenaire")}` : null);
+  if (!cle || !type || !emetteur) return false;
+  const [l] = await base().select({ auteurId: schema.evenements.auteurId }).from(schema.evenements)
+    .where(and(sql`${schema.evenements.donnees}->>'idSaisie' = ${cle}`, eq(schema.evenements.type, type), apprenant && apprenant !== "null" ? eq(schema.evenements.apprenantId, apprenant) : sql`${schema.evenements.apprenantId} is null`)).limit(1);
+  if (l?.auteurId === emetteur) return true;
+  await signaler("collision_cle_saisie", "haute", c.get("profil")?.id ?? null, `${type}|${cle}`, `Clé de saisie ${cle} (${type}) déjà utilisée par un autre émetteur que ${emetteur} : écriture refusée.`);
+  return false;
+}
+
+app.onError(async (err, c) => {
   if (err instanceof ErreurCodee) return c.json({ erreur: err.message, code: err.code }, err.status);
   if (err instanceof HTTPException) return c.json({ erreur: err.message }, err.status);
   // Contraintes de la base, lues sur l'erreur PostgreSQL (directe ou enveloppée par Drizzle) : seul
   // l'index d'idempotence signifie « déjà enregistré » ; toute autre unicité est un vrai conflit, et une
   // clé étrangère violée désigne une référence inconnue (erreur du client, jamais un 500).
-  const pg = (err as { cause?: { code?: string; constraint_name?: string } }).cause ?? (err as { code?: string; constraint_name?: string });
+  const pg = (err as { cause?: { code?: string; constraint_name?: string; detail?: string } }).cause ?? (err as { code?: string; constraint_name?: string; detail?: string });
   if (pg?.code === "23505") {
-    if (pg.constraint_name === "evenements_id_saisie_idx") return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
+    if (pg.constraint_name === "evenements_id_saisie_idx") {
+      if (await collisionDuMemeEmetteur(c, pg.detail).catch(() => false)) return c.json({ erreur: "Saisie déjà enregistrée", deja: true }, 409);
+      return c.json({ erreur: "Clé de saisie déjà utilisée par un autre émetteur : écriture refusée, régénérez la saisie" }, 409);
+    }
     if (pg.constraint_name === "evenements_decision_justification_uq") return c.json({ erreur: "Ce justificatif a déjà été tranché" }, 409);
     return c.json({ erreur: "Conflit : cet enregistrement existe déjà" }, 409);
   }

@@ -10,9 +10,10 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, refuser, sansSomme, type Variables } from "./commun";
+import { authentifie, base, cleUtilisateur, corps, dateCalendaire, journaliser, limiteDebit, limiteDebitPartage, referenceOpaque, refuser, sansSomme, type Variables } from "./commun";
 import { contexteApprenant, enEvenement } from "./donnees";
 import { dejaSaisi, inscrireAuRegistre } from "./ecriture";
+import { cleProfil } from "./import-eleves";
 import { signaler } from "./vigie";
 
 /**
@@ -62,6 +63,30 @@ type FaitQuittance = Extract<Evenement, { type: "QUITTANCE_FRAIS" }>;
 type FaitExoneration = Extract<Evenement, { type: "EXONERATION_FRAIS" }>;
 type FaitCadence = Extract<Evenement, { type: "CADENCE_FRAIS" }>;
 
+/**
+ * Une pièce annulée (fait `ANNULATION_FRAIS`) reste au registre mais ne compte plus : elle sort ici du calcul,
+ * pour la famille comme pour l'école. Sans cette règle, une quittance saisie sur un homonyme restait « payée »
+ * pour toujours (audit du 28/10, H1).
+ */
+export function sansAnnulees<T extends Evenement>(evs: readonly T[]): T[] {
+  const annulees = new Set(evs.flatMap((e) => (e.type === "ANNULATION_FRAIS" ? [e.evenementAnnuleId] : [])));
+  return annulees.size ? evs.filter((e) => !annulees.has(e.id)) : [...evs];
+}
+
+/**
+ * L'année d'un fait de frais est une année où l'école a ouvert des classes, aux deux millésimes consécutifs :
+ * « 2026-2026 » ou une année sans élève donnaient une pièce notifiée à la famille mais visible sur aucun écran,
+ * et une réclamation par année de 2000 à 2099 (audit du 28/10, M2). Rend les années de l'école, la plus récente d'abord.
+ */
+async function anneeDeLEcole(etablissementId: string, annee: string) {
+  const [a, b] = annee.split("-").map(Number);
+  if (b !== a! + 1) throw new HTTPException(422, { message: "Année scolaire : deux millésimes consécutifs (AAAA-AAAA+1)" });
+  const annees = (await base().selectDistinct({ anneeScolaire: schema.classes.anneeScolaire }).from(schema.classes)
+    .where(eq(schema.classes.etablissementId, etablissementId)).orderBy(desc(schema.classes.anneeScolaire))).map((x) => x.anneeScolaire);
+  if (!annees.includes(annee)) throw new HTTPException(422, { message: `Aucune classe de cet établissement n'est déclarée en ${annee}` });
+  return annees;
+}
+
 const parAnnee = <T extends { type: string; anneeScolaire: string; apprenantId?: string }>(evs: readonly T[], anneeScolaire: string) =>
   evs.filter((e) => e.anneeScolaire === anneeScolaire);
 
@@ -109,8 +134,8 @@ export function calculerSituation(
       terme,
       exigibleLe,
       etat: mesure ? "exonere" : piece ? "paye" : exigibleLe === null ? "sans_appel" : exigibleLe < jour ? "attendu" : "a_venir",
-      quittance: piece ? { reference: piece.referenceQuittance, delivreeLe: piece.delivreeLe, qualiteAgent: piece.qualiteAgent, agent: piece.agent } : null,
-      mesure: mesure ? { nature: mesure.nature, motif: mesure.motif, autorite: mesure.autorite, decideLe: mesure.decideLe } : null,
+      quittance: piece ? { id: piece.id, reference: piece.referenceQuittance, delivreeLe: piece.delivreeLe, qualiteAgent: piece.qualiteAgent, agent: piece.agent } : null,
+      mesure: mesure ? { id: mesure.id, nature: mesure.nature, motif: mesure.motif, autorite: mesure.autorite, decideLe: mesure.decideLe } : null,
     };
   };
   // Les termes appelés donnent les lignes, mais une pièce consignée hors appel reste visible : la masquer
@@ -153,9 +178,10 @@ export async function chargerCadence(etablissementId: string, anneeScolaire: str
  */
 export async function lireSituationFrais(evenements: readonly Evenement[], etablissementId: string, anneeScolaire: string): Promise<SituationFrais> {
   const deLecole = <T extends { etablissementId: string }>(evs: readonly T[]) => evs.filter((e) => e.etablissementId === etablissementId);
+  const valides = sansAnnulees(evenements);
   return calculerSituation(anneeScolaire,
-    deLecole(parAnnee(quittancesDe(evenements), anneeScolaire)),
-    deLecole(parAnnee(exonerationsDe(evenements), anneeScolaire)),
+    deLecole(parAnnee(quittancesDe(valides), anneeScolaire)),
+    deLecole(parAnnee(exonerationsDe(valides), anneeScolaire)),
     await chargerCadence(etablissementId, anneeScolaire), jourLocal());
 }
 
@@ -178,25 +204,26 @@ async function compteEcoleRequis(c: Context<{ Variables: Variables }>, action: s
 }
 
 /** Un apprenant ne doit ses frais qu'à l'école qui le scolarise aujourd'hui : l'école se lit dans la projection. */
-async function ecoleDeLApprenant(apprenantId: string) {
+async function ecoleDeLApprenant(apprenantId: string): Promise<string | null> {
   const [s] = await base().select({ etablissementId: schema.scolarites.etablissementId, statut: schema.scolarites.statut })
     .from(schema.scolarites).where(eq(schema.scolarites.apprenantId, apprenantId));
-  if (!s || !s.etablissementId || s.statut !== "scolarise") throw new HTTPException(409, { message: "Cet apprenant n'est actuellement scolarisé dans aucun établissement" });
-  return s.etablissementId;
+  return s?.etablissementId && s.statut === "scolarise" ? s.etablissementId : null;
 }
 
 /**
  * Qui écrit un fait de frais : le compte d'administration de l'école qui scolarise l'élève. Ni l'inspection,
- * ni un autre établissement, ni un enseignant — et le refus est journalisé comme tout accès.
+ * ni un autre établissement, ni un enseignant — et le refus est journalisé comme tout accès. Un élève scolarisé
+ * nulle part et un élève scolarisé ailleurs reçoivent la MÊME réponse : deux codes distincts (409 / 403) suffisaient
+ * à n'importe quel chef pour parcourir APP-000001… et savoir qui est scolarisé (audit du 28/10).
  */
-async function administration(c: Context<{ Variables: Variables }>, etablissementId: string, action: string) {
+async function administration(c: Context<{ Variables: Variables }>, etablissementId: string | null, action: string) {
   const profil = c.get("profil") as Profil;
-  const chef = profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === etablissementId);
+  const chef = !!etablissementId && profil.habilitations.some((h) => h.role === "chef_etablissement" && h.perimetre.niveau === "etablissement" && h.perimetre.etablissementId === etablissementId);
   if (!chef) {
-    await journaliser(profil, action, etablissementId, "gestion", false, "perimetre");
+    await journaliser(profil, action, etablissementId ?? "apprenant non scolarisé", "gestion", false, "perimetre");
     refuser("Les faits de frais s'écrivent depuis le compte d'administration de l'école qui scolarise l'élève");
   }
-  const [etab] = await base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId));
+  const [etab] = await base().select({ id: schema.etablissements.id, nom: schema.etablissements.nom }).from(schema.etablissements).where(eq(schema.etablissements.id, etablissementId!));
   if (!etab) throw new HTTPException(404, { message: "Établissement inconnu du registre" });
   return { profil, etab };
 }
@@ -219,8 +246,11 @@ frais.post("/etablissements/:id/frais/cadence", authentifie, limiteDebit(10, 60_
     cle: CLE,
   }).strict());
   if (new Set(m.termes.map((t) => t.terme)).size !== m.termes.length) throw new HTTPException(422, { message: "Un même terme ne peut pas être appelé deux fois dans l'année" });
-  // Seule la prose de l'agent se vérifie : une référence de délibération est un numéro d'acte, opaque.
   sansSomme("Cadre de l'appel", m.cadre);
+  // Une référence d'acte se rédige (« PV n°3 du conseil d'établissement du 12/10/2026 ») : elle passe par la garde
+  // des textes, pas par le motif strict d'un numéro de carnet (audit du 28/10, M1).
+  sansSomme("Référence de la délibération", m.referenceDeliberation);
+  await anneeDeLEcole(id, m.anneeScolaire);
 
   const idSaisie = `CADENCE-${profil.id}-${id}-${m.cle}`;
   const deja = await dejaSaisi(idSaisie, "CADENCE_FRAIS");
@@ -251,8 +281,7 @@ frais.post("/etablissements/:id/frais/cadence", authentifie, limiteDebit(10, 60_
 frais.post("/apprenants/:id/frais/quittance", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
   const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
   await compteEcoleRequis(c, "Enregistrement d'une quittance");
-  const etablissementId = await ecoleDeLApprenant(apprenantId);
-  const { profil } = await administration(c, etablissementId, "Enregistrement d'une quittance");
+  const { profil, etab: { id: etablissementId } } = await administration(c, await ecoleDeLApprenant(apprenantId), "Enregistrement d'une quittance");
   const m = await corps(c, z.object({
     anneeScolaire: ANNEE,
     terme: FraisTerme,
@@ -264,9 +293,10 @@ frais.post("/apprenants/:id/frais/quittance", authentifie, limiteDebit(30, 60_00
   }).strict());
   if (m.delivreeLe > jourLocal()) throw new HTTPException(422, { message: "Une quittance ne se signe pas d'avance" });
   if (m.qualiteAgent === "autre" && !m.agent) throw new HTTPException(422, { message: "Préciser la fonction de l'agent qui a délivré la pièce" });
-  // La référence de la pièce n'est pas vérifiée ici : c'est un numéro de carnet, opaque, où une lettre isolée ne
-  // désigne aucune somme. Seuls les textes que l'agent compose portent une intention de montant.
   sansSomme("Agent", m.agent);
+  // La référence est recopiée jusqu'au téléphone de la famille : un numéro de carnet, jamais « 15000FCFA-T1 ».
+  referenceOpaque("Référence de la quittance", m.referenceQuittance);
+  await anneeDeLEcole(etablissementId, m.anneeScolaire);
   const [eleve] = await base().select({ id: schema.apprenants.id }).from(schema.apprenants).where(eq(schema.apprenants.id, apprenantId));
   if (!eleve) throw new HTTPException(404, { message: "Apprenant inconnu du registre" });
   // Une école qui a déclaré ses termes ne peut consigner une pièce que pour l'un d'eux ; celle qui n'a rien
@@ -298,6 +328,8 @@ frais.post("/apprenants/:id/frais/quittance", authentifie, limiteDebit(30, 60_00
       eq(schema.evenements.type, "QUITTANCE_FRAIS"), eq(schema.evenements.etablissementId, etablissementId),
       sql`${schema.evenements.donnees}->>'referenceNormalisee' = ${referenceNormalisee(m.referenceQuittance)}`,
       sql`${schema.evenements.donnees}->>'anneeScolaire' = ${m.anneeScolaire}`,
+      // Une pièce annulée (saisie sur un homonyme, puis ressaisie sur le bon élève) n'est pas un doublon.
+      sql`not exists (select 1 from ledger.evenements x where x.type = 'ANNULATION_FRAIS' and x.donnees->>'evenementAnnuleId' = ${schema.evenements.id})`,
     ));
   const dupliquee = voisines.some((v) => v.apprenantId !== apprenantId);
   if (dupliquee) await signaler("quittance_reference_dupliquee", "haute", profil.id, `${etablissementId}|${m.anneeScolaire}|${m.referenceQuittance}`, `${profil.nomAffiche} : la référence ${m.referenceQuittance} est enregistrée pour plusieurs apprenants de ${etablissementId} en ${m.anneeScolaire}.`);
@@ -309,21 +341,24 @@ frais.post("/apprenants/:id/frais/quittance", authentifie, limiteDebit(30, 60_00
 frais.post("/apprenants/:id/frais/exoneration", authentifie, limiteDebit(30, 60_000, cleUtilisateur), async (c) => {
   const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
   await compteEcoleRequis(c, "Enregistrement d'une exonération");
-  const etablissementId = await ecoleDeLApprenant(apprenantId);
-  const { profil } = await administration(c, etablissementId, "Enregistrement d'une exonération");
+  const { profil, etab: { id: etablissementId } } = await administration(c, await ecoleDeLApprenant(apprenantId), "Enregistrement d'une exonération");
   const m = await corps(c, z.object({
     anneeScolaire: ANNEE,
     terme: FraisTerme.nullish(),
     nature: z.enum(["exoneration", "prise_en_charge"]),
     motif: z.string().trim().min(5, "Motif : 5 caractères au moins").max(300),
     autorite: z.string().trim().min(3, "Autorité : 3 caractères au moins").max(120),
-    referenceTexte: z.string().trim().max(160).nullish(),
+    // L'exonération est le détournement le plus simple sans montants (« exonéré » sur un élève qui a payé en
+    // liquide) : elle ne se consigne plus sans la référence de l'acte qui la fonde (audit du 28/10, H2).
+    referenceTexte: z.string().trim().min(3, "Référence de l'acte (arrêté, décision, convention) : obligatoire").max(160),
     decideLe: DATE,
     cle: CLE,
   }).strict());
   if (m.decideLe > jourLocal()) throw new HTTPException(422, { message: "Une décision ne se signe pas d'avance" });
   sansSomme("Motif", m.motif);
   sansSomme("Autorité", m.autorite);
+  sansSomme("Référence de l'acte", m.referenceTexte);
+  await anneeDeLEcole(etablissementId, m.anneeScolaire);
   const cadence = await chargerCadence(etablissementId, m.anneeScolaire);
   if (m.terme && cadence?.termes.length && !cadence.termes.some((t) => t.terme === m.terme)) throw new HTTPException(422, { message: "Terme non appelé par l'école cette année" });
 
@@ -334,11 +369,66 @@ frais.post("/apprenants/:id/frais/exoneration", authentifie, limiteDebit(30, 60_
     type: "EXONERATION_FRAIS", auteurId: profil.id, etablissementId, apprenantId, source: "beile",
     donnees: {
       apprenantId, etablissementId, anneeScolaire: m.anneeScolaire, terme: m.terme ?? null, nature: m.nature,
-      motif: m.motif, autorite: m.autorite, referenceTexte: m.referenceTexte ?? null, decideLe: m.decideLe, idSaisie,
+      motif: m.motif, autorite: m.autorite, referenceTexte: m.referenceTexte, decideLe: m.decideLe, idSaisie,
     },
   }]) as [string];
-  await journaliser(profil, "Enregistrement d'une exonération", `${apprenantId} · ${m.nature}`, "gestion", true, null);
+  // Vigie (audit du 28/10, H2) — sans montant, deux signaux restent lisibles :
+  // 1. une exonération qui suit une quittance non annulée du même élève, même année, terme couvert : l'élève
+  //    avait payé, et la mesure efface la trace du paiement à l'écran ;
+  // 2. une rafale d'exonérations par un même compte (plus de 20 en une heure) : une saisie de masse légitime
+  //    (gratuité des filles) existe, mais elle se lit alors dans le journal, pas par surprise.
+  const [apres] = (await base().execute(sql`
+    select count(*)::int n from ledger.evenements q
+    where q.type = 'QUITTANCE_FRAIS' and q.apprenant_id = ${apprenantId} and q.donnees->>'anneeScolaire' = ${m.anneeScolaire}
+      and (${m.terme ?? null}::text is null or q.donnees->>'terme' in (${m.terme ?? ""}, 'ANNEE'))
+      and not exists (select 1 from ledger.evenements x where x.type = 'ANNULATION_FRAIS' and x.donnees->>'evenementAnnuleId' = q.id)`)) as unknown as { n: number }[];
+  if ((apres?.n ?? 0) > 0) await signaler("exoneration_apres_quittance", "haute", profil.id, `${apprenantId}|${m.anneeScolaire}|${m.terme ?? "annee"}`, `${profil.nomAffiche} : exonération consignée pour ${apprenantId} (${m.anneeScolaire}${m.terme ? `, ${m.terme}` : ""}) alors qu'une quittance couvre déjà cette période.`);
+  const [rafale] = (await base().execute(sql`
+    select count(*)::int n from ledger.evenements where type = 'EXONERATION_FRAIS' and auteur_id = ${profil.id} and enregistre_le > now() - interval '1 hour'`)) as unknown as { n: number }[];
+  if ((rafale?.n ?? 0) > 20) await signaler("exonerations_en_rafale", "moyenne", profil.id, `${etablissementId}|${m.anneeScolaire}`, `${profil.nomAffiche} : ${rafale!.n} exonérations consignées en une heure à ${etablissementId}.`);
+  await journaliser(profil, "Enregistrement d'une exonération", `${apprenantId} · ${m.nature} · ${m.referenceTexte}`.slice(0, 200), "gestion", true, null);
   return c.json({ id: idEvenement, apprenantId, deja: false }, 201);
+});
+
+/**
+ * Annuler une pièce consignée par erreur (audit du 28/10, H1). Le registre ne s'efface pas : un fait
+ * `ANNULATION_FRAIS` retire la pièce du calcul, et l'erreur reste lisible. Seule l'école qui a consigné la pièce
+ * l'annule — y compris si l'élève a été transféré depuis : c'est sa pièce, pas celle de l'école d'accueil. Motif
+ * obligatoire, une seule annulation par pièce, famille prévenue, vigie levée à chaque fois.
+ */
+frais.post("/apprenants/:id/frais/annulation", authentifie, limiteDebit(20, 60_000, cleUtilisateur), async (c) => {
+  const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
+  await compteEcoleRequis(c, "Annulation d'une pièce de frais");
+  const m = await corps(c, z.object({
+    evenementId: z.string().regex(/^EVT-[0-9a-f-]{36}$/),
+    motif: z.string().trim().min(10, "Motif de l'annulation : 10 caractères au moins").max(300),
+    cle: CLE,
+  }).strict());
+  const [ligne] = await base().select().from(schema.evenements)
+    .where(and(eq(schema.evenements.id, m.evenementId), eq(schema.evenements.apprenantId, apprenantId), inArray(schema.evenements.type, ["QUITTANCE_FRAIS", "EXONERATION_FRAIS"])));
+  // Pièce introuvable et pièce d'une autre école : même refus, rien n'est révélé de l'autre établissement.
+  const { profil } = await administration(c, ligne?.etablissementId ?? null, "Annulation d'une pièce de frais");
+  sansSomme("Motif de l'annulation", m.motif);
+  const piece = enEvenement(ligne!) as FaitQuittance | FaitExoneration;
+  const idSaisie = `ANNULATION-${profil.id}-${m.evenementId}-${m.cle}`;
+  let idEvenement: string;
+  try {
+    [idEvenement] = await inscrireAuRegistre([{
+      type: "ANNULATION_FRAIS", auteurId: profil.id, etablissementId: piece.etablissementId, apprenantId, source: "beile",
+      donnees: { apprenantId, etablissementId: piece.etablissementId, anneeScolaire: piece.anneeScolaire, evenementAnnuleId: piece.id, natureAnnulee: piece.type, motif: m.motif, idSaisie },
+    }], async (tx) => {
+      // Une seule annulation par pièce, même sous deux clics : verrou sur la pièce puis relecture dans la transaction.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`annulation:${piece.id}`}))`);
+      const [l] = (await tx.execute(sql`select id from ledger.evenements where type = 'ANNULATION_FRAIS' and donnees->>'evenementAnnuleId' = ${piece.id} limit 1`)) as unknown as { id: string }[];
+      if (l) throw new DejaEnregistre(l.id);
+    }) as [string];
+  } catch (e) {
+    if (e instanceof DejaEnregistre) throw new HTTPException(409, { message: "Cette pièce est déjà annulée" });
+    throw e;
+  }
+  await signaler("annulation_frais", "moyenne", profil.id, piece.id, `${profil.nomAffiche} : ${piece.type === "QUITTANCE_FRAIS" ? "quittance" : "exonération"} ${piece.id} annulée pour ${apprenantId} (${piece.anneeScolaire}).`);
+  await journaliser(profil, "Annulation d'une pièce de frais", `${apprenantId} · ${piece.id} · ${m.motif}`.slice(0, 200), "gestion", true, null);
+  return c.json({ id: idEvenement, evenementAnnuleId: piece.id }, 201);
 });
 
 /* ------------------------------------------------------------------ Réclamation : « j'ai payé, rien n'est enregistré » */
@@ -378,7 +468,12 @@ const CIRCUIT_RECLAMATION = {
  * La visibilité ne change d'un octet nulle part : la réclamation se lit par la famille qui l'a déposée et par
  * l'administration de l'école, jamais par l'enseignant, la classe, l'élève ou un agrégat de pilotage.
  */
-frais.post("/apprenants/:id/frais/reclamation", authentifie, limiteDebit(10, 60 * 60_000, cleUtilisateur), async (c) => {
+// Plafond partagé entre instances et attaché au COMPTE (pas à la session) : en mémoire et par session, il se
+// remettait à zéro à chaque démarrage à froid et à chaque reconnexion (audit du 28/10, M3).
+const plafondReclamation = limiteDebitPartage("reclamation-frais", 10, 60 * 60_000, cleProfil);
+const MAX_RECLAMATIONS_VIVANTES = 5;
+
+frais.post("/apprenants/:id/frais/reclamation", authentifie, plafondReclamation, async (c) => {
   const profil = c.get("profil");
   const apprenantId = z.string().regex(/^APP-\d{6}$/).parse(c.req.param("id"));
   const ctx = await contexteApprenant(base(), apprenantId, profil);
@@ -387,12 +482,17 @@ frais.post("/apprenants/:id/frais/reclamation", authentifie, limiteDebit(10, 60 
   if (!decision.autorise) refuser("Une réclamation sur une pièce de frais se dépose pour son enfant, au sens du lien de filiation vérifié : dépôt refusé et journalisé");
 
   const etablissementId = await ecoleDeLApprenant(apprenantId);
+  if (!etablissementId) throw new HTTPException(409, { message: "Cet apprenant n'est actuellement scolarisé dans aucun établissement" });
   const m = await corps(c, z.object({
     anneeScolaire: ANNEE,
     terme: FraisTerme.nullish(),
     texte: z.string().trim().min(15, "Décrivez la pièce : 15 caractères au moins").max(500),
   }).strict());
   sansSomme("Texte de la réclamation", m.texte);
+  // Une réclamation porte sur l'année en cours de l'école ou la précédente : une par année de 2000 à 2099
+  // remplissait sans fin la file de l'école (audit du 28/10, M2).
+  const annees = await anneeDeLEcole(etablissementId, m.anneeScolaire);
+  if (annees.indexOf(m.anneeScolaire) > 1) throw new HTTPException(422, { message: "Une réclamation porte sur l'année scolaire en cours ou sur la précédente" });
   const cadence = await chargerCadence(etablissementId, m.anneeScolaire);
   if (m.terme && cadence?.termes.length && !cadence.termes.some((t) => t.terme === m.terme)) throw new HTTPException(422, { message: "Terme non appelé par l'école cette année" });
 
@@ -402,17 +502,22 @@ frais.post("/apprenants/:id/frais/reclamation", authentifie, limiteDebit(10, 60 
   // une lecture précède une écriture (« deux clics, deux dossiers » n'est pas une hypothèse rare ici).
   const dossier = await base().transaction(async (tx): Promise<{ id: string; deja: boolean; echeance: Date | null }> => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`reclamation:${apprenantId}:${m.anneeScolaire}:${m.terme ?? ""}`}))`);
+    // Dossier vivant de CETTE école : après un transfert, une réclamation ouverte chez l'ancienne école ne tient pas
+    // lieu de dossier pour la nouvelle (audit du 28/10).
     const vivantes = await tx.select({ id: schema.demandes.id }).from(schema.demandes)
       .where(and(eq(schema.demandes.modele, CIRCUIT_RECLAMATION.code), inArray(schema.demandes.statut, ["ouverte", "en_cours"]),
+        eq(schema.demandes.ressource, etablissementId),
         sql`${schema.demandes.donnees}->>'apprenantId' = ${apprenantId}`,
         sql`${schema.demandes.donnees}->>'anneeScolaire' = ${m.anneeScolaire}`,
         m.terme ? sql`${schema.demandes.donnees}->>'terme' = ${m.terme}` : sql`coalesce(${schema.demandes.donnees}->>'terme', '') = ''`));
     if (vivantes.length) return { id: vivantes[0]!.id, deja: true, echeance: null };
+    const [{ n: ouvertes } = { n: 0 }] = (await tx.execute(sql`select count(*)::int n from workflow.demandes where modele = ${CIRCUIT_RECLAMATION.code} and statut in ('ouverte', 'en_cours') and donnees->>'apprenantId' = ${apprenantId}`)) as unknown as { n: number }[];
+    if (ouvertes >= MAX_RECLAMATIONS_VIVANTES) throw new HTTPException(429, { message: `${MAX_RECLAMATIONS_VIVANTES} réclamations sont déjà ouvertes pour cet élève : attendez la réponse de l'école` });
 
     const id = `DEM-${randomUUID()}`;
     const echeance = new Date(Date.now() + DELAI_INSTRUCTION_JOURS * 86_400_000);
-    await tx.insert(schema.modelesCircuit).values(CIRCUIT_RECLAMATION)
-      .onConflictDoUpdate({ target: schema.modelesCircuit.code, set: { libelle: CIRCUIT_RECLAMATION.libelle, etapes: CIRCUIT_RECLAMATION.etapes, version: CIRCUIT_RECLAMATION.version } });
+    // Le circuit se déclare une fois : un dépôt n'écrase pas un modèle ajusté par l'administration.
+    await tx.insert(schema.modelesCircuit).values(CIRCUIT_RECLAMATION).onConflictDoNothing({ target: schema.modelesCircuit.code });
     await tx.insert(schema.demandes).values({
       id, modele: CIRCUIT_RECLAMATION.code,
       objet: `Pièce non consignée — ${apprenantId} · ${m.anneeScolaire}${m.terme ? ` · ${m.terme}` : ""}`,
@@ -438,7 +543,10 @@ async function reclamationsLues(filtre: { apprenantId?: string; etablissementId?
   if (filtre.apprenantId) cond.push(sql`${schema.demandes.donnees}->>'apprenantId' = ${filtre.apprenantId}`);
   if (filtre.etablissementId) cond.push(sql`${schema.demandes.donnees}->>'etablissementId' = ${filtre.etablissementId}`);
   if (filtre.anneeScolaire) cond.push(sql`${schema.demandes.donnees}->>'anneeScolaire' = ${filtre.anneeScolaire}`);
-  const demandes = await base().select().from(schema.demandes).where(and(...cond)).orderBy(desc(schema.demandes.creeeLe)).limit(60);
+  // Les dossiers vivants d'abord : sur une grande école, une réclamation ouverte ne doit pas disparaître de l'écran
+  // derrière soixante réclamations closes plus récentes (audit du 28/10).
+  const demandes = await base().select().from(schema.demandes).where(and(...cond))
+    .orderBy(sql`case when ${schema.demandes.statut} in ('ouverte', 'en_cours') then 0 else 1 end`, desc(schema.demandes.creeeLe)).limit(60);
   if (!demandes.length) return [];
   const reponses = await base().select().from(schema.decisions).where(and(inArray(schema.decisions.demandeId, demandes.map((d) => d.id)), sql`${schema.decisions.etape} <> 'DEPOT'`));
   const derniere = new Map<string, (typeof reponses)[number]>();
@@ -481,7 +589,10 @@ frais.get("/apprenants/:id/frais", authentifie, limiteDebit(60, 60_000, cleUtili
     situation: await lireSituationFrais(ctx.evenements, situation.etablissementId, annee),
     // La famille lit ici ce qu'elle a déposé et la réponse de l'école ; l'administration de l'école lit la même
     // ligne depuis son état de rapprochement. Un seul objet, deux lecteurs légitimes, décidés par l'ABAC.
-    reclamations: await reclamationsLues({ apprenantId, anneeScolaire: annee }),
+    // L'école ne lit que les réclamations qui LUI ont été adressées : après un transfert, le texte de la famille et
+    // la réponse de l'école d'origine ne se lisent pas depuis l'école d'accueil (cadrage §5, audit du 28/10, M4).
+    // La famille, elle, garde tout son historique.
+    reclamations: await reclamationsLues({ apprenantId, anneeScolaire: annee, ...(retenue.finalite === "gestion" ? { etablissementId: situation.etablissementId } : {}) }),
   });
 });
 
@@ -524,8 +635,8 @@ frais.get("/etablissements/:id/frais", authentifie, limiteDebit(30, 60_000, cleU
   // registre cinq cents fois.
   const parEleve = new Map<string, Evenement[]>();
   for (const e of faits.map(enEvenement)) {
-    // La cadence est un fait de l'école entière : seules la quittance et l'exonération nomment un élève.
-    if (e.type !== "QUITTANCE_FRAIS" && e.type !== "EXONERATION_FRAIS") continue;
+    // La cadence est un fait de l'école entière : quittance, exonération et annulation nomment un élève.
+    if (e.type !== "QUITTANCE_FRAIS" && e.type !== "EXONERATION_FRAIS" && e.type !== "ANNULATION_FRAIS") continue;
     const siennes = parEleve.get(e.apprenantId);
     if (siennes) siennes.push(e); else parEleve.set(e.apprenantId, [e]);
   }
@@ -537,7 +648,7 @@ frais.get("/etablissements/:id/frais", authentifie, limiteDebit(30, 60_000, cleU
     .from(schema.apprenants).where(inArray(schema.apprenants.id, [...parEleve.keys()].filter((x) => !surLaListe.has(x))));
   const jour = jourLocal();
   const situationDe = (apprenantId: string) => {
-    const siennes = parEleve.get(apprenantId) ?? [];
+    const siennes = sansAnnulees(parEleve.get(apprenantId) ?? []);
     return calculerSituation(annee, parAnnee(quittancesDe(siennes), annee), parAnnee(exonerationsDe(siennes), annee), cadence, jour);
   };
   const lignes: LigneFraisEcole[] = [

@@ -323,9 +323,31 @@ export function dateCalendaire(d: string) {
  * pas, « 30 € » oui. Un nombre nu n'est pas une somme (un numéro de salle, une année) : c'est le nom de devise
  * qui trahit l'intention.
  */
-const DEVISE = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|francs? cfa|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]/i;
+const DEVISE = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|xof|francs?|frs?|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]|\d\s?(f|fr|frs)\b|\b(mille|millions?)\b/i;
+/**
+ * Le texte est d'abord ramené à sa forme canonique (NFKC) et débarrassé des caractères invisibles : sans cela,
+ * « C​FA », un « Ｆ » pleine chasse ou une espace fine entre les chiffres et la devise passaient la garde
+ * (audit du 28/10 : « 15000 XOF », « 15 000 francs », « 15000F », « 25 000 frs », « quinze mille » passaient aussi).
+ * Limite assumée : un texte libre ne peut pas tout garantir (« j'ai versé 25000 le 3/10 » reste un nombre nu).
+ */
+const canonique = (t: string) => t.normalize("NFKC").replace(/[­​-‏⁠-⁤﻿]/g, "").replace(/[   ]/g, " ");
 export function sansSomme(champ: string, texte: string | null | undefined) {
-  if (texte && DEVISE.test(texte)) throw new HTTPException(422, { message: `${champ} : ni somme ni devise ne se consignent dans BEILE — le montant reste sur la pièce papier et dans la comptabilité de l'établissement` });
+  if (texte && DEVISE.test(canonique(texte))) throw new HTTPException(422, { message: `${champ} : ni somme ni devise ne se consignent dans BEILE — le montant reste sur la pièce papier et dans la comptabilité de l'établissement` });
+}
+
+/**
+ * Un NUMÉRO de pièce (référence de quittance, numéro de carnet) : lettres, chiffres et séparateurs simples, sans suite
+ * de lettres de devise. Il était recopié tel quel jusqu'au téléphone de la famille, et « 15000FCFA-T1 » y faisait entrer
+ * un montant (audit du 28/10, M1). Une référence d'ACTE rédigée (« note de service n°012 du 10/09/2026 ») passe, elle,
+ * par `sansSomme`.
+ */
+const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9 ./_-]{1,159}$/;
+export function referenceOpaque(champ: string, texte: string | null | undefined) {
+  if (texte == null || texte === "") return;
+  const t = canonique(texte);
+  if (!REFERENCE.test(t) || DEVISE.test(t) || /\d{4,}\s?[a-z]{1,4}\b/i.test(t) && /(cfa|xof|fr|f)\b/i.test(t)) {
+    throw new HTTPException(422, { message: `${champ} : une référence ne contient que des lettres, des chiffres et les séparateurs « . / _ - », sans montant ni devise` });
+  }
 }
 
 /** Révoque toutes les sessions d'un compte ET les retire du cache de cette instance (effet immédiat). */
