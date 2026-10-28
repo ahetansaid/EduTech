@@ -133,7 +133,10 @@ export function calculerSituation(
     return {
       terme,
       exigibleLe,
-      etat: mesure ? "exonere" : piece ? "paye" : exigibleLe === null ? "sans_appel" : exigibleLe < jour ? "attendu" : "a_venir",
+      // Une ligne hors de tout appel de l'école est « sans_appel », même si une pièce y est consignée : la pièce reste
+      // affichée (champ `quittance`), mais « payé » laisserait croire à un terme appelé et réglé. L'ordre d'origine
+      // testait la pièce d'abord, et la recette « pièce hors appel » n'avait jamais tourné en CI (relevé le 28/10).
+      etat: mesure ? "exonere" : exigibleLe === null ? "sans_appel" : piece ? "paye" : exigibleLe < jour ? "attendu" : "a_venir",
       quittance: piece ? { id: piece.id, reference: piece.referenceQuittance, delivreeLe: piece.delivreeLe, qualiteAgent: piece.qualiteAgent, agent: piece.agent } : null,
       mesure: mesure ? { id: mesure.id, nature: mesure.nature, motif: mesure.motif, autorite: mesure.autorite, decideLe: mesure.decideLe } : null,
     };
