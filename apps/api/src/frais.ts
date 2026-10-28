@@ -129,7 +129,8 @@ export function calculerSituation(
 ): SituationFrais {
   const ligne = (terme: FraisTerme, exigibleLe: string | null): CouvertureTerme => {
     const mesure = exonerations.find((x) => x.terme === null || couvreTerme(terme, x.terme));
-    const piece = quittances.filter((x) => couvreTerme(terme, x.terme)).sort((a, b) => b.delivreeLe.localeCompare(a.delivreeLe))[0] ?? null;
+    // À date de délivrance égale (ressaisie du jour même), la pièce la plus récemment consignée l'emporte.
+    const piece = quittances.filter((x) => couvreTerme(terme, x.terme)).sort((a, b) => b.delivreeLe.localeCompare(a.delivreeLe) || b.survenuLe.localeCompare(a.survenuLe))[0] ?? null;
     return {
       terme,
       exigibleLe,
@@ -380,12 +381,25 @@ frais.post("/apprenants/:id/frais/exoneration", authentifie, limiteDebit(30, 60_
   //    avait payé, et la mesure efface la trace du paiement à l'écran ;
   // 2. une rafale d'exonérations par un même compte (plus de 20 en une heure) : une saisie de masse légitime
   //    (gratuité des filles) existe, mais elle se lit alors dans le journal, pas par surprise.
+  // Une mesure d'année entière (terme nul ou « ANNEE ») couvre tous les termes ; une quittance annulée depuis moins de
+  // 30 jours compte encore — sinon « annuler la quittance, puis exonérer » effaçait un paiement sans alerte haute
+  // (contre-audit du 28/10, M-3 et M-4). Bornée à l'école : une quittance d'une école d'origine n'est pas le sujet.
+  const t = m.terme ?? null;
   const [apres] = (await base().execute(sql`
     select count(*)::int n from ledger.evenements q
-    where q.type = 'QUITTANCE_FRAIS' and q.apprenant_id = ${apprenantId} and q.donnees->>'anneeScolaire' = ${m.anneeScolaire}
-      and (${m.terme ?? null}::text is null or q.donnees->>'terme' in (${m.terme ?? ""}, 'ANNEE'))
-      and not exists (select 1 from ledger.evenements x where x.type = 'ANNULATION_FRAIS' and x.donnees->>'evenementAnnuleId' = q.id)`)) as unknown as { n: number }[];
-  if ((apres?.n ?? 0) > 0) await signaler("exoneration_apres_quittance", "haute", profil.id, `${apprenantId}|${m.anneeScolaire}|${m.terme ?? "annee"}`, `${profil.nomAffiche} : exonération consignée pour ${apprenantId} (${m.anneeScolaire}${m.terme ? `, ${m.terme}` : ""}) alors qu'une quittance couvre déjà cette période.`);
+    where q.type = 'QUITTANCE_FRAIS' and q.apprenant_id = ${apprenantId} and q.etablissement_id = ${etablissementId}
+      and q.donnees->>'anneeScolaire' = ${m.anneeScolaire}
+      and (${t}::text is null or ${t}::text = 'ANNEE' or q.donnees->>'terme' in (${t ?? ""}, 'ANNEE'))
+      and not exists (select 1 from ledger.evenements x where x.type = 'ANNULATION_FRAIS' and x.donnees->>'evenementAnnuleId' = q.id
+        and x.enregistre_le < now() - interval '30 days')`)) as unknown as { n: number }[];
+  if ((apres?.n ?? 0) > 0) await signaler("exoneration_apres_quittance", "haute", profil.id, `${apprenantId}|${m.anneeScolaire}|${m.terme ?? "annee"}`, `${profil.nomAffiche} : exonération consignée pour ${apprenantId} (${m.anneeScolaire}${m.terme ? `, ${m.terme}` : ""}) alors qu'une quittance couvre cette période (ou vient d'être annulée).`);
+  // Une famille dit « j'ai payé » et l'école répond par une exonération : le paiement disparaît de l'écran.
+  const [plainte] = (await base().execute(sql`
+    select count(*)::int n from workflow.demandes d
+    where d.modele = 'RECLAMATION_FRAIS' and d.statut in ('ouverte', 'en_cours') and d.ressource = ${etablissementId}
+      and d.donnees->>'apprenantId' = ${apprenantId} and d.donnees->>'anneeScolaire' = ${m.anneeScolaire}
+      and (${t}::text is null or ${t}::text = 'ANNEE' or coalesce(d.donnees->>'terme', '') in ('', ${t ?? ""}, 'ANNEE'))`)) as unknown as { n: number }[];
+  if ((plainte?.n ?? 0) > 0) await signaler("exoneration_sur_reclamation", "haute", profil.id, `${apprenantId}|${m.anneeScolaire}|${m.terme ?? "annee"}`, `${profil.nomAffiche} : exonération consignée pour ${apprenantId} (${m.anneeScolaire}) alors que la famille a une réclamation « j'ai payé » ouverte sur cette période.`);
   const [rafale] = (await base().execute(sql`
     select count(*)::int n from ledger.evenements where type = 'EXONERATION_FRAIS' and auteur_id = ${profil.id} and enregistre_le > now() - interval '1 hour'`)) as unknown as { n: number }[];
   if ((rafale?.n ?? 0) > 20) await signaler("exonerations_en_rafale", "moyenne", profil.id, `${etablissementId}|${m.anneeScolaire}`, `${profil.nomAffiche} : ${rafale!.n} exonérations consignées en une heure à ${etablissementId}.`);
@@ -414,6 +428,9 @@ frais.post("/apprenants/:id/frais/annulation", authentifie, limiteDebit(20, 60_0
   sansSomme("Motif de l'annulation", m.motif);
   const piece = enEvenement(ligne!) as FaitQuittance | FaitExoneration;
   const idSaisie = `ANNULATION-${profil.id}-${m.evenementId}-${m.cle}`;
+  // Rejeu du même envoi (réponse perdue) : la même clé rend l'annulation déjà faite, sans 409 trompeur.
+  const deja = await dejaSaisi(idSaisie, "ANNULATION_FRAIS", { apprenantId });
+  if (deja) return c.json({ id: deja[0], evenementAnnuleId: piece.id, deja: true });
   let idEvenement: string;
   try {
     [idEvenement] = await inscrireAuRegistre([{

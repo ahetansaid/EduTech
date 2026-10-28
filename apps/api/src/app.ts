@@ -93,14 +93,29 @@ app.use("*", limiteDebit(300, 60_000, cleUtilisateur));
  * la ligne en conflit se retrouve par le détail de l'erreur PostgreSQL (clé, type, apprenant).
  */
 async function collisionDuMemeEmetteur(c: Context<{ Variables: Variables }>, detail: string | undefined) {
-  const m = /\)=\((.*)\) already exists/.exec(detail ?? "");
+  // « Key (…)=(clé, TYPE, APP-…) already exists. » — ou, sur un serveur en français, « La clé « (…)=(…) » existe déjà ».
+  const m = /\)=\((.+?)\)\s*(?:already exists|»)/.exec(detail ?? "");
   const [cle, type, apprenant] = (m?.[1] ?? "").split(", ");
-  const emetteur = c.get("profil")?.id ?? (c.req.header("x-beile-partenaire") ? `partenaire:${c.req.header("x-beile-partenaire")}` : null);
-  if (!cle || !type || !emetteur) return false;
+  if (!cle || !type) return false;
+  const profil = c.get("profil");
+  // L'émetteur d'une saisie n'est pas toujours le compte : un enseignant écrit sous son identité d'enseignant (ENS-…),
+  // un partenaire sous « partenaire:<id> » (en-tête vérifié par signature avant toute écriture). Sans ces identités,
+  // le rejeu légitime d'une note sur réseau instable aurait été refusé, puis ressaisi en double (contre-audit du 28/10).
+  const emetteurs = new Set<string>();
+  if (profil) {
+    emetteurs.add(profil.id);
+    if (profil.npi) for (const e of await base().select({ id: schema.enseignants.id }).from(schema.enseignants).where(eq(schema.enseignants.npi, profil.npi))) emetteurs.add(e.id);
+  } else if (c.req.header("x-beile-partenaire")) emetteurs.add(`partenaire:${c.req.header("x-beile-partenaire")}`);
+  if (!emetteurs.size) return false;
   const [l] = await base().select({ auteurId: schema.evenements.auteurId }).from(schema.evenements)
-    .where(and(sql`${schema.evenements.donnees}->>'idSaisie' = ${cle}`, eq(schema.evenements.type, type), apprenant && apprenant !== "null" ? eq(schema.evenements.apprenantId, apprenant) : sql`${schema.evenements.apprenantId} is null`)).limit(1);
-  if (l?.auteurId === emetteur) return true;
-  await signaler("collision_cle_saisie", "haute", c.get("profil")?.id ?? null, `${type}|${cle}`, `Clé de saisie ${cle} (${type}) déjà utilisée par un autre émetteur que ${emetteur} : écriture refusée.`);
+    .where(and(
+      // Même prédicat que l'index partiel `evenements_id_saisie_idx` : lecture indexée, pas un parcours du registre.
+      sql`${schema.evenements.donnees} ? 'idSaisie'`, sql`${schema.evenements.donnees}->>'idSaisie' = ${cle}`, eq(schema.evenements.type, type),
+      apprenant && apprenant !== "null" ? eq(schema.evenements.apprenantId, apprenant) : sql`${schema.evenements.apprenantId} is null`)).limit(1);
+  // Ligne introuvable (annulée entre-temps) : surtout pas « déjà enregistrée », qui ferait jeter une saisie absente.
+  if (!l) return false;
+  if (emetteurs.has(l.auteurId)) return true;
+  await signaler("collision_cle_saisie", "haute", profil?.id ?? null, `${type}|${cle}`, `Clé de saisie ${cle} (${type}) déjà utilisée par un autre émetteur que ${[...emetteurs][0]} : écriture refusée.`);
   return false;
 }
 

@@ -132,9 +132,16 @@ export function useFraisApprenant(apprenantId: string | null) {
  * laissait un nouvel essai inscrire la pièce — et notifier la famille — une seconde fois (audit du 28/10).
  */
 function useCleSaisie() {
-  const cle = useRef<string | null>(null);
+  const cle = useRef<{ contenu: string; valeur: string } | null>(null);
   return {
-    valeur: () => (cle.current ??= crypto.randomUUID()),
+    // La clé suit le CONTENU : un nouvel essai identique la réutilise (rejeu sans doublon) ; un formulaire modifié
+    // après une réponse perdue en reçoit une nouvelle — sinon le serveur rendrait « déjà enregistré » pour l'ancien
+    // contenu et l'écran afficherait un succès pour une pièce jamais écrite (contre-audit du 28/10).
+    valeur: (corps: unknown) => {
+      const contenu = JSON.stringify(corps);
+      if (cle.current?.contenu !== contenu) cle.current = { contenu, valeur: crypto.randomUUID() };
+      return cle.current.valeur;
+    },
     renouveler: () => { cle.current = null; },
   };
 }
@@ -155,7 +162,7 @@ export function useCadenceMutation(id: string) {
   const cle = useCleSaisie();
   return useMutation({
     mutationFn: (v: CorpsCadence) => ecrire<{ id: string; etablissement: string; anneeScolaire: string; deja: boolean; remplace?: boolean }>(
-      `/etablissements/${e(id)}/frais/cadence`, { ...v, ...(v.referenceDeliberation ? { referenceDeliberation: v.referenceDeliberation } : {}), cle: cle.valeur() }),
+      `/etablissements/${e(id)}/frais/cadence`, { ...v, ...(v.referenceDeliberation ? { referenceDeliberation: v.referenceDeliberation } : {}), cle: cle.valeur(v) }),
     onSuccess: () => { cle.renouveler(); invalider(); },
   });
 }
@@ -168,7 +175,7 @@ export function useQuittanceMutation(apprenantId: string) {
   const cle = useCleSaisie();
   return useMutation({
     mutationFn: (v: CorpsQuittance) => ecrire<{ id: string; apprenantId: string; deja: boolean; alerte?: string | null }>(
-      `/apprenants/${e(apprenantId)}/frais/quittance`, { ...v, ...(v.agent ? { agent: v.agent } : {}), cle: cle.valeur() }),
+      `/apprenants/${e(apprenantId)}/frais/quittance`, { ...v, ...(v.agent ? { agent: v.agent } : {}), cle: cle.valeur(v) }),
     onSuccess: () => { cle.renouveler(); invalider(); },
   });
 }
@@ -183,7 +190,7 @@ export function useExonerationMutation(apprenantId: string) {
     mutationFn: (v: CorpsExoneration) => ecrire<{ id: string; apprenantId: string; deja: boolean }>(
       `/apprenants/${e(apprenantId)}/frais/exoneration`, {
         anneeScolaire: v.anneeScolaire, ...(v.terme ? { terme: v.terme } : {}), nature: v.nature, motif: v.motif,
-        autorite: v.autorite, referenceTexte: v.referenceTexte, decideLe: v.decideLe, cle: cle.valeur(),
+        autorite: v.autorite, referenceTexte: v.referenceTexte, decideLe: v.decideLe, cle: cle.valeur(v),
       }),
     onSuccess: () => { cle.renouveler(); invalider(); },
   });
@@ -195,7 +202,7 @@ export function useAnnulationMutation(apprenantId: string) {
   const cle = useCleSaisie();
   return useMutation({
     mutationFn: (v: { evenementId: string; motif: string }) => ecrire<{ id: string; evenementAnnuleId: string }>(
-      `/apprenants/${e(apprenantId)}/frais/annulation`, { ...v, cle: cle.valeur() }),
+      `/apprenants/${e(apprenantId)}/frais/annulation`, { ...v, cle: cle.valeur(v) }),
     onSuccess: () => { cle.renouveler(); invalider(); },
   });
 }
