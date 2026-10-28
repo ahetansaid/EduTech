@@ -323,7 +323,19 @@ export function dateCalendaire(d: string) {
  * pas, « 30 € » oui. Un nombre nu n'est pas une somme (un numéro de salle, une année) : c'est le nom de devise
  * qui trahit l'intention.
  */
-const DEVISE = /(^|[^a-zà-ÿ])(cfa|fcfa|f\.?c\.?f\.?a|xof|francs?|frs?|euros?|dollars?|nairas?)([^a-zà-ÿ]|$)|[€$£]|\d\s?(f|fr|frs)\b|\b(mille|millions?)\b/i;
+// Frontières de mot écrites à la main : `\b` de JavaScript ne connaît que l'ASCII, et « 12 février », « 2 frères »
+// passaient pour « 12 f… », « 2 fr… » (contre-audit du 28/10). Une devise isolée (cfa, xof…) se refuse partout ;
+// « f », « fr », « frs », « franc(s) », « mille » seulement AU CONTACT d'un chiffre — « deux mille vingt-six »,
+// « Fr. Jean » ou une adresse en « .fr » ne sont pas des sommes.
+const L = "a-zà-ÿ";
+const DEVISE = new RegExp(
+  `(^|[^${L}])(cfa|fcfa|f\\.?c\\.?f\\.?a|xof|xaf|francs? cfa|euros?|dollars?|nairas?)(?![${L}-])`
+  + `|[€$£]`
+  + `|\\d[\\d .]*(f|fr|frs|francs?|cfa|fcfa|xof|xaf)(?![${L}])`
+  + `|\\d\\s*(mille|millions?)(?![${L}])`
+  + `|(^|[^${L}])(mille|millions?)\\s+(f|fr|frs|francs?|cfa|fcfa)(?![${L}])`,
+  "i",
+);
 /**
  * Le texte est d'abord ramené à sa forme canonique (NFKC) et débarrassé des caractères invisibles : sans cela,
  * « C​FA », un « Ｆ » pleine chasse ou une espace fine entre les chiffres et la devise passaient la garde
@@ -341,12 +353,15 @@ export function sansSomme(champ: string, texte: string | null | undefined) {
  * un montant (audit du 28/10, M1). Une référence d'ACTE rédigée (« note de service n°012 du 10/09/2026 ») passe, elle,
  * par `sansSomme`.
  */
-const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9 ./_-]{1,159}$/;
+const REFERENCE = /^[\p{L}\p{N}][\p{L}\p{N} °./_-]{1,59}$/u;
+// Une devise accolée à un grand nombre (« 15000F », « 25000FCFA ») ; « Q12F » ou « 0458 AF » restent des numéros.
+const SOMME_COLLEE = new RegExp(`\\d{4,}\\s?(f|fr|frs|cfa|fcfa|xof|xaf)(?![${L}])`, "i");
 export function referenceOpaque(champ: string, texte: string | null | undefined) {
   if (texte == null || texte === "") return;
-  const t = canonique(texte);
-  if (!REFERENCE.test(t) || DEVISE.test(t) || /\d{4,}\s?[a-z]{1,4}\b/i.test(t) && /(cfa|xof|fr|f)\b/i.test(t)) {
-    throw new HTTPException(422, { message: `${champ} : une référence ne contient que des lettres, des chiffres et les séparateurs « . / _ - », sans montant ni devise` });
+  // « N° 0458 », « Reçu 0458 », « Réf. Q-12 » : le libellé d'usage du carnet n'est pas une somme.
+  const t = canonique(texte).replace(/^(n\s?°|no\.?|reçu|réf\.?|ref\.?)\s*/i, "");
+  if (!REFERENCE.test(t) || DEVISE.test(t.replace(/\d+/g, (n) => (n.length >= 4 ? n : "#"))) || SOMME_COLLEE.test(t)) {
+    throw new HTTPException(422, { message: `${champ} : un numéro de pièce (lettres, chiffres, « ° . / _ - »), sans montant ni devise` });
   }
 }
 

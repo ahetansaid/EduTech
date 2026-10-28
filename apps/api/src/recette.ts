@@ -412,10 +412,15 @@ if (vueEcole.statut === 200 && vueEcole.json?.anneeScolaire) {
     verifier("Annulation : quittance d'essai consignée", p.statut, 201, `${p.statut} ${JSON.stringify(p.json).slice(0, 120)}`);
     if (p.statut === 201) {
       const idPiece = String(p.json.id);
-      verifier("Annulation d'une pièce consignée par erreur → 201", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: randomUUID() })).statut, 201);
-      verifier("Seconde annulation de la même pièce → 409", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: randomUUID() })).statut, 409);
+      const avant = await directrice!.appel("GET", "/apprenants/APP-000001/frais");
+      verifier("Avant annulation : la pièce figure dans la situation (témoin)", JSON.stringify(avant.json ?? {}).includes(idPiece), true);
+      const cleAnnul = randomUUID();
+      verifier("Annulation d'une pièce consignée par erreur → 201", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: cleAnnul })).statut, 201);
+      const rejeu = await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: cleAnnul });
+      verifier("Rejeu du même envoi d'annulation → rendu tel quel (deja)", rejeu.statut === 200 && rejeu.json.deja === true, true, `${rejeu.statut}`);
+      verifier("Seconde annulation de la même pièce (autre envoi) → 409", (await directrice!.appel("POST", "/apprenants/APP-000001/frais/annulation", { evenementId: idPiece, motif: "Recette : quittance saisie sur un homonyme", cle: randomUUID() })).statut, 409);
       const apres = await directrice!.appel("GET", "/apprenants/APP-000001/frais");
-      verifier("La pièce annulée ne compte plus dans la situation", !JSON.stringify(apres.json ?? {}).includes(ref), true);
+      verifier("La pièce annulée ne compte plus dans la situation (son identifiant a disparu)", !JSON.stringify(apres.json ?? {}).includes(idPiece), true);
     }
   }
 } else {
