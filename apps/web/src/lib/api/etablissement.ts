@@ -53,7 +53,7 @@ export interface Tableau {
 
 export interface EleveLigne {
   id: string; nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; statutIdentite: StatutIdentite;
-  classeId: string; classe: string; moyenne: number | null; absences: number; baisseMaths: number[] | null;
+  classeId: string; classe: string; niveau: string; moyenne: number | null; absences: number; baisseMaths: number[] | null;
 }
 
 export type Absence = Extract<Evenement, { type: "ABSENCE" }>;
