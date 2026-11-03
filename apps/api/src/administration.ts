@@ -6,7 +6,7 @@ import { and, asc, count, desc, eq, ilike, inArray, like, ne, or, sql } from "dr
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, exigerElevation, base, cleUtilisateur, corps, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { authentifie, exigerElevation, base, cleUtilisateur, corps, ID_COMPTE, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
 import { signaler } from "./vigie";
 
 /**
@@ -24,9 +24,6 @@ type Ctx = Context<{ Variables: Variables }>;
 
 /* ================================================================== Briques */
 
-// Segments en minuscules séparés par des traits d'union : les comptes de base « CPT-directeur-ifri »,
-// « CPT-enseignant-sup » étaient refusés (422) — leur fiche ne s'ouvrait pas, leurs sessions ne se révoquaient pas.
-const ID_COMPTE = z.string().max(48).regex(/^CPT-[a-z]{2,40}(-[a-z]{2,40})*$/);
 const NPI = z.string().regex(/^\d{10}$/, "le NPI comporte exactement 10 chiffres");
 const IDENTIFIANT = z.string().trim().toLowerCase().max(80).regex(/^[a-z][a-z0-9-]{0,39}(\.[a-z0-9-]{1,40}){1,2}$/, "format attendu : prenom.nom (lettres minuscules, chiffres, tirets)");
 

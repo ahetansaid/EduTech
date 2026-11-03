@@ -1,7 +1,7 @@
 "use client";
 
 import { rafraichir } from "@/lib/economie";
-import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAlertes, ReponseAnalyse, ReponseAsk, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
+import type { DefinitionIndicateur, IndiceConfiance, Perimetre, ReponseAlertes, ReponseAnalyse, RequeteSemantique, ResultatIndicateur } from "@beile/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ecrire, lire } from "@/lib/http";
 
@@ -228,14 +228,9 @@ export function useComplementsTerritoire(actif = true) {
 
 /* ================================================================== Écritures */
 
-/** Ask Education : traduction, contrôle des droits, calcul et journalisation côté serveur. */
 /** Moteur d'analyse déterministe : famille de question, figures et constats rédigés (POST /analyse). */
 export function useAnalyseMutation() {
   return useMutation({ mutationFn: (question: string) => ecrire<ReponseAnalyse>("/analyse", { question }) });
-}
-
-export function useAskMutation() {
-  return useMutation({ mutationFn: (question: string) => ecrire<ReponseAsk>("/ask", { question }) });
 }
 
 /** Relance de transmission (circuit RELANCE_TRANSMISSION) pour des établissements du périmètre. */

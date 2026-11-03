@@ -46,6 +46,17 @@ function MonCompte() {
   );
 }
 
+/** Lecture manquée : le message du service, et de quoi réessayer — jamais une carte vide ni un écran blanc. */
+function EchecLecture({ titre, erreur, reessayer }: { titre: string; erreur: unknown; reessayer: () => void }) {
+  return (
+    <Card>
+      <p className="font-semibold text-ink">{titre}</p>
+      <p role="alert" className="mt-1 text-[13.5px] text-critical">{erreur instanceof ErreurApi ? erreur.message : "Lecture impossible pour le moment."}</p>
+      <Button variante="secondaire" taille="sm" className="mt-3" onClick={reessayer}>Réessayer</Button>
+    </Card>
+  );
+}
+
 /* ------------------------------------------------------------------ Économie de données (réglage de cet appareil) */
 
 function EconomieDonnees() {
@@ -74,7 +85,8 @@ function Coordonnees() {
   const c = useCoordonnees();
   const [ajout, setAjout] = useState<"sms" | "courriel" | null>(null);
   if (c.isPending) return <Squelette className="h-40 rounded-2xl" />;
-  const d = c.data!;
+  if (!c.data) return <EchecLecture titre="Coordonnées de récupération" erreur={c.error} reessayer={() => c.refetch()} />;
+  const d = c.data;
   return (
     <Card>
       <p className="font-semibold text-ink">Coordonnées de récupération</p>
@@ -150,7 +162,8 @@ function SecondFacteur() {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [envoi, setEnvoi] = useState(false);
   if (etat.isPending) return <Squelette className="h-40 rounded-2xl" />;
-  const e = etat.data!;
+  if (!etat.data) return <EchecLecture titre="Second facteur" erreur={etat.error} reessayer={() => etat.refetch()} />;
+  const e = etat.data;
   const rafraichir = () => client.invalidateQueries({ queryKey: CLES_SECURITE.mfa });
 
   const ajouterCle = async () => {

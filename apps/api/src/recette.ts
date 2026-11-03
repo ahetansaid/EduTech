@@ -2,6 +2,7 @@ import { TYPES_FAITS_FRAIS } from "@beile/contracts";
 import { connecter, schema } from "@beile/db";
 import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import { codeTotp } from "@beile/db/securite";
 import { COMPTES, codeFrais, Session, TOTP } from "./client-recette";
 
 /**
@@ -1142,6 +1143,70 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
   await db.update(schema.sessions).set({ derniereActivite: new Date(Date.now() - 3 * 3600_000) }).where(and(eq(schema.sessions.compteId, cptA!.id), eq(schema.sessions.revoquee, false)));
   const endormie = await dormeuse.appel("GET", "/moi/passeport");
   verifier("Session inactive depuis 3 h : close (« inactivite »)", endormie.statut === 401 && endormie.json.code === "inactivite", true, `HTTP ${endormie.statut}`);
+
+  titre("Second facteur : enrôlement par application, codes de secours, réinitialisation");
+  // Le compte activé plus haut (chef d'établissement, second facteur facultatif) enrôle une application.
+  const chefN = new Session();
+  await chefN.connexion(id, MDP2);
+  const debut = await chefN.appel("POST", "/auth/mfa/totp/debut");
+  const secret = String(debut.json.secret ?? "");
+  verifier("Enrôlement : secret provisoire remis (cookie chiffré, rien en base)", debut.statut === 200 && /^[A-Z2-7]{16,}$/.test(secret), true, `HTTP ${debut.statut}`);
+  verifier("Enrôlement : code faux → refusé", (await chefN.appel("POST", "/auth/mfa/totp/confirmer", { code: "000000" })).statut, 422);
+  const conf = await chefN.appel("POST", "/auth/mfa/totp/confirmer", { code: codeTotp(secret) });
+  const secours = (conf.json.codesSecours as string[] | null) ?? [];
+  verifier("Enrôlement : code juste → facteur actif, dix codes de secours remis une fois", conf.statut === 200 && secours.length === 10, true, `HTTP ${conf.statut} · ${secours.length} code(s)`);
+  verifier("Codes de secours : renouvellement sans élévation → refusé", (await chefN.appel("POST", "/auth/mfa/codes-secours")).json.code === "elevation_requise", true);
+  const apres = new Session();
+  const cxm = await apres.connexion(id, MDP2);
+  verifier("Connexion suivante : second facteur à présenter", cxm.json.etape === "mfa_a_verifier", true, String(cxm.json.etape));
+  verifier("Code de secours : accepté une fois", (await apres.appel("POST", "/auth/mfa/verifier", { code: secours[0] })).statut, 200);
+  const rejeuSecours = new Session();
+  await rejeuSecours.connexion(id, MDP2);
+  verifier("Code de secours : rejeu refusé", (await rejeuSecours.appel("POST", "/auth/mfa/verifier", { code: secours[0] })).statut, 422);
+  verifier("Administrateur : réinitialiser le second facteur sans motif → 422", (await admin!.appel("POST", `/admin/comptes/${cid}/reinitialiser-mfa`, {})).statut, 422);
+  verifier("Administrateur : réinitialisation du second facteur (téléphone perdu)", (await admin!.appel("POST", `/admin/comptes/${cid}/reinitialiser-mfa`, { motif: "Téléphone perdu, recette" })).statut, 200);
+  verifier("Réinitialisation : les sessions du compte sont coupées", (await apres.appel("GET", "/auth/session")).statut, 401);
+  const sansMfa = new Session();
+  const cxs = await sansMfa.connexion(id, MDP2);
+  verifier("Réinitialisation : connexion sans second facteur", cxs.statut === 200 && cxs.json.etape === null, true, String(cxs.json.etape));
+  verifier("Vigie : la réinitialisation du second facteur est signalée", liste((await dpo!.appel("GET", "/securite/alertes")).json).some((a) => a.type === "reinitialisation_mfa" && String(a.detail).includes(cid)), true);
+
+  titre("Administration d'un compte : sessions, verrou, désactivation");
+  verifier("Administrateur : révocation des sessions d'un compte", (await admin!.appel("POST", `/admin/comptes/${cid}/sessions/revoquer`)).statut, 200);
+  verifier("Révocation : la session ouverte est coupée", (await sansMfa.appel("GET", "/auth/session")).statut, 401);
+  verifier("Administrateur : déverrouillage", (await admin!.appel("POST", `/admin/comptes/${cid}/deverrouiller`)).statut, 200);
+  verifier("Administrateur : désactivation du compte", (await admin!.appel("POST", `/admin/comptes/${cid}/activation`, { actif: false })).statut, 200);
+  verifier("Compte désactivé : connexion refusée", (await new Session().connexion(id, MDP2)).statut, [401, 403]);
+  verifier("Administrateur : réactivation du compte", (await admin!.appel("POST", `/admin/comptes/${cid}/activation`, { actif: true })).statut, 200);
+  verifier("Compte réactivé : connexion de nouveau possible", (await new Session().connexion(id, MDP2)).statut, 200);
+  verifier("Non-administrateur → désactiver un compte : 403", (await departement!.appel("POST", `/admin/comptes/${cid}/activation`, { actif: false })).statut, 403);
+
+  titre("Vigie : qualification d'une alerte");
+  const ouverte = liste((await dpo!.appel("GET", "/securite/alertes")).json).find((a) => a.type === "refus_en_rafale" && a.profilId !== "p-dpo");
+  if (ouverte) {
+    verifier("DPO : suite trop courte → 422", (await dpo!.appel("POST", `/securite/alertes/${ouverte.id as string}/traiter`, { suite: "ok" })).statut, 422);
+    verifier("Enseignant → qualifier une alerte : 403", (await enseignant!.appel("POST", `/securite/alertes/${ouverte.id as string}/traiter`, { suite: "Tentative de recette" })).statut, 403);
+    verifier("DPO : alerte qualifiée, suite journalisée", (await dpo!.appel("POST", `/securite/alertes/${ouverte.id as string}/traiter`, { suite: "Rafale provoquée par la recette" })).statut, 200);
+    verifier("DPO : qualifier deux fois la même alerte → 404", (await dpo!.appel("POST", `/securite/alertes/${ouverte.id as string}/traiter`, { suite: "Seconde qualification" })).statut, 404);
+  } else verifier("Vigie : une alerte « refus en rafale » à qualifier existe", false, true);
+
+  titre("Droits sur les données : dépôt et instruction par le DPO");
+  const sesEnfants = liste((await parent!.appel("GET", "/famille/enfants")).json).map((e) => (e.apprenant as { id: string }).id);
+  const sujet = sesEnfants[0] ?? "";
+  const candidats = (await client`select id from core.apprenants where id ~ '^APP-[0-9]{6}$' order by id limit 50`) as unknown as { id: string }[];
+  const horsLien = candidats.map((x) => x.id).find((x) => !sesEnfants.includes(x)) ?? "APP-999999";
+  verifier("Parent → droit sur le dossier d'un enfant qui n'est pas le sien : 403", (await parent!.appel("POST", "/droits/demandes", { droit: "acces", sujet: horsLien, precision: "Demande sur un dossier étranger" })).statut, 403);
+  verifier("Parent → précision trop courte : 422", (await parent!.appel("POST", "/droits/demandes", { droit: "acces", sujet, precision: "court" })).statut, 422);
+  const depot = await parent!.appel("POST", "/droits/demandes", { droit: "rectification", sujet, precision: "Le prénom de mon enfant est mal orthographié dans le dossier." });
+  verifier("Parent → demande de rectification sur le dossier de son enfant", depot.statut, 201, String(depot.json.message ?? ""));
+  const dem = String(depot.json.id ?? "");
+  verifier("Parent → la demande apparaît dans ses demandes", liste((await parent!.appel("GET", "/droits/mes-demandes")).json).some((d) => d.id === dem), true);
+  verifier("Directrice → instruire une demande de droits : 403", (await directrice!.appel("POST", `/demandes/${dem}/decision`, { decision: "valide", motif: "Pas mon rôle de répondre" })).statut, 403);
+  verifier("DPO → réponse sans texte suffisant : 422", (await dpo!.appel("POST", `/demandes/${dem}/decision`, { decision: "valide", motif: "Fait" })).statut, 422);
+  verifier("DPO → renvoi d'une demande de droits : 422", (await dpo!.appel("POST", `/demandes/${dem}/decision`, { decision: "renvoye", motif: "À compléter par la famille" })).statut, 422);
+  verifier("DPO → réponse motivée à la personne", (await dpo!.appel("POST", `/demandes/${dem}/decision`, { decision: "valide", motif: "La correction a été demandée à l'établissement, qui l'inscrira au registre." })).statut, 200);
+  const repondue = liste((await parent!.appel("GET", "/droits/mes-demandes")).json).find((d) => d.id === dem) as { statut?: string; reponse?: { texte?: string } } | undefined;
+  verifier("Parent → la réponse du délégué est lisible", repondue?.statut !== "en_cours" && !!repondue?.reponse?.texte, true, String(repondue?.statut));
   await client.end();
 }
 
@@ -1171,6 +1236,12 @@ titre("Administration déléguée (cascade, plafond, cumul, double validation)")
   const cabinet = comptesAdm.find((x) => x.identifiant === "felicite.akakpo")?.id as string | undefined;
   verifier("Administrateur : s'ajouter le rôle DPO → refusé", moiAdm ? (await admin!.appel("POST", `/admin/comptes/${moiAdm}/profil`, { habilitations: [{ role: "administrateur", perimetre: { niveau: "national" } }, { role: "dpo", perimetre: { niveau: "national" } }] })).statut : 0, 422);
   verifier("Administrateur : mot de passe d'un compte privilégié (cabinet) → refusé, alerte", cabinet ? (await admin!.appel("POST", `/admin/comptes/${cabinet}/reinitialiser`)).statut : 0, 422);
+  // Audit du 03/11 : ces deux routes n'admettaient que « CPT-xxx » ; un identifiant composé valide finissait en 422.
+  // Un compte composé INEXISTANT doit désormais passer le format et répondre 404 (rien n'est modifié).
+  verifier("Administrateur : réinitialiser un compte composé inexistant → 404 (format admis)", (await admin!.appel("POST", "/admin/comptes/CPT-compte-inexistant/reinitialiser")).statut, 404);
+  verifier("Administrateur : activer un compte composé inexistant → 404 (plus de 200 silencieux)", (await admin!.appel("POST", "/admin/comptes/CPT-compte-inexistant/activation", { actif: true })).statut, 404);
+  verifier("Administrateur : second facteur d'un compte composé inexistant → 404", (await admin!.appel("POST", "/admin/comptes/CPT-compte-inexistant/reinitialiser-mfa", { motif: "Recette du format" })).statut, 404);
+  verifier("Administrateur : identifiant mal formé à l'activation → 422", (await admin!.appel("POST", "/admin/comptes/CPT-1abc/activation", { actif: true })).statut, 422);
   verifier("Registre national : nom seul (sans prénom) → refusé", (await directrice!.appel("GET", "/registre/personnes?nom=WOROU")).statut, 422);
   if (ECRITURES) {
     const n2 = await central!.appel("POST", "/delegation/delegations", { profilId: "p-inspecteur", organisationId: "ORG-DD-MESTFP-zou", motif: "Administrateur départemental du Zou" });

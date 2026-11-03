@@ -6,7 +6,7 @@ import { and, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
-import type { z } from "zod";
+import { z } from "zod";
 import { lireEnv } from "./env";
 
 /** Briques communes de l'API : base (rôle restreint), sessions, CSRF, journalisation, validation. */
@@ -389,6 +389,10 @@ export async function comptePrivilegie(compteId: string) {
                    where c.id = ${compteId} and d.statut = 'active' and d.au > now() and d.niveau <= 2) as p`)) as unknown as { p: boolean }[];
   return !!l?.p;
 }
+
+// Segments en minuscules séparés par des traits d'union (« CPT-directeur-ifri ») : une règle unique pour toutes les
+// routes qui désignent un compte — auth.ts n'acceptait que « CPT-xxx » et ne pouvait ni réinitialiser ni désactiver ces comptes.
+export const ID_COMPTE = z.string().max(48).regex(/^CPT-[a-z]{2,40}(-[a-z]{2,40})*$/);
 
 export const refuser = (message: string): never => {
   throw new HTTPException(403, { message });

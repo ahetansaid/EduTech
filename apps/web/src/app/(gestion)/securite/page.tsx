@@ -8,7 +8,7 @@ import { Modale } from "@/components/ui/Modale";
 import { notifier } from "@/components/ui/Notifications";
 import { Badge, Button, Card, EtatVide, PageHeader, Segmente, Squelette } from "@/components/ui/primitives";
 import { CLES_SECURITE, LIBELLE_ALERTE, useAlertesSecurite, type AlerteSecurite } from "@/lib/api/securite";
-import { ecrire, lire } from "@/lib/http";
+import { ErreurApi, ecrire, lire } from "@/lib/http";
 
 /**
  * Vigie : anomalies détectées automatiquement (refus en rafale, verrouillages, administrateur sur une adresse
@@ -24,7 +24,9 @@ export default function PageSecurite() {
   const [aTraiter, setATraiter] = useState<AlerteSecurite | null>(null);
 
   const exporter = async () => {
-    const donnees = await lire<unknown>("/securite/alertes/export");
+    let donnees: unknown;
+    try { donnees = await lire<unknown>("/securite/alertes/export"); }
+    catch (x) { notifier({ ton: "critique", titre: "Export impossible", texte: x instanceof ErreurApi ? x.message : "Le service n'a pas répondu." }); return; }
     const url = URL.createObjectURL(new Blob([JSON.stringify(donnees, null, 2)], { type: "application/json" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: `beile_incidents_${new Date().toISOString().slice(0, 10)}.json` });
     a.click();
@@ -36,7 +38,11 @@ export default function PageSecurite() {
       <div className="space-y-5">
         <PageHeader surtitre="Conformité" titre="Alertes de sécurité" actions={<Button variante="secondaire" icone={Download} onClick={exporter}>Export pour le bjCSIRT</Button>} />
         <Segmente label="Statut" valeur={statut} onChange={setStatut} options={[{ valeur: "ouvertes", libelle: "À traiter" }, { valeur: "toutes", libelle: "Toutes" }]} />
-        {alertes.isPending ? <Squelette className="h-48 rounded-2xl" /> : !alertes.data?.length ? (
+        {alertes.isPending ? <Squelette className="h-48 rounded-2xl" /> : alertes.isError ? (
+          // Une vigie illisible ne doit jamais se lire « Aucune alerte ».
+          <Card><EtatVide icone={ShieldAlert} titre="Alertes illisibles" texte={alertes.error instanceof ErreurApi ? alertes.error.message : "Le service n'a pas répondu : l'absence d'alerte n'est pas établie."}
+            action={<Button variante="secondaire" taille="sm" onClick={() => alertes.refetch()}>Réessayer</Button>} /></Card>
+        ) : !alertes.data?.length ? (
           <Card><EtatVide icone={ShieldAlert} titre="Aucune alerte" texte={statut === "ouvertes" ? "Rien à qualifier pour le moment." : "La vigie n'a encore rien détecté."} /></Card>
         ) : (
           <Cascade className="space-y-2.5">
@@ -77,7 +83,10 @@ function DialogueTraiter({ alerte, onFermer }: { alerte: AlerteSecurite | null; 
       await client.invalidateQueries({ queryKey: CLES_SECURITE.alertes });
       notifier({ ton: "succes", titre: "Alerte qualifiée", texte: "La suite donnée est journalisée." });
       fermer();
-    } catch { setEnvoi(false); }
+    } catch (x) {
+      setEnvoi(false);
+      notifier({ ton: "critique", titre: "Alerte non qualifiée", texte: x instanceof ErreurApi ? x.message : "Le service n'a pas répondu." });
+    }
   };
   return (
     <Modale ouvert={!!alerte} onFermer={fermer} titre="Qualifier l'alerte" sousTitre={alerte ? LIBELLE_ALERTE[alerte.type] ?? alerte.type : undefined} icone={Siren}

@@ -27,7 +27,9 @@ const CRITERE: Record<string, string> = { role: "rôle", perimetre: "périmètre
 const date = (iso: string) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 const moment = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function MesDroits({ sujets }: { sujets: { valeur: string; libelle: string }[] }) {
+/** `sujetsIncomplets` : la liste des dossiers (enfants, dossier scolaire) n'a pas pu être lue — on le dit, plutôt
+ *  que de ne proposer que « Mon compte » comme si la personne n'avait aucun autre dossier. */
+export function MesDroits({ sujets, sujetsIncomplets }: { sujets: { valeur: string; libelle: string }[]; sujetsIncomplets?: { reessayer: () => void } }) {
   const q = useMesDemandesDroits();
   const depot = useDeposerDemandeDroit();
   const [droit, setDroit] = useState<Droit>("acces");
@@ -62,6 +64,12 @@ export function MesDroits({ sujets }: { sujets: { valeur: string; libelle: strin
             </button>
           ))}
         </div>
+        {sujetsIncomplets && (
+          <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-critical-bg px-3 py-2 text-[13px] text-critical">
+            <span>Vos dossiers n'ont pas pu être chargés : seule une demande sur votre compte est possible pour le moment.</span>
+            <Button variante="secondaire" taille="sm" onClick={sujetsIncomplets.reessayer}>Réessayer</Button>
+          </div>
+        )}
         {sujets.length > 1 && (
           <label className="mt-4 block">
             <span className="text-[13px] font-medium text-ink">Données concernées</span>
@@ -87,6 +95,12 @@ export function MesDroits({ sujets }: { sujets: { valeur: string; libelle: strin
       <section aria-labelledby="mes-demandes">
         <h2 id="mes-demandes" className="mb-3 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Mes demandes</h2>
         {q.isPending ? <Squelette className="h-24 rounded-2xl" />
+          : q.isError ? (
+            <Card>
+              <p role="alert" className="text-[13.5px] text-critical">{q.error instanceof ErreurApi ? q.error.message : "Lecture de vos demandes impossible pour le moment."}</p>
+              <Button variante="secondaire" taille="sm" className="mt-3" onClick={() => q.refetch()}>Réessayer</Button>
+            </Card>
+          )
           : !q.data?.length ? <Card><EtatVide icone={ShieldCheck} titre="Aucune demande" texte="Vos demandes et les réponses du délégué apparaîtront ici." /></Card>
           : (
             <Cascade className="space-y-3">

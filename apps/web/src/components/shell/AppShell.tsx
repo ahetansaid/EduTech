@@ -9,7 +9,7 @@ import { BandeNationale, Logo } from "@/components/ui/primitives";
 import { AnimatePresence, IndicateurActif } from "@/components/motion";
 import { cn } from "@/lib/cn";
 import { useSombre, useThemeEspace } from "@/lib/useSombre";
-import { NAVIGATION, navigationPour } from "@/lib/navigation";
+import { entreeAdmise, NAVIGATION, navigationPour } from "@/lib/navigation";
 import { accueilDeSession, useSession } from "@/lib/session";
 import { useTitre } from "@/lib/titre";
 import { Cloche } from "./Cloche";
@@ -68,13 +68,12 @@ function Enveloppe({ children, rail: railParDefaut, variante }: { children: Reac
   const [palette, setPalette] = useState(false);
   const { sombre, basculer } = useTheme();
 
-  const rolesProfil = profil.habilitations.map((h) => h.role);
   const nav = navigationPour(profil, session.contexte);
   const groupes = [...new Set(nav.map((n) => n.groupe))];
   const courant = [...nav].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
-  // Garde d'espace (cosmétique) : l'entrée de navigation la plus spécifique fixe les rôles admis.
+  // Garde d'espace (cosmétique) : l'entrée de navigation la plus spécifique fixe les rôles et les cycles admis.
   const entree = [...NAVIGATION].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
-  const autorise = !entree || (entree.delegation ? !!session.contexte?.delegue : entree.roles.some((r) => rolesProfil.includes(r)));
+  const autorise = !entree || entreeAdmise(entree, profil, session.contexte);
   useTitre(courant?.libelle ?? entree?.libelle ?? "Mon espace");
 
   useEffect(() => {

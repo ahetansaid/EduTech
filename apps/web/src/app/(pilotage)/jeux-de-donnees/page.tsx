@@ -52,6 +52,9 @@ export default function JeuxDeDonnees() {
         </label>
         {q.isPending ? (
           <div className="grid gap-3 md:grid-cols-2">{[0, 1, 2, 3].map((i) => <Squelette key={i} className="h-44 rounded-2xl" />)}</div>
+        ) : q.isError ? (
+          <Card><EtatVide icone={Database} titre="Dictionnaire indisponible" texte={q.error instanceof ErreurApi ? q.error.message : "Le service ne répond pas ; réessayez."}
+            action={<Button variante="secondaire" taille="sm" onClick={() => q.refetch()}>Réessayer</Button>} /></Card>
         ) : !liste.length ? (
           <Card><EtatVide icone={Database} titre="Aucun indicateur" texte="Aucun indicateur du dictionnaire ne correspond à cette recherche." /></Card>
         ) : (
