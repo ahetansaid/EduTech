@@ -27,8 +27,8 @@ interface Raccordement {
   producteurDe: string;
   contrat: string;
   frequence: string;
-  /** Statut déclaré pour un raccordement sans connecteur (registre, portail) ; sinon lu sur le serveur. */
-  statut?: "demonstration" | "recette";
+  /** Statut d'un raccordement sans connecteur : jamais plus avancé que le code ne l'est. Sinon, lu sur le serveur. */
+  statut?: "simule" | "a_construire";
   icone: typeof Fingerprint;
   /** Connecteur BEILE correspondant : son statut et ses volumes sont lus en base, jamais déclarés ici. */
   partenaire?: string;
@@ -36,10 +36,10 @@ interface Raccordement {
 
 const RACCORDEMENTS: Raccordement[] = [
   {
-    id: "anip", nom: "Registre national des personnes", via: "ANIP · plateforme nationale d'interopérabilité (X-Road)", sens: "entrant",
+    id: "anip", nom: "Registre national des personnes", via: "ANIP — non raccordé : BEILE interroge un registre simulé", sens: "entrant",
     donnees: "Numéro personnel d'identification (NPI), nom, prénoms, date et lieu de naissance, filiation",
-    producteurDe: "Identité civile et filiation", contrat: "identite.personne v1.2", frequence: "À la demande (inscription, vérification d'un lien parental)",
-    statut: "demonstration", icone: Fingerprint,
+    producteurDe: "Identité civile et filiation", contrat: "À conventionner avec l'ANIP", frequence: "À la demande (inscription, vérification d'un lien parental)",
+    statut: "simule", icone: Fingerprint,
   },
   {
     id: "educmaster", nom: "EducMaster", via: "MEMP · MESTFP — connecteur signé BEILE", sens: "entrant",
@@ -48,8 +48,8 @@ const RACCORDEMENTS: Raccordement[] = [
     icone: Server, partenaire: "educmaster",
   },
   {
-    id: "eresultats", nom: "eRESULTATS", via: "DEC du MEMP (CEP), DEC du MESTFP (BEPC et BAC) — connecteur signé", sens: "bidirectionnel",
-    donnees: "Candidaturé (sortant) ; procès-verbal des verdicts puis publication (entrant) — BEILE délivre alors les diplômes au nom de l'autorité",
+    id: "eresultats", nom: "eRESULTATS", via: "DEC du MEMP (CEP), DEC du MESTFP (BEPC et BAC) — connecteur signé", sens: "entrant",
+    donnees: "Procès-verbal des verdicts puis publication — BEILE délivre alors les diplômes au nom de l'autorité. L'envoi des candidatures vers eRESULTATS reste à construire",
     producteurDe: "Verdicts des examens nationaux", contrat: "interop/eresultats/pv-examen v1", frequence: "Par session",
     icone: ScrollText, partenaire: "eresultats",
   },
@@ -66,10 +66,10 @@ const RACCORDEMENTS: Raccordement[] = [
     icone: Workflow, partenaire: "dbau",
   },
   {
-    id: "portail", nom: "Portail national des services publics", via: "service-public.bj, API", sens: "sortant",
+    id: "portail", nom: "Portail national des services publics", via: "service-public.bj — aucun connecteur à ce jour", sens: "sortant",
     donnees: "Attestations de scolarité et vérification de diplômes à la demande de l'usager",
-    producteurDe: "Aucune donnée : consommateur uniquement", contrat: "attestation.scolarite v0.9", frequence: "À la demande de l'usager",
-    statut: "recette", icone: Link2,
+    producteurDe: "Aucune donnée : consommateur uniquement", contrat: "Non défini", frequence: "À la demande de l'usager",
+    statut: "a_construire", icone: Link2,
   },
 ];
 
@@ -140,7 +140,7 @@ export default function InteroperabilitePage() {
           <Card><EtatVide icone={RefreshCw} titre="Mesures indisponibles" texte={interop.error.message} action={<Button variante="secondaire" taille="sm" icone={RefreshCw} onClick={() => interop.refetch()}>Réessayer</Button>} /></Card>
         ) : (
           <Cascade data-guide="interop-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Element><TuileIndicateur libelle="Connecteurs ouverts" icone={Network} accent="bleu" valeur={entier(d!.partenaires.filter((p) => p.ouvert).length)} indice={`sur ${d!.partenaires.length} partenaires · ${d!.partenaires.filter((p) => p.recus > 0).length} ont déjà transmis`} /></Element>
+            <Element><TuileIndicateur libelle="Connecteurs ouverts" icone={Network} accent="bleu" valeur={entier(d!.partenaires.filter((p) => p.ouvert).length)} indice={`sur ${d!.partenaires.length} partenaires · ${d!.partenaires.filter((p) => p.lots > 0).length} ont transmis un lot signé`} /></Element>
             <Element><TuileIndicateur libelle="Événements reçus aujourd'hui" icone={Workflow} accent="sarcelle" valeur={<Compteur valeur={jour} format={entier} />} indice="toutes sources confondues" /></Element>
             <Element><TuileIndicateur libelle="Événements au registre" icone={ScrollText} accent="neutre" valeur={<Compteur valeur={total} format={entier} />} indice="provenance tracée pour chacun" /></Element>
             <Element><TuileIndicateur libelle="Apprenants liés au NPI" icone={Link2} accent="bleu" valeur={liaison != null ? <Compteur valeur={liaison} format={(v) => nombre(v, 1)} /> : "—"} unite="%" indice={`${entier(d!.registreNational.lies)} sur ${entier(d!.registreNational.apprenants)} apprenants`} /></Element>
@@ -200,15 +200,17 @@ function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) 
   const p = r.partenaire ? d?.partenaires.find((x) => x.id === r.partenaire) : undefined;
   const src = p ? d?.sources.find((s) => s.source === p.source) : undefined;
   const derniere = src ? isoDepuisPg(src.derniere) : null;
-  // Statut lu en base : connecteur ouvert (secret provisionné) et, s'il a transmis, en exploitation.
-  const statut: "exploitation" | "ouvert" | "ferme" | "demonstration" | "recette" = r.statut ?? (!p ? "ferme" : !p.ouvert ? "ferme" : p.recus > 0 ? "exploitation" : "ouvert");
-  const etape = { exploitation: 4, ouvert: 3, ferme: 1, demonstration: 4, recette: 2 }[statut];
+  // Statut lu en base : connecteur ouvert (secret provisionné) et, s'il a transmis au moins un lot SIGNÉ, en exploitation.
+  // Les événements du registre portant sa source ne suffisent pas : le jeu de démonstration en contient aussi.
+  const statut: "exploitation" | "ouvert" | "ferme" | "simule" | "a_construire" = r.statut ?? (!p ? "ferme" : !p.ouvert ? "ferme" : p.lots > 0 ? "exploitation" : "ouvert");
+  // Un raccordement simulé ou à construire en est au cadrage : la barre ne doit pas suggérer une mise en service.
+  const etape = { exploitation: 4, ouvert: 3, ferme: 1, simule: 0, a_construire: 0 }[statut];
   const mesures: [string, React.ReactNode][] = !d
     ? [["Chargement", "…"]]
     : r.id === "anip"
-      ? [["Personnes référencées", entier(d.registreNational.personnes)], ["Apprenants liés", entier(d.registreNational.lies)], ["Recopies", "Aucune"]]
-      : statut === "recette"
-        ? [["Environnement", "Recette"], ["Échanges en production", "Aucun"], ["Mise en service", "Après tests"]]
+      ? [["Personnes (registre simulé)", entier(d.registreNational.personnes)], ["Apprenants liés", entier(d.registreNational.lies)], ["Échanges avec l'ANIP", "Aucun"]]
+      : statut === "a_construire"
+        ? [["Connecteur", "Aucun"], ["Échanges", "Aucun"], ["Prochaine étape", "Contrat d'interface"]]
         : [["Dernière réception", derniere ? dateHeure(derniere) : "—"], ["Aujourd'hui", entier(src?.jour ?? 0)], ["Total reçu", entier(src?.total ?? 0)], ["Lots tracés", entier(p?.lots ?? 0)]];
   return (
     <article className="flex h-full min-w-0 flex-col rounded-xl border border-line/70 bg-surface p-5 shadow-float">
@@ -218,9 +220,9 @@ function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) 
           <h3 className="text-[15.5px] font-semibold text-ink">{r.nom}</h3>
           <p className="text-[12.5px] text-ink-muted">{r.via}</p>
         </div>
-        <Badge ton={statut === "exploitation" ? "succes" : statut === "ouvert" || statut === "recette" ? "info" : "neutre"}>
+        <Badge ton={statut === "exploitation" ? "succes" : statut === "ouvert" ? "info" : "neutre"}>
           <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
-          {{ exploitation: "En exploitation", ouvert: "Connecteur ouvert", ferme: "Connecteur fermé", demonstration: "Jeu de démonstration", recette: "En recette" }[statut]}
+          {{ exploitation: "En exploitation", ouvert: "Connecteur ouvert", ferme: "Connecteur fermé", simule: "Registre simulé", a_construire: "À construire" }[statut]}
         </Badge>
       </header>
 
@@ -286,7 +288,7 @@ function Provenance({ d }: { d: Interoperabilite }) {
         })}
       </ul>
       <p className="mt-4 rounded-md bg-surface-2/60 px-3 py-2 text-xs text-ink-2">
-        {entier(d.registreNational.personnes)} personnes du registre national sont consultables par leur NPI ; aucune n'est recopiée comme événement éducatif : c'est l'application du producteur unique.
+        {entier(d.registreNational.personnes)} personnes du registre simulé sont consultables par leur NPI (le registre de l'ANIP n'est pas encore raccordé) ; aucune n'est recopiée comme événement éducatif : c'est l'application du producteur unique.
       </p>
     </>
   );
@@ -303,7 +305,7 @@ function ValidationSchema() {
   };
   return (
     <Card data-guide="interop-validation" className="min-w-0">
-      <CardHeader icon={FileJson} title="Rejouer une validation" subtitle="Validation exécutée dans votre navigateur contre le schéma identite.personne v1.2." />
+      <CardHeader icon={FileJson} title="Rejouer une validation" subtitle="Validation exécutée dans votre navigateur contre un schéma d'identité d'exemple." />
       <Segmente label="Message à valider" options={[{ valeur: "non_conforme", libelle: "Message reçu" }, { valeur: "conforme", libelle: "Message corrigé" }]} valeur={exemple} onChange={(v) => { setExemple(v); setResultat(null); }} />
       <pre className="mt-3 max-w-full overflow-x-auto rounded-md bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink">{JSON.stringify(EXEMPLES[exemple], null, 2)}</pre>
       <div className="mt-3 flex flex-wrap items-center gap-3">

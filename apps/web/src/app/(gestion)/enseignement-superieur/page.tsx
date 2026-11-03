@@ -30,6 +30,8 @@ export default function EnseignementSuperieur() {
     ? { sur: "Administration centrale — MESRS", sous: "Cohérence du catalogue national : trois voies (université, écoles nationales, EFTP), cycles LMD, tutelles et conditions d'accès." }
     : roles.includes("direction_departementale") || roles.includes("inspecteur")
       ? { sur: "Pilotage territorial", sous: "Lecture de l'offre de formation supérieure et de ses conditions d'accès sur le territoire." }
+      : roles.includes("chercheur")
+        ? { sur: "Recherche", sous: "Lecture du catalogue national des filières, de leurs habilitations et de leurs conditions d'accès." }
       : roles.includes("chef_etablissement")
         ? { sur: "Établissement", sous: "Repères pour la préparation post-bac : quelles filières du supérieur s'ouvrent aux profils formés ici." }
         : { sur: "Enseignement", sous: "Repères sur les filières du supérieur pour appuyer l'orientation des classes." };

@@ -27,7 +27,8 @@ const K12: Cycle[] = ["primaire", "secondaire"];
 
 /** Navigation déterminée par les habilitations. Masquer une entrée est cosmétique : l'accès aux données reste décidé par le moteur ABAC. */
 export const NAVIGATION: EntreeNav[] = [
-  { href: "/aujourd-hui", libelle: "Poste de pilotage", icone: ListChecks, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Aujourd'hui", processus: "P9" },
+  // Le chef d'établissement y a ses propres tâches (justificatifs, demandes, signaux du tableau) : la page les calcule déjà.
+  { href: "/aujourd-hui", libelle: "Poste de pilotage", icone: ListChecks, roles: ["inspecteur", "direction_departementale", "administration_centrale", "chef_etablissement"], groupe: "Aujourd'hui", processus: "P9", cycles: K12 },
   { href: "/cockpit", libelle: "Cockpit national", icone: ChartNoAxesCombined, roles: ["administration_centrale"], groupe: "Pilotage", processus: "P3" },
   { href: "/cockpit/carte", libelle: "Où agir ?", icone: Map, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
   { href: "/alertes", libelle: "Alertes", icone: Siren, roles: ["administration_centrale", "direction_departementale", "inspecteur"], groupe: "Pilotage", processus: "P3" },
@@ -40,7 +41,7 @@ export const NAVIGATION: EntreeNav[] = [
   { href: "/rapport", libelle: "Rapport mensuel", icone: ClipboardCheck, roles: ["inspecteur", "direction_departementale", "administration_centrale"], groupe: "Pilotage", processus: "P9" },
   { href: "/ask", libelle: "Ask Education", icone: Sparkles, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chercheur"], groupe: "Pilotage", processus: "P3" },
   { href: "/demandes", libelle: "Demandes à traiter", icone: Inbox, roles: ["inspecteur", "direction_departementale", "administration_centrale", "dpo"], groupe: "Pilotage", processus: "P9" },
-  { href: "/enseignement-superieur", libelle: "Enseignement supérieur", icone: School, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chef_etablissement", "enseignant"], groupe: "Pilotage", cycles: ["superieur"] },
+  { href: "/enseignement-superieur", libelle: "Enseignement supérieur", icone: School, roles: ["administration_centrale", "direction_departementale", "inspecteur", "chercheur", "chef_etablissement", "enseignant"], groupe: "Pilotage", cycles: ["superieur"] },
 
   { href: "/etablissement", libelle: "Mon établissement", icone: Building2, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P5" , cycles: K12 },
   { href: "/etablissement/inscription", libelle: "Inscrire un apprenant", icone: UserPlus, roles: ["chef_etablissement"], groupe: "Établissement", processus: "P4 · P6" , cycles: K12 },
@@ -78,12 +79,17 @@ export const NAVIGATION: EntreeNav[] = [
 
 export const ENTREE_PUBLIQUE = { href: "/verifier", libelle: "Vérifier un diplôme", icone: MessageSquareText };
 
-/** Entrées visibles : un rôle qui les ouvre, et, pour un rôle d'établissement, le bon cycle. */
-export function navigationPour(profil: Profil, contexte?: ContexteAffichage) {
-  return NAVIGATION.filter((e) => (e.delegation ? !!contexte?.delegue : profil.habilitations.some((h) => {
+/** Une entrée est admise par un rôle qui l'ouvre et, pour un rôle d'établissement, par le bon cycle. */
+export function entreeAdmise(e: EntreeNav, profil: Profil, contexte?: ContexteAffichage) {
+  return e.delegation ? !!contexte?.delegue : profil.habilitations.some((h) => {
     if (!e.roles.includes(h.role)) return false;
     if (!e.cycles || h.perimetre.niveau !== "etablissement" || !contexte) return true;
     const cycle = contexte.cycles[h.perimetre.etablissementId];
     return !cycle || e.cycles.includes(cycle);
-  })));
+  });
+}
+
+/** Entrées visibles : la même règle que la garde d'espace, pour qu'un lien du menu ne mène jamais à un refus. */
+export function navigationPour(profil: Profil, contexte?: ContexteAffichage) {
+  return NAVIGATION.filter((e) => entreeAdmise(e, profil, contexte));
 }

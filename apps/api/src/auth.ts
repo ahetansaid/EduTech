@@ -9,7 +9,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   adresseIp, authentifie, base, type CompteSession, comptePrivilegie, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, cookieSecurise, corps, exigerElevation, journaliser, limiteDebit,
-  incrementerCompteur, lireCompteur, limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
+  ID_COMPTE, incrementerCompteur, lireCompteur, limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
 } from "./commun";
 import { exigerPortail } from "./portails";
 import { signaler, surConnexionAdministrateur, surVerrouillage } from "./vigie";
@@ -196,7 +196,7 @@ auth.get("/admin/comptes", authentifie, async (c) => {
 auth.post("/admin/comptes/:id/reinitialiser", authentifie, async (c) => {
   exigerAdmin(c);
   exigerElevation(c);
-  const id = z.string().regex(/^CPT-[a-z]+$/).parse(c.req.param("id"));
+  const id = ID_COMPTE.parse(c.req.param("id"));
   if (id === c.get("compte").id) refuser("Votre propre mot de passe se change depuis « Mon compte »");
   // Compte privilégié : un mot de passe remis à un autre administrateur vaudrait prise de contrôle (suivie de
   // l'enregistrement de son propre second facteur). La personne récupère elle-même son compte, par code.
@@ -216,11 +216,16 @@ auth.post("/admin/comptes/:id/reinitialiser", authentifie, async (c) => {
 auth.post("/admin/comptes/:id/activation", authentifie, async (c) => {
   exigerAdmin(c);
   exigerElevation(c);
-  const id = z.string().regex(/^CPT-[a-z]+$/).parse(c.req.param("id"));
+  const id = ID_COMPTE.parse(c.req.param("id"));
   const { actif } = await corps(c, z.object({ actif: z.boolean() }).strict());
   if (id === c.get("compte").id && !actif) throw new HTTPException(422, { message: "Impossible de désactiver son propre compte" });
-  await base().update(schema.comptes).set({ actif }).where(eq(schema.comptes.id, id));
+  const [maj] = await base().update(schema.comptes).set({ actif }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });
+  if (!maj) throw new HTTPException(404, { message: "Compte introuvable" });
   if (!actif) await revoquerSessionsDuCompte(id);
+  // Écarter un autre administrateur est légitime (départ), mais c'est aussi le geste d'un compte compromis : la vigie le voit.
+  if (!actif && await comptePrivilegie(id)) {
+    await signaler("desactivation_privilegiee", "haute", c.get("profil").id, id, `${c.get("profil").nomAffiche} a désactivé le compte privilégié ${id}.`);
+  }
   await journaliser(c.get("profil"), actif ? "Activation d'un compte" : "Désactivation d'un compte", id, "gestion", true, null);
   return c.json({ ok: true });
 });

@@ -11,7 +11,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
-  authentifie, base, cleUtilisateur, controlerOrigine, cookieSecurise, corps, ErreurCodee, exigerElevation, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser,
+  authentifie, base, cleUtilisateur, controlerOrigine, cookieSecurise, corps, ErreurCodee, exigerElevation, ID_COMPTE, journaliser, limiteDebit, limiteDebitPartage, oublierSession, refuser,
   revoquerSessionsDuCompte, type Variables,
 } from "./commun";
 import { chiffrer, cleDerivee, codeNumerique, dechiffrer, egalConstant, empreinteSecret, masquer } from "./cryptographie";
@@ -513,7 +513,7 @@ securiteComptes.post("/auth/elevation", authentifie, limiteParCompte("elevation"
 securiteComptes.post("/admin/comptes/:id/reinitialiser-mfa", authentifie, async (c) => {
   if (!c.get("profil").habilitations.some((h) => h.role === "administrateur")) refuser("Réservé à l'administrateur de la plateforme");
   exigerElevation(c);
-  const id = z.string().regex(/^CPT-[a-z0-9-]+$/).parse(c.req.param("id"));
+  const id = ID_COMPTE.parse(c.req.param("id"));
   if (id === c.get("compte").id) refuser("Nul ne réinitialise son propre second facteur");
   const { motif } = await corps(c, z.object({ motif: z.string().trim().min(5).max(200) }).strict());
   const [maj] = await base().update(schema.comptes).set({ mfaActive: false, totpChiffre: null, totpDernierPas: null, echecsMfa: 0, mfaBloqueJusquA: null }).where(eq(schema.comptes.id, id)).returning({ id: schema.comptes.id });

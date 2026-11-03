@@ -11,5 +11,5 @@ export default function DroitsFamille() {
     ...(enfants.data ?? []).map((d) => ({ valeur: d.apprenant.id, libelle: `Dossier de ${d.apprenant.prenoms}` })),
     { valeur: "compte", libelle: "Mon compte" },
   ];
-  return <EntreePage><MesDroits key={sujets.length} sujets={sujets} /></EntreePage>;
+  return <EntreePage><MesDroits key={sujets.length} sujets={sujets} sujetsIncomplets={enfants.isError ? { reessayer: () => enfants.refetch() } : undefined} /></EntreePage>;
 }

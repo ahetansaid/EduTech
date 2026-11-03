@@ -11,5 +11,5 @@ export default function DroitsApprenant() {
     ...(q.data ? [{ valeur: q.data.apprenant.id, libelle: "Mon dossier scolaire" }] : []),
     { valeur: "compte", libelle: "Mon compte" },
   ];
-  return <EntreePage><MesDroits key={sujets.length} sujets={sujets} /></EntreePage>;
+  return <EntreePage><MesDroits key={sujets.length} sujets={sujets} sujetsIncomplets={q.isError ? { reessayer: () => q.refetch() } : undefined} /></EntreePage>;
 }
