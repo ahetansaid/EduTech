@@ -47,8 +47,8 @@ personnes est simulé (`registre_simule`), les indicateurs sont générés, les 
 
 | # | Chantier | Raison |
 |---|---|---|
-| A1 | Interface `RegistreNational` : réalisation simulée (actuelle) et client ANIP | Le code lit `registre_simule` en direct : basculer vers l'ANIP serait une réécriture |
-| A2 | Interface `Notificateur` (SMS, courriel, puis USSD) avec un fournisseur réel | Débloque la récupération de compte et les notifications aux familles |
+| A1 | **Fait le 05/11.** Interface `RegistreNational` (`registre-national.ts`) : seule porte vers le registre. `BEILE_REGISTRE=anip` refuse en 503 tant que le client n'est pas écrit, sans repli sur la simulation | Reste à écrire le client ANIP, une fois la convention signée |
+| A2 | Fournisseur SMS et courriel à choisir. `messagerie.ts` sait déjà parler à une passerelle SMS et à un serveur SMTP : il manque la décision, le coût et les clés, pas le code | Débloque la récupération de compte et les notifications aux familles |
 | A3 | Contrats OpenAPI versionnés (`/interop/v1`), générés depuis les schémas zod | Un partenaire se branche sur un contrat, pas sur du code |
 | A4 | Rotation des clés HMAC (clé active et clé suivante), puis mTLS ou plateforme nationale | La clé partagée actuelle est unique et sans date d'expiration |
 | A5 | Journal d'échanges par partenaire (reçu, rejeté, rejoué) et accusé de réception signé | Permet de trancher un litige (« PV jamais reçu ») |

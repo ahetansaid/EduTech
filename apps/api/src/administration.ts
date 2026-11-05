@@ -7,6 +7,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, exigerElevation, base, cleUtilisateur, corps, ID_COMPTE, journaliser, limiteDebit, oublierSession, refuser, type Variables } from "./commun";
+import { registreNational } from "./registre-national";
 import { signaler } from "./vigie";
 
 /**
@@ -80,8 +81,7 @@ export async function verifierCoherence(habilitations: Habilitation[], npi: stri
 
   const db = base();
   if (npi) {
-    const [personne] = await db.select({ npi: schema.personnes.npi }).from(schema.personnes).where(eq(schema.personnes.npi, npi));
-    if (!personne) problemes.push("NPI inconnu du registre national des personnes");
+    if (!(await registreNational().parNpi(npi))) problemes.push("NPI inconnu du registre national des personnes");
     const [autre] = await db.select({ id: schema.profils.id, nom: schema.profils.nomAffiche }).from(schema.profils)
       .where(profilIdExclu ? and(eq(schema.profils.npi, npi), ne(schema.profils.id, profilIdExclu)) : eq(schema.profils.npi, npi));
     if (autre) throw new HTTPException(409, { message: `Ce NPI est déjà rattaché au profil de ${autre.nom}` });
@@ -195,15 +195,15 @@ administration.get("/admin/referentiels/npi/:npi", authentifie, async (c) => {
   await exigerAdmin(c, "Consultation du registre (NPI)", "registre_simule.personnes");
   const npi = NPI.parse(c.req.param("npi"));
   const db = base();
-  const [[personne], [apprenant], [enseignant], [enfants], [profil]] = await Promise.all([
-    db.select({ nom: schema.personnes.nom, prenoms: schema.personnes.prenoms }).from(schema.personnes).where(eq(schema.personnes.npi, npi)),
+  const [personne, [apprenant], [enseignant], [enfants], [profil]] = await Promise.all([
+    registreNational().parNpi(npi),
     db.select({ id: schema.apprenants.id, nom: schema.apprenants.nom, prenoms: schema.apprenants.prenoms }).from(schema.apprenants).where(eq(schema.apprenants.npi, npi)),
     db.select({ id: schema.enseignants.id, etablissementId: schema.enseignants.etablissementId, etablissement: schema.etablissements.nom }).from(schema.enseignants).innerJoin(schema.etablissements, eq(schema.etablissements.id, schema.enseignants.etablissementId)).where(eq(schema.enseignants.npi, npi)),
     db.select({ n: count() }).from(schema.liensFamiliaux).where(and(eq(schema.liensFamiliaux.responsableNpi, npi), eq(schema.liensFamiliaux.verifie, true))),
     db.select({ id: schema.profils.id, nomAffiche: schema.profils.nomAffiche }).from(schema.profils).where(eq(schema.profils.npi, npi)),
   ]);
   await journaliser(c.get("profil"), "Consultation du registre (NPI)", npi, "gestion", true, null);
-  return c.json({ npi, personne: personne ?? null, apprenant: apprenant ?? null, enseignant: enseignant ?? null, enfantsLies: enfants?.n ?? 0, profilExistant: profil ?? null });
+  return c.json({ npi, personne: personne ? { nom: personne.nom, prenoms: personne.prenoms } : null, apprenant: apprenant ?? null, enseignant: enseignant ?? null, enfantsLies: enfants?.n ?? 0, profilExistant: profil ?? null });
 });
 
 /* ================================================================== Utilisateurs */

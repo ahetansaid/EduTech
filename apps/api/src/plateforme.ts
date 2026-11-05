@@ -8,6 +8,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, refuser, type Variables } from "./commun";
+import { registreNational } from "./registre-national";
 import { ROLES_TUTELLE } from "./pilotage";
 import { chargerCouches, memo } from "./donnees";
 import { lireEnv } from "./env";
@@ -172,14 +173,15 @@ plateforme.post("/plateforme/relances", authentifie, async (c) => {
 /** Interopérabilité : volume et dernière réception par source raccordée, lots par partenaire, lus en base. */
 plateforme.get("/plateforme/interoperabilite", authentifie, async (c) => {
   exploitant(c);
-  const [sources, [registre], verifications, lots] = await Promise.all([
+  const [sources, [registre], personnes, verifications, lots] = await Promise.all([
     base().execute<{ source: string; total: number; jour: number; derniere: string | null; types: string[] }>(sql`
       select source, count(*)::int as total, count(*) filter (where survenu_le >= date_trunc('day', now()))::int as jour,
              max(survenu_le) as derniere, array_agg(distinct type) as types
       from ledger.evenements group by source`),
-    base().execute<{ personnes: number; apprenants: number; lies: number }>(sql`
-      select (select count(*)::int from registre_simule.personnes) as personnes, (select count(*)::int from core.apprenants) as apprenants,
-             (select count(*)::int from core.apprenants where npi is not null) as lies`),
+    base().execute<{ apprenants: number; lies: number }>(sql`
+      select (select count(*)::int from core.apprenants) as apprenants, (select count(*)::int from core.apprenants where npi is not null) as lies`),
+    // Un registre injoignable ne doit pas priver l'exploitant de tout l'écran : le chiffre reste simplement inconnu.
+    registreNational().volume().catch(() => null),
     base().execute<{ jour: string; n: number }>(sql`
       select to_char(date_trunc('day', horodatage), 'YYYY-MM-DD') as jour, count(*)::int as n from audit.journal
       where action = 'Vérification de diplôme' and horodatage >= now() - interval '30 days' group by 1 order by 1`),
@@ -197,5 +199,5 @@ plateforme.get("/plateforme/interoperabilite", authentifie, async (c) => {
     return { id, nom: p.nom, source: p.source, messages: p.messages, ouvert: !!secrets[id], recus: recu?.total ?? 0, dernier: recu?.derniere ?? null,
       lots: parMessage.reduce((s, l) => s + l.lots, 0), parMessage };
   });
-  return c.json({ sources, registreNational: registre, verificationsDiplomes: verifications, partenaires });
+  return c.json({ sources, registreNational: { ...registre, personnes }, verificationsDiplomes: verifications, partenaires });
 });

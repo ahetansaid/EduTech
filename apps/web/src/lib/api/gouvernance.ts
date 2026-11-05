@@ -97,7 +97,7 @@ export interface Recoupement { perimetre: Perimetre; maille: MailleRecoupement; 
 export interface Interoperabilite {
   /** `derniere` est l'horodatage PostgreSQL brut (« 2026-09-25 11:04:54.528+00 »). */
   sources: { source: SourceDonnee; total: number; jour: number; derniere: string | null; types: string[] }[];
-  registreNational: { personnes: number; apprenants: number; lies: number };
+  registreNational: { personnes: number | null; apprenants: number; lies: number };
   verificationsDiplomes: { jour: string; n: number }[];
   /** Connecteurs partenaires : ouverts (secret provisionné) ou fermés, et volume réellement reçu. */
   partenaires: {
