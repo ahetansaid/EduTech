@@ -50,6 +50,8 @@ const Schema = z.object({
   BEILE_WEBAUTHN_RP_ID: z.string().optional(),
   /** Portail servi par cette instance (lot D) : « unique » (tout), « public », « usagers », « gestion », « national ». */
   BEILE_PORTAIL: z.enum(["unique", "public", "usagers", "gestion", "national"]).default("unique"),
+  /** Registre national interrogé : « anip » refuse tant que le client n'est pas écrit, jamais de repli sur la simulation. */
+  BEILE_REGISTRE: z.enum(["simule", "anip"]).default("simule"),
   /** Plages d'adresses autorisées (liste d'IP ou de préfixes « 10.0. »), exigées pour le portail national. */
   BEILE_IP_AUTORISEES: z.string().optional(),
   /**
@@ -128,6 +130,7 @@ return {
   SMTP: v.BEILE_SMTP_URL ? { url: v.BEILE_SMTP_URL, expediteur: v.BEILE_COURRIEL_EXPEDITEUR! } : null,
   RP_ID: v.BEILE_WEBAUTHN_RP_ID ?? null,
   PORTAIL: v.BEILE_PORTAIL,
+  REGISTRE: v.BEILE_REGISTRE,
   IP_AUTORISEES: (v.BEILE_IP_AUTORISEES ?? "").split(",").map((x) => x.trim()).filter(Boolean),
   /** Clefs acceptées à la vérification : l'active d'abord, puis les anciennes (rotation). */
   CLES_VERIFICATION: [v.BEILE_CLE_SEAU, ...(v.BEILE_CLES_SEAU_ANCIENNES ?? "").split(",").map((x) => x.trim()).filter(Boolean)]

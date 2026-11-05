@@ -8,6 +8,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { proposerIdentifiant } from "./administration";
 import { authentifie, base, cleUtilisateur, corps, journaliser, limiteDebit, refuser, revoquerSessionsDuCompte, type Variables } from "./commun";
+import { registreNational } from "./registre-national";
 
 /**
  * Responsable légal SANS NPI (D5). Le NPI est la clé du lien parent-enfant ; une famille qui ne l'a pas encore
@@ -99,7 +100,7 @@ familles.post("/etablissements/:id/familles/:prv/rattacher-npi", authentifie, li
   if (!lien) throw new HTTPException(404, { message: "Responsable provisoire inconnu dans votre établissement" });
   // Le NPI doit être CELUI de la personne attestée : connu du registre national, et son identité doit correspondre
   // au nom du responsable. Sans cela, un NPI d'autrui rattaché ici hériterait demain de ses enfants ailleurs.
-  const [personne] = await base().select({ nom: schema.personnes.nom, prenoms: schema.personnes.prenoms }).from(schema.personnes).where(eq(schema.personnes.npi, npi));
+  const personne = await registreNational().parNpi(npi);
   const [provisoire] = await base().select({ nomAffiche: schema.profils.nomAffiche }).from(schema.profils).where(eq(schema.profils.npi, prv));
   const norme = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
   const nomAtteste = ` ${norme(provisoire?.nomAffiche ?? "")} `;
@@ -111,12 +112,11 @@ familles.post("/etablissements/:id/familles/:prv/rattacher-npi", authentifie, li
   // Le nom comparé ci-dessus a été saisi par le chef lui-même : il ne prouve rien seul. La preuve est au registre
   // national : ce NPI doit y figurer comme PARENT de chacun des enfants rattachés à ce responsable provisoire.
   // Sinon, la filiation n'est pas établie par l'État et le rattachement passe par l'administration.
-  const enfants = await base().execute<{ apprenant_id: string; parents: string[] | null }>(sql`
-    select l.apprenant_id, p.parents_npi as parents
-    from core.liens_familiaux l join core.apprenants a on a.id = l.apprenant_id
-    left join registre_simule.personnes p on p.npi = a.npi
-    where l.responsable_npi = ${prv}`);
-  const filiationProuvee = enfants.length > 0 && enfants.every((e) => (e.parents ?? []).includes(npi));
+  const enfants = await base().execute<{ npi: string | null }>(sql`
+    select a.npi from core.liens_familiaux l join core.apprenants a on a.id = l.apprenant_id where l.responsable_npi = ${prv}`);
+  const fiches = await registreNational().parNpis(enfants.flatMap((e) => (e.npi ? [e.npi] : [])));
+  // Un enfant sans NPI, ou absent du registre, n'a pas de filiation inscrite : le rattachement est refusé.
+  const filiationProuvee = enfants.length > 0 && enfants.every((e) => !!fiches.find((f) => f.npi === e.npi)?.parentsNpi.includes(npi));
   if (!filiationProuvee) {
     await journaliser(profil, "Rattachement du NPI d'un responsable", `${prv} → NPI refusé (filiation non inscrite au registre)`, "gestion", false, "relation");
     throw new HTTPException(422, { message: "Le registre national n'inscrit pas ce NPI comme parent de l'enfant : le rattachement passe par l'administration" });

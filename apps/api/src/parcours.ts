@@ -4,11 +4,12 @@ import { MATIERES, TYPES_EVALUATION } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { decider } from "@beile/simulation/abac";
 import { indexer, situationApprenant } from "@beile/simulation/projections";
-import { and, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
+import { registreNational } from "./registre-national";
 import { etatAnnee } from "./annees";
 import { classesCourantes, dejaSaisi, effectifClasse, ID_SAISIE, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { contexteApprenant, enEvenement } from "./donnees";
@@ -169,7 +170,7 @@ function etablissementDe(profil: Profil) {
 }
 
 /**
- * Recherche au registre national (simulé ; en production : ANIP via la plateforme d'interopérabilité).
+ * Recherche au registre national (voir registre-national.ts).
  * Minimisation : seuls les enfants en âge scolaire sont renvoyés, avec le strict nécessaire à l'inscription.
  */
 // Le registre national n'est pas un annuaire : nom ET prénoms obligatoires, et 200 recherches par jour et par
@@ -182,12 +183,8 @@ parcours.get("/registre/personnes", authentifie, limiteDebitPartage("registre-pe
   await journaliser(profil, "Recherche au registre national", `${nom} ${prenoms}`.trim() || "(vide)", "gestion", !!etab, etab ? null : "role");
   if (!etab) refuser("Recherche au registre réservée aux chefs d'établissement");
   if (nom.replace(/[%_]/g, "").length < 2 || prenoms.replace(/[%_]/g, "").length < 2) throw new HTTPException(422, { message: "Saisir le nom ET le prénom (deux caractères au moins chacun)" });
-  const conditions = [gte(schema.personnes.dateNaissance, "2008-01-01")];
-  if (nom) conditions.push(ilike(schema.personnes.nom, `%${nom.replace(/[%_]/g, "")}%`));
-  if (prenoms) conditions.push(ilike(schema.personnes.prenoms, `%${prenoms.replace(/[%_]/g, "")}%`));
-  const personnes = await base().select().from(schema.personnes).where(and(...conditions)).limit(8);
-  const parents = personnes.flatMap((p) => p.parentsNpi);
-  const nomsParents = parents.length ? await base().select({ npi: schema.personnes.npi, nom: schema.personnes.nom, prenoms: schema.personnes.prenoms, sexe: schema.personnes.sexe }).from(schema.personnes).where(inArray(schema.personnes.npi, parents)) : [];
+  const personnes = await registreNational().rechercher({ nom, prenoms, neApres: "2008-01-01", limite: 8 });
+  const nomsParents = await registreNational().parNpis(personnes.flatMap((p) => p.parentsNpi));
   const deja = personnes.length ? await base().select({ npi: schema.apprenants.npi, id: schema.apprenants.id }).from(schema.apprenants).where(inArray(schema.apprenants.npi, personnes.map((p) => p.npi))) : [];
   const courantes = await classesCourantes(deja.map((d) => d.id));
   return c.json(personnes.map((p) => {
@@ -230,7 +227,7 @@ parcours.post("/inscriptions", authentifie, async (c) => {
 
   let identite: { npi: string | null; nom: string; prenoms: string; sexe: "F" | "M"; dateNaissance: string; parentsNpi: string[] };
   if (saisie.npi) {
-    const [p] = await base().select().from(schema.personnes).where(eq(schema.personnes.npi, saisie.npi));
+    const p = await registreNational().parNpi(saisie.npi);
     if (!p) throw new HTTPException(404, { message: "Personne introuvable au registre national" });
     const [existant] = await base().select().from(schema.apprenants).where(eq(schema.apprenants.npi, saisie.npi));
     if (existant && (await classesCourantes([existant.id])).get(existant.id)) throw new HTTPException(409, { message: "Déjà inscrit·e dans un établissement : procéder par transfert" });

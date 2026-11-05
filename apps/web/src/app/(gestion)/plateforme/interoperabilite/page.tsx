@@ -208,7 +208,7 @@ function CarteRaccordement({ r, d }: { r: Raccordement; d?: Interoperabilite }) 
   const mesures: [string, React.ReactNode][] = !d
     ? [["Chargement", "…"]]
     : r.id === "anip"
-      ? [["Personnes (registre simulé)", entier(d.registreNational.personnes)], ["Apprenants liés", entier(d.registreNational.lies)], ["Échanges avec l'ANIP", "Aucun"]]
+      ? [["Personnes (registre simulé)", d.registreNational.personnes == null ? "—" : entier(d.registreNational.personnes)], ["Apprenants liés", entier(d.registreNational.lies)], ["Échanges avec l'ANIP", "Aucun"]]
       : statut === "a_construire"
         ? [["Connecteur", "Aucun"], ["Échanges", "Aucun"], ["Prochaine étape", "Contrat d'interface"]]
         : [["Dernière réception", derniere ? dateHeure(derniere) : "—"], ["Aujourd'hui", entier(src?.jour ?? 0)], ["Total reçu", entier(src?.total ?? 0)], ["Lots tracés", entier(p?.lots ?? 0)]];
@@ -288,7 +288,7 @@ function Provenance({ d }: { d: Interoperabilite }) {
         })}
       </ul>
       <p className="mt-4 rounded-md bg-surface-2/60 px-3 py-2 text-xs text-ink-2">
-        {entier(d.registreNational.personnes)} personnes du registre simulé sont consultables par leur NPI (le registre de l'ANIP n'est pas encore raccordé) ; aucune n'est recopiée comme événement éducatif : c'est l'application du producteur unique.
+        {d.registreNational.personnes == null ? "Les personnes" : `${entier(d.registreNational.personnes)} personnes`} du registre simulé sont consultables par leur NPI (le registre de l'ANIP n'est pas encore raccordé) ; aucune n'est recopiée comme événement éducatif : c'est l'application du producteur unique.
       </p>
     </>
   );

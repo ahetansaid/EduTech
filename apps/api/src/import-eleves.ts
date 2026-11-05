@@ -7,6 +7,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authentifie, base, corps, journaliser, limiteDebitPartage, refuser, type Variables } from "./commun";
+import { registreNational } from "./registre-national";
 import { anneeOuverte } from "./annees";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 
@@ -82,7 +83,7 @@ async function analyser(etablissementId: string, saisie: z.infer<typeof Requete>
 
   // Registre national et apprenants déjà connus, lus en une fois.
   const npis = [...new Set(saisie.lignes.flatMap((l) => (l.npi ? [l.npi] : [])))];
-  const personnes = npis.length ? await base().select().from(schema.personnes).where(inArray(schema.personnes.npi, npis)) : [];
+  const personnes = await registreNational().parNpis(npis);
   const connus = npis.length ? await base().select({ id: schema.apprenants.id, npi: schema.apprenants.npi }).from(schema.apprenants).where(inArray(schema.apprenants.npi, npis)) : [];
   const courantes = await classesCourantes(connus.map((a) => a.id));
   const classeDe = new Map<string, { etablissementId: string; libelle: string } | undefined>();
