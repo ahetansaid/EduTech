@@ -112,6 +112,24 @@ publique.get("/public/etablissements/:id", async (c) => {
   return c.json({ ...e, cycle: cycleDe(e.niveaux), ...lieu(e.communeId) });
 });
 
+/**
+ * Vitesse réellement vécue (Core Web Vitals), envoyée par le navigateur : une ligne de journal par mesure, sans
+ * adresse ni identifiant de personne. Bornée (schéma strict, chemin généralisé côté navigateur, débit plafonné) :
+ * une source ouverte à tous ne doit ni remplir les journaux ni servir à y écrire autre chose que des nombres.
+ */
+const MESURE_VITESSE = z.object({
+  nom: z.enum(["LCP", "INP", "CLS", "FCP", "TTFB"]),
+  valeur: z.number().int().min(0).max(600_000),
+  note: z.enum(["good", "needs-improvement", "poor"]),
+  page: z.string().max(120).regex(/^\/[a-z0-9\-/:]*$/i),
+  reseau: z.enum(["slow-2g", "2g", "3g", "4g"]).nullable(),
+}).strict();
+publique.post("/public/mesures/vitesse", limiteDebit(60, 60_000), async (c) => {
+  const m = MESURE_VITESSE.safeParse(await c.req.json().catch(() => null));
+  if (m.success) console.log(JSON.stringify({ niveau: "mesure", type: "web-vitals", ...m.data }));
+  return c.body(null, 204);
+});
+
 /** L'éducation en chiffres : quelques indicateurs par département, avec définition, source et indice de confiance. */
 publique.get("/public/chiffres", async (c) => {
   const couches = await chargerCouches(base());
