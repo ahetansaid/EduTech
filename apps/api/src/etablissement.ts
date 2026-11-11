@@ -8,7 +8,7 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, refuser, revoquerSessionsDuCompte, sansSomme, type Variables } from "./commun";
+import { authentifie, base, comparerFr, corps, dateCalendaire, journaliser, journalMinimal, refuser, revoquerSessionsDuCompte, sansSomme, type Variables } from "./commun";
 import { etatAnnee } from "./annees";
 import { classesCourantes, inscrireAuRegistre, type NouveauFait } from "./ecriture";
 import { enBaisse, scolarisesEtablissement } from "./lectures";
@@ -899,7 +899,7 @@ etablissement.post("/demandes/:id/decision", authentifie, async (c) => {
         : ctx.modele.code === "RECLAMATION_FRAIS" ? (saisie.decision === "refuse" ? "Votre réclamation sur une pièce de frais : refus motivé de l'école" : "Réponse à votre réclamation sur une pièce de frais")
         : `Demande ${verbe.startsWith("acceptée") || verbe.startsWith("validée") ? "validée" : saisie.decision === "refuse" ? "refusée" : "renvoyée"}`,
       texte: `« ${ctx.demande.objet} » : ${verbe}.${saisie.motif ? ` Motif : ${saisie.motif}.` : ""}`,
-    }).catch((e) => console.error("Notification demande :", e));
+    }).catch((e) => journalMinimal("Notification d'une décision", e));
   }
 
   await journaliser(profil, "Décision sur une demande", `${demandeId} · ${ctx.etape.code} → ${saisie.decision}`, "gestion", true, null);

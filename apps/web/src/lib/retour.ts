@@ -13,5 +13,9 @@ export function retourSur(valeur: string | null): string | null {
   try { u = new URL(valeur, window.location.origin); } catch { return null; }
   if (u.origin !== window.location.origin) return null;
   if (ETAPES.some((e) => u.pathname === e || u.pathname.startsWith(`${e}/`))) return null;
-  return u.pathname + u.search + u.hash;
+  // La normalisation de l'URL change l'entrée : « /.//x » ou « /%2e//x » deviennent « //x », qu'un navigateur lit
+  // comme une autre origine. C'est donc le chemin RENDU qui est contrôlé, pas seulement celui reçu.
+  const sortie = u.pathname + u.search + u.hash;
+  if (/^\/[/\\]/.test(sortie)) return null;
+  return sortie;
 }

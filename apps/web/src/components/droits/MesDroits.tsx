@@ -163,12 +163,12 @@ function BlocConsultations({ sujet }: { sujet: string }) {
         {refus > 0 && <Badge ton="critique" icone={ShieldOff}>{refus} refusé{refus > 1 ? "s" : ""}</Badge>}
       </div>
       <p className="mt-1 text-[12.5px] leading-snug text-ink-muted">
-        Vos propres consultations ne sont pas listées. Certaines lectures répétées sont regroupées : la trace dit
+        Seules les ouvertures de ce dossier individuel sont listées : une lecture de la liste d'une classe ou d'un établissement n'y figure pas encore. Vos propres consultations ne sont pas listées. Certaines lectures répétées sont regroupées : la trace dit
         quelles portes ont été franchies, pas chaque rafraîchissement d'écran.{trace.tronque && " Seuls les 200 accès les plus récents sont affichés."}
       </p>
 
       {!trace.lignes.length ? (
-        <EtatVide icone={Eye} titre="Aucun accès d'un tiers sur cette période" texte="Rien n'a été consulté à votre sujet depuis douze mois. Le service n'affiche que cette fenêtre : pour une trace plus ancienne, adressez une demande d'accès ci-dessus." />
+        <EtatVide icone={Eye} titre="Aucune ouverture de ce dossier par un tiers" texte="Aucun tiers n'a ouvert ce dossier individuel depuis douze mois (les lectures d'une liste de classe ou d'établissement ne sont pas comptées ici). Le service n'affiche que cette fenêtre : pour une trace plus ancienne, adressez une demande d'accès ci-dessus." />
       ) : (
         <Cascade className="mt-4 space-y-2.5">
           {trace.lignes.map((l, i) => (

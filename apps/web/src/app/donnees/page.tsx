@@ -24,6 +24,12 @@ export default function PageDonnees() {
 
   return (
     <PagePublique large surtitre="Données ouvertes" titre="L'éducation en chiffres" intro="Quelques indicateurs clés, par département. Chaque chiffre porte sa définition officielle, sa source et son indice de confiance ; aucune donnée personnelle.">
+      {data && data.origine !== "registre" && (
+        <p role="note" className="mb-4 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-[13.5px] text-ink">
+          <Info size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden />
+          <span><strong>Démonstration.</strong> Ces chiffres sont générés pour illustrer le service : ils ne décrivent pas le système éducatif réel et ne doivent pas être cités.</span>
+        </p>
+      )}
       {isError ? (
         <EtatVide icone={ChartColumn} titre="Les chiffres n'ont pas pu être chargés" action={<button onClick={() => refetch()} className="rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white">Réessayer</button>} />
       ) : isPending || !data || !courant ? (

@@ -5,6 +5,7 @@ import { ANNEES, type Annee, type CelluleNiveau, type CommuneStats, type Couches
 import type { Enseignement, MicroMonde } from "@beile/simulation/micro";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { indexer } from "@beile/simulation/projections";
+import { journalMinimal } from "./commun";
 
 /**
  * Accès aux données : la source de vérité est désormais PostgreSQL. Les moteurs (couche sémantique,
@@ -37,7 +38,7 @@ let enVol: Promise<CouchesNationales> | null = null;
 export async function chargerCouches(db: Base): Promise<CouchesNationales> {
   if (cache && Date.now() - cache.charge < DUREE_CACHE_MS) return cache.couches;
   enVol ??= chargerCouchesDepuisBase(db).finally(() => { enVol = null; });
-  if (cache) { enVol.catch((e) => console.error("Rafraîchissement du cube :", e)); return cache.couches; }
+  if (cache) { enVol.catch((e) => journalMinimal("Rafraîchissement du cube", e)); return cache.couches; }
   return enVol;
 }
 

@@ -54,7 +54,7 @@ const TRAITEMENTS: Traitement[] = [
     destinataires: ["Établissement d'accueil", "Responsables légaux", "Registre national des personnes (vérification seulement)"],
     conservation: "Durée de la scolarité + 5 ans pour le dossier ; identifiant éducatif conservé à vie (preuve des diplômes)",
     mesures: ["Contrôle d'accès à quatre critères", "Vérification au registre national sans recopie", "Enfant sans acte : inscrit, signalé, régularisation suivie"],
-    criticite: 4, saisine: "avis_favorable",
+    criticite: 4, saisine: "a_saisir",
   },
   {
     id: "T02", nom: "Suivi pédagogique et vie scolaire", icone: ClipboardCheck,
@@ -64,8 +64,8 @@ const TRAITEMENTS: Traitement[] = [
     personnes: "Apprenants",
     destinataires: ["Enseignants de la classe", "Chef d'établissement", "Responsables légaux"],
     conservation: "Année scolaire + 3 ans ; bulletins conservés avec le dossier",
-    mesures: ["Relation pédagogique exigée pour chaque lecture", "Correction de note journalisée, avec son auteur", "Signal de vigilance visible du seul chef d'établissement, sans note chiffrée ni export : aucune décision automatique", "Export nominatif journalisé côté serveur (auteur, périmètre, volume, finalité)"],
-    criticite: 3, saisine: "avis_favorable",
+    mesures: ["Relation pédagogique exigée pour chaque lecture", "Correction de note journalisée, avec son auteur", "Signal de vigilance visible du seul chef d'établissement, sans note chiffrée ni export : aucune décision automatique", "Export nominatif déclaré au journal par l'écran qui le produit (auteur, périmètre, volume, finalité)"],
+    criticite: 3, saisine: "a_saisir",
   },
   {
     id: "T03", nom: "Examens et certification", icone: GraduationCap,
@@ -76,7 +76,7 @@ const TRAITEMENTS: Traitement[] = [
     destinataires: ["Direction des examens et concours", "Titulaire du diplôme", "Tiers vérificateur (réponse oui/non, sans compte)"],
     conservation: "Résultats et diplômes : conservation définitive (valeur probante)",
     mesures: ["Signature et empreinte de chaque diplôme", "Vérification publique limitée au strict nécessaire", "Registre des résultats en ajout seul"],
-    criticite: 4, saisine: "avis_favorable",
+    criticite: 4, saisine: "a_saisir",
   },
   {
     id: "T04", nom: "Statistiques et pilotage", icone: Landmark,
@@ -86,8 +86,8 @@ const TRAITEMENTS: Traitement[] = [
     personnes: "Apprenants et personnels (indirectement, sous forme agrégée)",
     destinataires: ["Administration centrale", "Directions départementales", "Inspections", "Chercheurs sous convention"],
     conservation: "Séries agrégées conservées sans limite ; aucune donnée nominative dans l'entrepôt statistique",
-    mesures: ["Pseudonymisation avant tout usage analytique", "Suppression des petites cellules (seuil par indicateur)", "Périmètre territorial appliqué à chaque requête"],
-    criticite: 1, saisine: "avis_favorable",
+    mesures: ["Indicateurs aujourd'hui générés pour la démonstration : pseudonymisation prévue avant tout calcul sur données réelles", "Suppression des petites cellules (seuil par indicateur)", "Périmètre territorial appliqué à chaque requête"],
+    criticite: 1, saisine: "a_saisir",
   },
   {
     id: "T05", nom: "Ask Education (assistant de questions)", icone: Sparkles,
@@ -97,8 +97,8 @@ const TRAITEMENTS: Traitement[] = [
     personnes: "Agents habilités (auteurs des questions)",
     destinataires: ["Auteur de la question", "Délégué à la protection des données (journal)"],
     conservation: "Questions et requêtes : 12 mois dans le journal d'audit",
-    mesures: ["Le modèle de langage ne reçoit aucune donnée, seulement la question et le catalogue", "Refus motivé et journalisé hors périmètre", "Aucune donnée individuelle restituée"],
-    criticite: 2, saisine: "en_instruction",
+    mesures: ["Moteur déterministe, sans modèle de langage : la question est rapprochée du catalogue, aucune donnée n'est transmise à un tiers", "Refus motivé et journalisé hors périmètre", "Aucune donnée individuelle restituée"],
+    criticite: 2, saisine: "a_saisir",
   },
   {
     id: "T06", nom: "Vérification publique des diplômes", icone: FileCheck2,
@@ -115,10 +115,10 @@ const TRAITEMENTS: Traitement[] = [
 
 const PRINCIPES: { icone: LucideIcon; titre: string; texte: string }[] = [
   { icone: Filter, titre: "Minimisation", texte: "Chaque traitement ne collecte que ce que sa finalité exige. Les besoins particuliers sont notés sans diagnostic médical." },
-  { icone: EyeOff, titre: "Pseudonymisation des usages analytiques", texte: "Les statistiques sont calculées sur des données pseudonymisées ; l'entrepôt statistique ne contient aucun nom." },
+  { icone: EyeOff, titre: "Pseudonymisation des usages analytiques", texte: "Les statistiques seront calculées sur des données pseudonymisées. Aujourd'hui, les indicateurs sont générés pour la démonstration : aucun nom n'y figure." },
   { icone: Users, titre: "Suppression des petites cellules", texte: "Sous le seuil de publication d'un indicateur (1 à 10 apprenants selon le cas), la valeur est masquée pour empêcher toute réidentification." },
-  { icone: Gavel, titre: "Saisine préalable de l'APDP", texte: "Chaque traitement est déclaré à l'Autorité de protection des données personnelles avant sa mise en service, et son avis est versé au registre." },
-  { icone: Archive, titre: "Durées de conservation", texte: "Chaque donnée a une durée fixée par finalité. À échéance, elle est supprimée ou rendue anonyme ; l'opération est journalisée." },
+  { icone: Gavel, titre: "Saisine préalable de l'APDP", texte: "Chaque traitement sera déclaré à l'Autorité de protection des données personnelles avant tout usage de données réelles, et son avis versé au registre. Aucun dossier n'est déposé à ce jour." },
+  { icone: Archive, titre: "Durées de conservation", texte: "Chaque donnée a une durée proposée par finalité, à arrêter avec l'APDP. La suppression ou l'anonymisation à échéance n'est pas encore automatisée." },
   { icone: ShieldCheck, titre: "Traçabilité", texte: "Toute lecture de donnée individuelle, accordée ou refusée, est inscrite au journal d'audit en ajout seul." },
 ];
 
@@ -145,15 +145,15 @@ export default function TraitementsPage() {
       <PageHeader
         surtitre="Conformité · P14"
         titre="Registre des traitements"
-        sousTitre="Chaque usage de données personnelles, avec sa finalité, sa base légale, ses destinataires et sa durée de conservation. C'est le document que l'Autorité de protection des données personnelles (APDP) peut demander à tout moment."
+        sousTitre="Chaque usage de données personnelles, avec sa finalité, sa base légale, ses destinataires et sa durée de conservation proposée. Projet de registre : la plateforme fonctionne sur des données fictives, et aucun traitement n'a encore été déclaré à l'Autorité de protection des données personnelles (APDP)."
         actions={<Link href="/audit" className="inline-flex h-8 items-center gap-2 rounded-md bg-surface px-3 text-[13px] font-medium text-ink ring-1 ring-inset ring-line transition-all hover:bg-surface-2 active:scale-[0.97]"><ScrollText size={14} aria-hidden />Journal d'audit</Link>}
       />
 
       <Cascade data-guide="traitements-indicateurs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Element><TuileIndicateur libelle="Traitements déclarés" icone={ClipboardCheck} accent="bleu" valeur={entier(TRAITEMENTS.length)} indice="tous avec une finalité unique" /></Element>
         <Element><TuileIndicateur libelle="Hautement sensibles" icone={ShieldCheck} accent="critique" valeur={entier(hautementSensibles)} indice="niveau 4 : identité, certification" /></Element>
-        <Element><TuileIndicateur libelle="Avis de l'APDP" icone={Gavel} accent="sarcelle" valeur={`${avisFavorables}/${TRAITEMENTS.length}`} indice="avis favorables obtenus" /></Element>
-        <Element><TuileIndicateur libelle="Mise en service" icone={FileCheck2} accent="ambre" valeur="Après avis" indice="aucun traitement sans saisine" /></Element>
+        <Element><TuileIndicateur libelle="Avis de l'APDP" icone={Gavel} accent="sarcelle" valeur={`${avisFavorables}/${TRAITEMENTS.length}`} indice="aucun dossier déposé à ce jour" /></Element>
+        <Element><TuileIndicateur libelle="Données traitées" icone={FileCheck2} accent="ambre" valeur="Fictives" indice="aucune donnée réelle avant avis de l'APDP" /></Element>
       </Cascade>
 
       <section aria-labelledby="titre-principes">

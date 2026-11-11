@@ -49,7 +49,7 @@ export function useFiche(id: string) {
 }
 
 export function useChiffres() {
-  return useQuery({ queryKey: ["public", "chiffres"], queryFn: () => lire<{ indicateurs: IndicateurPublic[] }>("/public/chiffres"), staleTime: 300_000 });
+  return useQuery({ queryKey: ["public", "chiffres"], queryFn: () => lire<{ origine?: "simulation" | "registre"; indicateurs: IndicateurPublic[] }>("/public/chiffres"), staleTime: 300_000 });
 }
 
 export const NIVEAUX_PUBLICS: { valeur: NiveauPublic; libelle: string }[] = [

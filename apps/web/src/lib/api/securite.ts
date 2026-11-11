@@ -50,6 +50,7 @@ export const LIBELLE_ALERTE: Record<string, string> = {
   activite_hors_horaires: "Connexion d'administrateur hors horaires",
   creation_en_serie: "Créations de comptes en série",
   second_facteur_echoue: "Échecs répétés du second facteur",
+  second_facteur_ajoute: "Second facteur ajouté à un compte",
   reinitialisation_mfa: "Second facteur réinitialisé par un administrateur",
   reinitialisation_privilegiee: "Tentative de réinitialisation d'un compte privilégié",
   desactivation_privilegiee: "Compte privilégié désactivé",

@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { base, limiteDebit, type Variables } from "./commun";
-import { chargerCouches, memo } from "./donnees";
+import { chargerCouches, memo, ORIGINE_DES_CHIFFRES } from "./donnees";
 
 /**
  * Services publics, sans compte : annuaire des établissements et chiffres agrégés de l'éducation.
@@ -124,6 +124,8 @@ publique.get("/public/chiffres", async (c) => {
       { cle: "bepc", requete: { indicateur: "taux_reussite_examen", filtres: { niveau: "3e" } } },
     ] as const;
     return {
+      // Dit au public, comme au pilotage : aujourd'hui générés, demain agrégés depuis le registre.
+      origine: ORIGINE_DES_CHIFFRES.indicateurs,
       indicateurs: INDICATEURS.map(({ cle, requete }) => {
         const national = calculer(couches, { ...requete, ventilation: [] } as never);
         const parDep = calculer(couches, { ...requete, ventilation: ["departement"] } as never);

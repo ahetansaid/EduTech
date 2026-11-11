@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { LIBELLE_ACTE, LIBELLE_TERME_FRAIS, type FraisTerme } from "@beile/contracts";
 import { schema } from "@beile/db";
 import { and, eq, gte, inArray } from "drizzle-orm";
-import { base } from "./commun";
+import { base, journalMinimal } from "./commun";
 
 /**
  * Notifications nées des faits : pour chaque événement enregistré, les responsables légaux (lien vérifié)
@@ -98,7 +98,7 @@ export async function notifierFamille(apprenantId: string, message: (prenoms: st
     const destinataires = new Set([...liens.map((l) => l.responsableNpi), ...(a.npi ? [a.npi] : [])]);
     if (destinataires.size) await base().insert(schema.notifications).values([...destinataires].map((npi) => ({ id: `NOT-${randomUUID()}`, destinataireNpi: npi, titre, texte, evenementId: null })));
   } catch (err) {
-    console.error("Notification de la famille impossible :", err instanceof Error ? err.message : err);
+    journalMinimal("Notification de la famille", err);
   }
 }
 
