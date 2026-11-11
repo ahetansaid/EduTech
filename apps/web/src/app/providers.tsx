@@ -6,6 +6,7 @@ import { MotionProvider } from "@/components/motion";
 import { ErreurApi } from "@/lib/http";
 import { Notifications, notifier } from "@/components/ui/Notifications";
 import { DialogueElevation } from "@/components/securite/DialogueElevation";
+import { MesureVitesse } from "@/components/MesureVitesse";
 
 /**
  * Cache de requêtes partagé : données fraîches 15 s, rafraîchies au retour sur l'onglet et à la reconnexion,
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: ReactNode }) {
         {children}
         <Notifications />
         <DialogueElevation />
+        <MesureVitesse />
       </MotionProvider>
     </QueryClientProvider>
   );

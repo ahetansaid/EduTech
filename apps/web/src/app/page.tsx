@@ -101,7 +101,8 @@ export default function Accueil() {
                 {PILULES.map((p) => <path key={p.d} d={p.d} />)}
               </clipPath>
             </defs>
-            <image href="/images/accueil-eleves-secondaire.jpg" x="-60" y="0" width="680" height="560" preserveAspectRatio="xMidYMid slice" clipPath="url(#pilules)" />
+            {/* WebP de 1 100 px (39 Ko au lieu de 192) : l'image d'un SVG ne passe pas par next/image, elle est donc préparée d'avance. */}
+            <image href="/images/accueil-eleves-secondaire.webp" x="-60" y="0" width="680" height="560" preserveAspectRatio="xMidYMid slice" clipPath="url(#pilules)" />
             {/* Liseré lumineux sur chaque pilule, révélé en cascade */}
             {PILULES.map((p) => (
               <motion.path key={`l${p.d}`} d={p.d} fill="none" stroke="white" strokeOpacity={0.35} strokeWidth={2}

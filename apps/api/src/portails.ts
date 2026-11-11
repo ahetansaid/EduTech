@@ -69,7 +69,7 @@ export const filtrePortail: MiddlewareHandler = async (c, next) => {
   }
   // Seule écriture du portail public : la recherche de résultat avec date de naissance (POST, la date hors de l'URL).
   const lecture = c.req.method === "GET" && ROUTES_PUBLIQUES.test(c.req.path);
-  const recherche = c.req.method === "POST" && c.req.path === "/api/v1/public/resultats";
+  const recherche = c.req.method === "POST" && (c.req.path === "/api/v1/public/resultats" || c.req.path === "/api/v1/public/mesures/vitesse");
   if (PORTAIL === "public" && !lecture && !recherche) throw new HTTPException(404, { message: "Introuvable" });
   if (c.req.path.includes("/interop/") && PORTAIL !== "unique" && PORTAIL !== "national") throw new HTTPException(404, { message: "Introuvable" });
   await next();
