@@ -91,7 +91,9 @@ function Recherche() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Session</span>
-              {sessions.isPending ? <Squelette className="h-12" /> : sessionsExamen.length ? (
+              {sessions.isPending ? <Squelette className="h-12" /> : sessions.isError ? (
+                <p role="alert" className="flex h-12 items-center rounded-md border border-critical/30 bg-critical-bg px-3.5 text-[14px] text-critical">Sessions indisponibles pour le moment : réessayez dans un instant.</p>
+              ) : sessionsExamen.length ? (
                 <select value={sessionChoisie} onChange={(e) => setFSession(e.target.value)} className={champ}>
                   {sessionsExamen.map((s) => <option key={s.session} value={s.session}>{s.session}</option>)}
                 </select>

@@ -46,7 +46,9 @@ export default function PageAujourdhui() {
   if (!isChef && !isFile) return <EntreePage><HorsRole /></EntreePage>;
 
   const chargement = (isChef && (tableau.isPending || justificatifs.isPending)) || (isFile && demandesFile.isPending);
-  const erreur = (isChef && tableau.isError) ? tableau.error : (isFile && demandesFile.isError) ? demandesFile.error : null;
+  // Une source muette ne doit jamais se lire « rien à signaler » : la première en échec est dite.
+  const sources = [...(isChef ? [tableau, justificatifs, demandesEtab] : []), ...(isFile ? [demandesFile, visitesAVenir] : [])];
+  const erreur = sources.find((q) => q.isError);
 
   const parUrgence = (u: Urgence) => taches.filter((t) => t.urgence === u);
   const enRetard = taches.filter((t) => t.ts < AUJOURDHUI_TS).length;
@@ -62,7 +64,7 @@ export default function PageAujourdhui() {
         />
 
         {erreur ? (
-          <Card><EtatErreur erreur={erreur} reessayer={() => { tableau.refetch(); demandesFile.refetch(); }} /></Card>
+          <Card><EtatErreur erreur={erreur.error} reessayer={() => { tableau.refetch(); justificatifs.refetch(); demandesEtab.refetch(); demandesFile.refetch(); visitesAVenir.refetch(); }} /></Card>
         ) : chargement ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3">{Array.from({ length: 3 }, (_, i) => <Squelette key={i} className="h-[104px] rounded-lg" />)}</div>

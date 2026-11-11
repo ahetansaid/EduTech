@@ -9,7 +9,7 @@ import { schema } from "@beile/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { base } from "./commun";
+import { base, journalMinimal } from "./commun";
 import { notifierFaits } from "./notifications";
 
 /**
@@ -377,7 +377,7 @@ export async function inscrireAuRegistre(faits: NouveauFait[], avant?: (tx: Para
     }
   });
   // Les notifications ne doivent jamais faire échouer l'écriture au registre.
-  await notifierFaits(lignes.filter((l) => l.apprenantId).map((l) => ({ id: l.id, type: l.type, apprenantId: l.apprenantId!, donnees: l.donnees }))).catch((e) => console.error("Notifications :", e));
+  await notifierFaits(lignes.filter((l) => l.apprenantId).map((l) => ({ id: l.id, type: l.type, apprenantId: l.apprenantId!, donnees: l.donnees }))).catch((e) => journalMinimal("Notifications des faits", e));
   return lignes.map((l) => l.id);
 }
 

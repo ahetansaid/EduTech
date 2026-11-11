@@ -57,7 +57,8 @@ export default function EtatPage() {
   }
 
   const d = etat.data;
-  const injoignable = etat.isError && !d;
+  // Une mesure en échec l'emporte sur la précédente réussie : afficher « tout fonctionne » sur une donnée périmée serait faux.
+  const injoignable = etat.isError;
   const ralenti = !!d && d.base.latenceMs > SEUIL_LATENCE_MS;
 
   return (

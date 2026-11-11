@@ -9,7 +9,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   adresseIp, authentifie, base, type CompteSession, comptePrivilegie, controlerOrigine, COOKIE_CSRF, COOKIE_SESSION, cookieSecurise, corps, exigerElevation, journaliser, limiteDebit,
-  ID_COMPTE, incrementerCompteur, lireCompteur, limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
+  ID_COMPTE, incrementerCompteur, ROLES_SECOND_FACTEUR, lireCompteur, limiteDebitPartage, oublierSession, refuser, revoquerSessionsDuCompte, type Variables,
 } from "./commun";
 import { exigerPortail } from "./portails";
 import { signaler, surConnexionAdministrateur, surVerrouillage } from "./vigie";
@@ -43,6 +43,8 @@ function poserCookies(c: Context, jeton: string) {
  *  - et, inchangé, chaque compte : 5 échecs → verrou de 15 min.
  */
 const ECHECS_PAR_ADRESSE = 100;
+/** Une seule réponse pour un identifiant inconnu, un mot de passe faux ou un compte verrouillé. */
+const REFUS_CONNEXION = "Identifiant ou mot de passe incorrect. Après plusieurs échecs, l'accès au compte est suspendu quelques minutes.";
 const FENETRE_ECHECS_MS = 15 * 60_000;
 auth.post("/auth/connexion", limiteDebitPartage("connexion", 300, 60_000), async (c) => {
   controlerOrigine(c);
@@ -56,14 +58,12 @@ auth.post("/auth/connexion", limiteDebitPartage("connexion", 300, 60_000), async
   const [profil] = compte ? await base().select().from(schema.profils).where(eq(schema.profils.id, compte.profilId)) : [];
 
   const valide = await verifierMotDePasse(motDePasse, compte?.motDePasseHash ?? HASH_FACTICE);
-  // Compte verrouillé : seul celui qui donne le BON mot de passe l'apprend (423). Pour tout autre, la réponse
-  // est celle d'un identifiant inconnu : le verrou ne révèle pas qu'un compte existe.
   if (!valide || !compte || !profil || !compte.actif) await incrementerCompteur("connexion-echec", ip, FENETRE_ECHECS_MS);
+  // Compte verrouillé : la même réponse, que le mot de passe soit juste ou faux. Distinguer les deux (423 contre
+  // 401) faisait du verrou un oracle : on continuait d'y tester des mots de passe, et le bon se reconnaissait.
   if (compte?.verrouilleJusquA && compte.verrouilleJusquA > new Date()) {
     if (profil) await journaliser(profil, "Connexion — compte verrouillé", identifiant, "gestion", false, "role");
-    if (!valide) throw new HTTPException(401, { message: "Identifiant ou mot de passe incorrect" });
-    const minutes = Math.ceil((compte.verrouilleJusquA.getTime() - Date.now()) / 60_000);
-    throw new HTTPException(423, { message: `Compte temporairement verrouillé après plusieurs échecs. Réessayez dans ${minutes} minute(s).` });
+    throw new HTTPException(401, { message: REFUS_CONNEXION });
   }
   if (!compte || !profil || !compte.actif || !valide) {
     if (compte) {
@@ -72,7 +72,7 @@ auth.post("/auth/connexion", limiteDebitPartage("connexion", 300, 60_000), async
       if (profil) await journaliser(profil, "Connexion refusée", `${identifiant} (${echecs} échec(s))`, "gestion", false, "role");
       if (profil && echecs === ECHECS_MAX) await surVerrouillage(profil.id, identifiant);
     }
-    throw new HTTPException(401, { message: "Identifiant ou mot de passe incorrect" });
+    throw new HTTPException(401, { message: REFUS_CONNEXION });
   }
 
   const mfaExige = await exigeSecondFacteur(profil);
@@ -95,9 +95,9 @@ auth.post("/auth/connexion", limiteDebitPartage("connexion", 300, 60_000), async
   return c.json({ profil: visible, compte: { identifiant: compte.identifiant, doitChangerMotDePasse: compte.doitChangerMotDePasse }, etape });
 });
 
-/** Second facteur exigé : administrateur de la plateforme, ou délégation d'administration active de niveau 0 à 2. */
+/** Second facteur exigé : administrateur, DPO, administration centrale, ou délégation d'administration active de niveau 0 à 2. */
 async function exigeSecondFacteur(profil: { id: string; habilitations: unknown }) {
-  if ((profil.habilitations as Profil["habilitations"]).some((h) => h.role === "administrateur")) return true;
+  if ((profil.habilitations as Profil["habilitations"]).some((h) => ROLES_SECOND_FACTEUR.includes(h.role))) return true;
   const [d] = await base().select({ id: schema.delegations.id }).from(schema.delegations)
     .where(and(eq(schema.delegations.profilId, profil.id), eq(schema.delegations.statut, "active"), gt(schema.delegations.au, new Date()), lte(schema.delegations.niveau, 2))).limit(1);
   return !!d;

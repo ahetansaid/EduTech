@@ -21,6 +21,8 @@ export interface CompteSession {
   id: string; identifiant: string; doitChangerMotDePasse: boolean; empreinteSession: string;
   /** Second facteur exigé (administrateur de la plateforme ou délégation de niveau 0 à 2) et présenté pour cette session. */
   mfaExige: boolean; mfaActive: boolean; mfaVerifie: boolean;
+  /** Ouverture de la session par mot de passe (ms) : borne l'enregistrement d'un premier second facteur. */
+  ouverteLe: number;
   /** Élévation juste à temps en cours, jusqu'à cette heure (ms). */
   eleveJusquA: number | null;
 }
@@ -211,6 +213,25 @@ function exigerSessionComplete(c: Context, compte: CompteSession) {
   }
 }
 
+/**
+ * Rôles qui exigent un second facteur : les mêmes que les comptes privilégiés (`comptePrivilegie`). Le DPO lit
+ * le journal de tous les accès, l'administration centrale publie les résultats et révoque les diplômes : un mot
+ * de passe seul ne doit ouvrir ni l'un ni l'autre.
+ */
+export const ROLES_SECOND_FACTEUR: readonly string[] = ["administrateur", "dpo", "administration_centrale"];
+
+/**
+ * Journal d'erreur minimal, comme `app.onError` : jamais la requête SQL ni ses paramètres (NPI, prénoms, notes)
+ * dans les journaux de l'hébergeur — le message d'une requête échouée les porte dès sa deuxième ligne.
+ */
+export function journalMinimal(contexte: string, e: unknown) {
+  const err = e as { name?: string; code?: string; message?: string; cause?: { code?: string; message?: string } };
+  console.error(JSON.stringify({
+    niveau: "erreur", contexte, type: err?.name ?? typeof e, code: err?.cause?.code ?? err?.code ?? null,
+    message: String(err?.cause?.message ?? err?.message ?? e).split(/\r?\n/)[0]!.slice(0, 200),
+  }));
+}
+
 /** Session : cookie HttpOnly → empreinte SHA-256 → session valide, compte actif → profil d'habilitations. */
 export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c, next) => {
   const jeton = getCookie(c, COOKIE_SESSION);
@@ -234,7 +255,7 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) { controlerOrigine(c); controlerCsrf(c); }
   const [privilegie] = await base().select({ id: schema.delegations.id }).from(schema.delegations)
     .where(and(eq(schema.delegations.profilId, ligne.profil.id), eq(schema.delegations.statut, "active"), gt(schema.delegations.au, new Date()), lte(schema.delegations.niveau, 2))).limit(1);
-  const mfaExige = !!privilegie || (ligne.profil.habilitations as Profil["habilitations"]).some((h) => h.role === "administrateur");
+  const mfaExige = !!privilegie || (ligne.profil.habilitations as Profil["habilitations"]).some((h) => ROLES_SECOND_FACTEUR.includes(h.role));
   // Portail : une session ouverte ailleurs ne vaut rien ici (lot D).
   (await import("./portails")).exigerPortail({ habilitations: ligne.profil.habilitations as Profil["habilitations"] }, mfaExige);
   // Inactivité : une session sans interaction réelle depuis trop longtemps est close (les rafraîchissements
@@ -262,6 +283,7 @@ export const authentifie: MiddlewareHandler<{ Variables: Variables }> = async (c
   const compte: CompteSession = {
     id: ligne.compte.id, identifiant: ligne.compte.identifiant, doitChangerMotDePasse: ligne.compte.doitChangerMotDePasse, empreinteSession: empreinte,
     mfaExige, mfaActive: ligne.compte.mfaActive, mfaVerifie: ligne.session.mfaVerifie, eleveJusquA: ligne.session.eleveJusquA?.getTime() ?? null,
+    ouverteLe: ligne.session.creeLe.getTime(),
   };
   exigerSessionComplete(c, compte);
   // Seules les sessions complètes sont mises en cache : une étape franchie sur une autre instance est vue aussitôt.

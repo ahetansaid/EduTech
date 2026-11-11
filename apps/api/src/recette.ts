@@ -1044,6 +1044,9 @@ titre("Sécurité des comptes : second facteur, élévation, inactivité, vigie"
   const etatMfa = await brute.appel("GET", "/auth/mfa/etat");
   verifier("État du second facteur : application enregistrée, codes de secours disponibles", etatMfa.json.totp === true && Number(etatMfa.json.codesSecoursRestants) > 0, true);
   verifier("Enseignant (sans délégation) : second facteur non exigé", (await enseignant!.appel("GET", "/auth/mfa/etat")).json.exige === false, true);
+  // Audit du 05/11 (A5) : le DPO lit le journal de tous les accès, le cabinet publie et révoque : un mot de passe seul ne suffit plus.
+  verifier("DPO : second facteur exigé", (await dpo!.appel("GET", "/auth/mfa/etat")).json.exige === true, true);
+  verifier("Administration centrale : second facteur exigé", (await central!.appel("GET", "/auth/mfa/etat")).json.exige === true, true);
   // Comptes de démonstration (jury) : le code est rendu après le mot de passe, et il fonctionne.
   const demo = new Session();
   await demo.appel("POST", "/auth/connexion", { identifiant: "admin.beile", motDePasse: COMPTES["admin.beile"] });
@@ -1152,14 +1155,21 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
   const secret = String(debut.json.secret ?? "");
   verifier("Enrôlement : secret provisoire remis (cookie chiffré, rien en base)", debut.statut === 200 && /^[A-Z2-7]{16,}$/.test(secret), true, `HTTP ${debut.statut}`);
   verifier("Enrôlement : code faux → refusé", (await chefN.appel("POST", "/auth/mfa/totp/confirmer", { code: "000000" })).statut, 422);
+  const autreSession = new Session();
+  await autreSession.connexion(id, MDP2);
   const conf = await chefN.appel("POST", "/auth/mfa/totp/confirmer", { code: codeTotp(secret) });
   const secours = (conf.json.codesSecours as string[] | null) ?? [];
   verifier("Enrôlement : code juste → facteur actif, dix codes de secours remis une fois", conf.statut === 200 && secours.length === 10, true, `HTTP ${conf.statut} · ${secours.length} code(s)`);
+  // Audit du 05/11 (A4) : un facteur ajouté sur une session volée deviendrait un accès durable.
+  verifier("Enrôlement : les autres sessions du compte sont closes", (await autreSession.appel("GET", "/auth/session")).statut, 401);
+  verifier("Enrôlement : la session qui a enregistré le facteur reste ouverte", (await chefN.appel("GET", "/auth/session")).statut, 200);
+  verifier("Vigie : l'ajout d'un second facteur est signalé", liste((await dpo!.appel("GET", "/securite/alertes")).json).some((a) => a.type === "second_facteur_ajoute" && String(a.detail).includes(id)), true);
   verifier("Codes de secours : renouvellement sans élévation → refusé", (await chefN.appel("POST", "/auth/mfa/codes-secours")).json.code === "elevation_requise", true);
   const apres = new Session();
   const cxm = await apres.connexion(id, MDP2);
   verifier("Connexion suivante : second facteur à présenter", cxm.json.etape === "mfa_a_verifier", true, String(cxm.json.etape));
   verifier("Code de secours : accepté une fois", (await apres.appel("POST", "/auth/mfa/verifier", { code: secours[0] })).statut, 200);
+  verifier("Second facteur supplémentaire sans élévation → refusé (« elevation_requise »)", (await apres.appel("POST", "/auth/mfa/totp/debut")).json.code === "elevation_requise", true);
   const rejeuSecours = new Session();
   await rejeuSecours.connexion(id, MDP2);
   verifier("Code de secours : rejeu refusé", (await rejeuSecours.appel("POST", "/auth/mfa/verifier", { code: secours[0] })).statut, 422);
@@ -1174,6 +1184,11 @@ if (ECRITURES && (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL)
   titre("Administration d'un compte : sessions, verrou, désactivation");
   verifier("Administrateur : révocation des sessions d'un compte", (await admin!.appel("POST", `/admin/comptes/${cid}/sessions/revoquer`)).statut, 200);
   verifier("Révocation : la session ouverte est coupée", (await sansMfa.appel("GET", "/auth/session")).statut, 401);
+  // Audit du 05/11 (A8) : pendant le verrou, le bon mot de passe ne doit pas se distinguer du mauvais (ex-423).
+  for (let i = 0; i < 5; i++) await new Session().connexion(id, "Faux-Mot-De-Passe-1");
+  const pendantJuste = await new Session().connexion(id, MDP2);
+  const pendantFaux = await new Session().connexion(id, "Faux-Mot-De-Passe-1");
+  verifier("Compte verrouillé : le bon mot de passe reçoit la même réponse que le mauvais", pendantJuste.statut === 401 && pendantFaux.statut === 401 && pendantJuste.json.erreur === pendantFaux.json.erreur, true, `HTTP ${pendantJuste.statut} / ${pendantFaux.statut}`);
   verifier("Administrateur : déverrouillage", (await admin!.appel("POST", `/admin/comptes/${cid}/deverrouiller`)).statut, 200);
   verifier("Administrateur : désactivation du compte", (await admin!.appel("POST", `/admin/comptes/${cid}/activation`, { actif: false })).statut, 200);
   verifier("Compte désactivé : connexion refusée", (await new Session().connexion(id, MDP2)).statut, [401, 403]);

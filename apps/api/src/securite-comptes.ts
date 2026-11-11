@@ -267,6 +267,30 @@ async function nouveauxCodesSecours(compteId: string) {
   return codes.map((k) => `${k.slice(0, 5)}-${k.slice(5)}`);
 }
 
+const PREMIER_FACTEUR_MS = 10 * 60_000;
+
+/**
+ * Enregistrer un second facteur, c'est donner un moyen durable d'entrer : une session volée ne doit pas suffire.
+ * Un facteur de plus exige une élévation. Le premier n'est accepté que dans les 10 minutes qui suivent la
+ * connexion par mot de passe ; au-delà, l'élévation (ou, si la fonction l'exige, une nouvelle connexion).
+ */
+function exigerAjoutFacteur(c: Ctx) {
+  exigerFacteurPresente(c);
+  const compte = c.get("compte");
+  if (compte.mfaActive) return exigerElevation(c);
+  if (Date.now() - compte.ouverteLe <= PREMIER_FACTEUR_MS || (compte.eleveJusquA ?? 0) > Date.now()) return;
+  if (compte.mfaExige) throw new ErreurCodee(403, "Reconnectez-vous pour enregistrer votre second facteur (10 minutes après la connexion au plus)", "reconnexion_requise");
+  exigerElevation(c);
+}
+
+/** Facteur enregistré : les autres sessions tombent, et la vigie le voit (un ajout non sollicité est une prise de contrôle). */
+async function apresAjoutFacteur(c: Ctx, nature: string) {
+  const compte = c.get("compte");
+  await base().update(schema.sessions).set({ revoquee: true })
+    .where(and(eq(schema.sessions.compteId, compte.id), eq(schema.sessions.revoquee, false), sql`${schema.sessions.empreinte} <> ${compte.empreinteSession}`));
+  await signaler("second_facteur_ajoute", compte.mfaExige ? "moyenne" : "info", c.get("profil").id, compte.id, `Second facteur ajouté (${nature}) au compte ${compte.identifiant} ; autres sessions closes.`);
+}
+
 /** Changer ou ajouter un facteur quand on en a déjà un : il faut l'avoir présenté pour cette session. */
 function exigerFacteurPresente(c: Ctx) {
   const compte = c.get("compte");
@@ -283,7 +307,7 @@ securiteComptes.get("/auth/mfa/etat", authentifie, async (c) => {
 
 /** Enrôlement TOTP, étape 1 : un secret est tiré et gardé chiffré, inactif tant qu'un code n'a pas été confirmé. */
 securiteComptes.post("/auth/mfa/totp/debut", authentifie, limiteDebit(10, 15 * 60_000, cleUtilisateur), async (c) => {
-  exigerFacteurPresente(c);
+  exigerAjoutFacteur(c);
   const compte = c.get("compte");
   const secret = nouveauSecretTotp();
   // Le secret provisoire vit dans un cookie chiffré et lié au compte, JAMAIS en base avant confirmation : un
@@ -316,6 +340,7 @@ securiteComptes.post("/auth/mfa/totp/confirmer", authentifie, limiteDebit(10, 15
   const codes = compte.mfaActive ? null : await nouveauxCodesSecours(compte.id);
   await marquerSession(c, { mfaVerifie: true });
   await journaliser(c.get("profil"), "Second facteur enregistré (application)", compte.identifiant, "gestion", true, null);
+  await apresAjoutFacteur(c, "application");
   return c.json({ ok: true, codesSecours: codes });
 });
 
@@ -334,6 +359,9 @@ securiteComptes.post("/auth/mfa/verifier", authentifie, limiteParCompte("mfa-ver
  * « démonstration » en base. Un compte réel répond 404 : rien ne distingue la route de son absence.
  */
 securiteComptes.get("/auth/mfa/demonstration", authentifie, async (c) => {
+  // En production, fermé sauf instance déclarée de démonstration : sinon le mot de passe seul ouvrirait ces comptes.
+  const env = lireEnv();
+  if (env.PRODUCTION && !env.DEMONSTRATION) throw new HTTPException(404, { message: "Introuvable" });
   const compte = c.get("compte");
   const [cpt] = await base().select({ demo: schema.comptes.demonstration, actif: schema.comptes.mfaActive, totp: schema.comptes.totpChiffre, pas: schema.comptes.totpDernierPas })
     .from(schema.comptes).where(eq(schema.comptes.id, compte.id));
@@ -395,7 +423,7 @@ async function consommerDefi(c: Ctx, reponse: { response?: { clientDataJSON?: st
 }
 
 securiteComptes.post("/auth/mfa/fido/options-enrolement", authentifie, async (c) => {
-  exigerFacteurPresente(c);
+  exigerAjoutFacteur(c);
   const rp = rpId();
   if (!rp) throw new ErreurCodee(422, "Portail non configuré (BEILE_WEBAUTHN_RP_ID)", "rp_absent");
   const compte = c.get("compte");
@@ -424,6 +452,7 @@ securiteComptes.post("/auth/mfa/fido/enroler", authentifie, async (c) => {
   const codes = premier ? await nouveauxCodesSecours(compte.id) : null;
   await marquerSession(c, { mfaVerifie: true });
   await journaliser(c.get("profil"), "Second facteur enregistré (clé de sécurité)", `${compte.identifiant} · ${s.nom}`, "gestion", true, null);
+  await apresAjoutFacteur(c, "clé de sécurité");
   return c.json({ ok: true, codesSecours: codes });
 });
 
